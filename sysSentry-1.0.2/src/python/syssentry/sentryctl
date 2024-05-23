@@ -1,0 +1,149 @@
+#!/usr/bin/python3
+# coding: utf-8
+# Copyright (c) 2023 Huawei Technologies Co., Ltd.
+# sysSentry is licensed under the Mulan PSL v2.
+# You can use this software according to the terms and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#     http://license.coscl.org.cn/MulanPSL2
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
+# PURPOSE.
+# See the Mulan PSL v2 for more details.
+
+"""
+sentryctl: control command for sysSentry.
+"""
+import socket
+import argparse
+import json
+import sys
+
+CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
+MAX_PARAM_LENGTH = 256
+
+
+def status_output_format(res_data):
+    """format output"""
+    print(f"status: {res_data}")
+
+
+def mod_list_output_format(res_data):
+    """format output list"""
+    mod_list = json.loads(res_data)
+    print("oneshot:")
+    for mod in mod_list['ONESHOT']:
+        print(f"\t {mod}")
+    print("period:")
+    for mod in mod_list['PERIOD']:
+        print(f"\t {mod}")
+    print("")
+
+
+def res_output_handle(res_struct, req_type):
+    """handle output"""
+    if req_type == 'mod_list':
+        mod_list_output_format(res_struct['data'])
+    elif req_type == 'get_status':
+        status_output_format(res_struct['data'])
+    elif res_struct['ret'] == "failed":
+        print(res_struct['data'])
+
+
+def res_msg_serial(res_msg):
+    """serial res_msg"""
+    res_struct = json.loads(res_msg)
+    return res_struct
+
+
+def client_send_and_recv(request_data):
+    """client socket send and recv message"""
+    try:
+        client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    except socket.error:
+        print("sentryctl: client creat socket error")
+        return None
+
+    try:
+        client_socket.connect(CTL_SOCKET_PATH)
+    except OSError:
+        client_socket.close()
+        print("sentryctl: client connect error")
+        return None
+
+    req_data_len = len(request_data)
+    request_msg = "CTL" + str(req_data_len).zfill(3) + request_data
+
+    try:
+        client_socket.send(request_msg.encode())
+        res_data = client_socket.recv(6)
+        res_data = res_data.decode()
+    except (OSError, UnicodeError):
+        client_socket.close()
+        print("sentryctl: client communicate error")
+        return None
+
+    res_magic = res_data[:3]
+
+    if res_magic != "RES":
+        print("res msg format error")
+        return None
+
+    try:
+        res_data_len = int(res_data[3:])
+        res_msg_data = client_socket.recv(res_data_len)
+        res_msg_data = res_msg_data.decode()
+        return res_msg_data
+    except (OSError, ValueError, UnicodeError):
+        print("sentryctl: client recv res msg error")
+    finally:
+        client_socket.close()
+
+    return None
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(prog='sentryctl', description='System inspect tools',
+                                     allow_abbrev=False)
+    subparsers = parser.add_subparsers(help="sentryctl: control cmdline for sysSentry",
+                                       dest='cmd_type')
+    parser_start = subparsers.add_parser('start', help='start specified task')
+    parser_start.add_argument('task_name')
+    parser_stop = subparsers.add_parser('stop', help='stop specified task')
+    parser_stop.add_argument('task_name')
+    parser_reload = subparsers.add_parser('reload', help='reload specified mod')
+    parser_reload.add_argument('task_name')
+    parser_status = subparsers.add_parser('status', help='get task status')
+    parser_status.add_argument('task_name')
+    parser_list = subparsers.add_parser('list', help='show all loaded task mod')
+
+    client_args = parser.parse_args()
+
+    if client_args.cmd_type == 'list':
+        req_msg_struct = {"type": "mod_list", "data":""}
+    elif client_args.cmd_type == 'start':
+        req_msg_struct = {"type": "start", "data": client_args.task_name}
+    elif client_args.cmd_type == 'stop':
+        req_msg_struct = {"type": "stop", "data": client_args.task_name}
+    elif client_args.cmd_type == 'status':
+        req_msg_struct = {"type": "get_status", "data": client_args.task_name}
+    elif client_args.cmd_type == 'reload':
+        req_msg_struct = {"type": "reload", "data": client_args.task_name}
+    else:
+        parser.print_help()
+        sys.exit(-1)
+
+    if client_args.cmd_type != 'list' and len(client_args.task_name) > MAX_PARAM_LENGTH:
+        print(f"sentryctl: task name is longer than {MAX_PARAM_LENGTH}")
+        sys.exit(-1)
+
+    request_message = json.dumps(req_msg_struct)
+    result_message = client_send_and_recv(request_message)
+    if not result_message:
+        print("sentryctl: client_send_and_recv failed")
+        sys.exit(-1)
+
+    result_struct = res_msg_serial(result_message)
+
+    if result_struct['ret'] != "success":
+        print(result_struct['ret'])
+    res_output_handle(result_struct, req_msg_struct['type'])

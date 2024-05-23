@@ -1,0 +1,12 @@
+[Unit]
+Description=EulerOS System Inspection Frame
+
+[Service]
+ExecStart=/usr/bin/syssentry
+ExecStop=/bin/kill $MAINPID
+KillMode=process
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

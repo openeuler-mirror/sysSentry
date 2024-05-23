@@ -1,0 +1,108 @@
+# coding: utf-8
+# Copyright (c) 2023 Huawei Technologies Co., Ltd.
+# sysSentry is licensed under the Mulan PSL v2.
+# You can use this software according to the terms and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#     http://license.coscl.org.cn/MulanPSL2
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
+# PURPOSE.
+# See the Mulan PSL v2 for more details.
+
+"""
+period task and global values.
+"""
+import io
+import subprocess
+import logging
+import time
+import os
+
+
+SENTRY_RUN_DIR = "/var/run/sysSentry"
+CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
+SYSSENTRY_CONF_PATH = "/etc/sysSentry"
+INSPECT_CONF_PATH = "/etc/sysSentry/inspect.conf"
+TASK_LOG_DIR = "/var/log/sysSentry"
+
+SENTRY_RUN_DIR_PERM = 0o750
+
+TYPES_SET = ('oneshot', 'period')
+
+# cron process obj
+CRON_PROCESS_OBJ = None
+# cron task queue
+CRON_QUEUE = None
+
+TASKS_STORAGE_PATH = "/etc/sysSentry/tasks"
+
+
+class InspectTask:
+    """oneshot task class"""
+    def __init__(self, name: str, task_type: str, start_task: str, stop_task: str):
+        self.name = name
+        self.type = task_type
+        self.status = "ERROR"
+        # runtime information
+        self.runtime_status = "EXITED"
+        self.pid = -1
+        # task attribute
+        self.task_start = start_task
+        self.task_stop = stop_task
+        # task heartbeat attribute
+        self.heartbeat_interval = -1
+        self.last_heartbeat = -1
+        # task progress attribute
+        self.cur_progress = 0
+        # task log file
+        self.log_file = TASK_LOG_DIR + '/' + name + '.log'
+        self.period_enabled = True
+        # load enabled
+        self.load_enabled = True
+
+    # start function we use async mode
+    # when we have called the start command, function return
+    def start(self):
+        """start"""
+        if not self.period_enabled:
+            self.period_enabled = True
+        if self.runtime_status in ("EXITED", "FAILED"):
+            cmd_list = self.task_start.split()
+            try:
+                logfile = open(self.log_file, 'a')
+                os.chmod(self.log_file, 0o600)
+            except OSError:
+                logging.error("task %s log_file %s open failed", self.name, self.log_file)
+                logfile = subprocess.PIPE
+            try:
+                child = subprocess.Popen(cmd_list, stdout=logfile, stderr=subprocess.STDOUT, close_fds=True)
+            except OSError:
+                logging.error("task %s start Popen error, invalid cmd")
+                self.runtime_status = "FAILED"
+                return False, "start command is invalid, popen failed"
+            finally:
+                if isinstance(logfile, io.TextIOWrapper) and not logfile.closed:
+                    logfile.close()
+
+            self.pid = child.pid
+            logging.debug("start task %s pid %d", self.name, self.pid)
+            self.runtime_status = "RUNNING"
+            if self.heartbeat_interval > 0:
+                self.last_heartbeat = time.perf_counter()
+            return True, "start task success"
+        return True, "task is running, please wait finish"
+
+    def stop(self):
+        """stop"""
+        self.period_enabled = False
+        if self.runtime_status == "RUNNING":
+            cmd_list = self.task_stop.split()
+            try:
+                subprocess.Popen(cmd_list, stdout=subprocess.PIPE, close_fds=True)
+            except OSError:
+                logging.error("task %s stop Popen failed")
+            logging.debug("stop task %s", self.name)
+
+    def get_status(self):
+        """get status"""
+        return self.runtime_status
