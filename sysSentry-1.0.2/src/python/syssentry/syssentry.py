@@ -28,11 +28,14 @@ from .sentry_config import SentryConfig
 from .task_map import TasksMap
 from .global_values import SENTRY_RUN_DIR, CTL_SOCKET_PATH, SENTRY_RUN_DIR_PERM
 from .cron_process import period_tasks_handle
-from .callbacks import mod_list_show, task_start, task_get_status, task_stop
+from .callbacks import mod_list_show, task_start, task_get_status, task_stop, task_get_result
 from .mod_status import get_task_by_pid, set_runtime_status
 from .load_mods import load_tasks, reload_single_mod
 from .heartbeat import (heartbeat_timeout_chk, heartbeat_fd_create,
     heartbeat_recv, THB_SOCKET_PATH)
+from .result import RESULT_MSG_HEAD_LEN, RESULT_MSG_MAGIC_LEN, RESULT_MAGIC
+from .result import RESULT_LEVEL_ERR_MSG_DICT, ResultLevel
+from .utils import get_current_time_string
 
 INSPECTOR = None
 
@@ -50,6 +53,7 @@ type_func = {
     'start': task_start,
     'stop': task_stop,
     'get_status': task_get_status,
+    'get_result': task_get_result,
     'reload': reload_single_mod
 }
 
@@ -65,6 +69,9 @@ SYSSENTRY_LOG_FILE = "/var/log/sysSentry/sysSentry.log"
 
 SYSSENTRY_PID_FILE = "/var/run/sysSentry/sysSentry.pid"
 PID_FILE_FLOCK = None
+
+# result-specific socket
+RESULT_SOCKET_PATH = "/var/run/sysSentry/result.sock"
 
 
 def msg_data_process(msg_data):
@@ -101,6 +108,57 @@ def msg_data_process(msg_data):
     return res_msg
 
 
+def process_and_update_task_result(result_msg_data: dict) -> bool:
+    '''
+    result_msg_data format is as follows:
+    {
+        "task_name" : task_name, # (eg. npu_sentry),
+        "result_data" : {
+            "result": ResultLevel,
+            "details": {},
+        },
+    }
+    result is what 'sentryctl get-result task_name' needs to output
+    '''
+    try:
+        data_struct = json.loads(result_msg_data)
+    except json.decoder.JSONDecodeError:
+        logging.error("result msg data process: json decode error")
+        return False
+
+    if 'task_name' not in data_struct:
+        logging.error("recv message format error, task_name is not exist")
+        return False
+
+    if 'result_data' not in data_struct:
+        logging.error("recv message format error, result is not exist")
+        return False
+
+    task = TasksMap.get_task_by_name(data_struct['task_name'])
+    if not task:
+        logging.error("task '%s' do not exists!!", data_struct['task_name'])
+        return False
+
+    result_data = data_struct.get("result_data", {})
+    sentry_result = result_data.get("result")
+    sentry_detail = result_data.get("details")
+    if sentry_result not in ResultLevel.__members__:
+        logging.error("recv 'result' does not belong to ResultLevel members!")
+        return False
+    if not isinstance(sentry_detail, dict):
+        logging.debug("recv 'details' must be dict object, try to convert it to a dict obj")
+        try:
+            sentry_detail = json.loads(sentry_detail)
+        except (json.decoder.JSONDecodeError, TypeError):
+            logging.error("'details' is malformed, it should be a dictionary formatted string")
+            return False
+    task.result_info["result"] = sentry_result
+    task.result_info["details"] = sentry_detail
+    task.result_info["error_msg"] = RESULT_LEVEL_ERR_MSG_DICT.get(sentry_result, "")
+
+    return True
+
+
 def msg_head_process(msg_head):
     """message head process"""
     ctl_magic = msg_head[:CTL_MSG_MAGIC_LEN]
@@ -115,6 +173,22 @@ def msg_head_process(msg_head):
         logging.error("recv msg data len is invalid %s", data_len_str)
         return -1
 
+    return data_len
+
+
+def result_msg_head_process(msg_head):
+    """result message head process"""
+    result_magic = msg_head[:RESULT_MSG_MAGIC_LEN]
+    if result_magic != RESULT_MAGIC:
+        logging.error("recv result msg head magic invalid: %s", result_magic)
+        return -1
+
+    data_len_str = msg_head[RESULT_MSG_MAGIC_LEN:RESULT_MSG_HEAD_LEN]
+    try:
+        data_len = int(data_len_str)
+    except ValueError:
+        logging.error("recv result msg data len is invalid %s", data_len_str)
+        return -1
     return data_len
 
 
@@ -154,8 +228,20 @@ def server_recv(server_socket: socket.socket):
     res_data = msg_data_process(msg_data_decode)
     logging.debug("res data %s", res_data)
 
+    cmd_type = ""
+    try:
+        msg_data_decode_dict = json.loads(msg_data_decode)
+        cmd_type = msg_data_decode_dict.get("type")
+    except json.JSONDecodeError:
+        logging.error("msg data process: msg_data_decode json decode error")
+        return
+
+
     res_head = RES_MAGIC
-    res_data_len = str(len(res_data)).zfill(CTL_MSG_MAGIC_LEN)
+    if cmd_type == "get_result":
+        res_data_len = str(len(res_data)).zfill(RESULT_MSG_HEAD_LEN - RESULT_MSG_MAGIC_LEN)
+    else:
+        res_data_len = str(len(res_data)).zfill(CTL_MSG_MAGIC_LEN)
     res_head += res_data_len
     logging.debug("res head %s", res_head)
 
@@ -194,19 +280,98 @@ def server_fd_create():
     return server_fd
 
 
+def server_result_recv(server_socket: socket.socket):
+    """server result receive"""
+    try:
+        client_socket, _ = server_socket.accept()
+        logging.debug("server_fd listen ok")
+    except socket.error:
+        logging.error("server accept failed")
+        return
+
+    try:
+        msg_head = client_socket.recv(RESULT_MSG_HEAD_LEN)
+        logging.debug("recv msg head: %s", msg_head.decode())
+        data_len = result_msg_head_process(msg_head.decode())
+    except (OSError, UnicodeError):
+        client_socket.close()
+        logging.error("server recv HEAD failed")
+        return
+
+    logging.debug("msg data length: %d", data_len)
+    if data_len < 0:
+        client_socket.close()
+        logging.error("msg head parse failed")
+        return
+
+    try:
+        msg_data = client_socket.recv(data_len)
+        msg_data_decode = msg_data.decode()
+        logging.info("server recv result data :\n%s\n", msg_data_decode)
+    except (OSError, UnicodeError):
+        client_socket.close()
+        logging.error("server recv MSG failed")
+        return
+
+    # update result
+    process_plugins_result = "SUCCESS"
+    if not process_and_update_task_result(msg_data_decode):
+        process_plugins_result = "FAILED"
+        logging.error("process server recv MSG failed")
+
+    # response to client
+    logging.info("result recv msg head : %s , response ...", process_plugins_result)
+    try:
+        client_socket.send(process_plugins_result.encode())
+    except OSError:
+        logging.warning("server send reponse to plugins failed")
+    finally:
+        client_socket.close()
+    return
+
+
+def server_result_fd_create():
+    """create server result fd"""
+    if not os.path.exists(SENTRY_RUN_DIR):
+        logging.error("%s not exist, failed", SENTRY_RUN_DIR)
+        return None
+    try:
+        server_result_fd = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server_result_fd.setblocking(False)
+        if os.path.exists(RESULT_SOCKET_PATH):
+            os.remove(RESULT_SOCKET_PATH)
+
+        server_result_fd.bind(RESULT_SOCKET_PATH)
+        os.chmod(RESULT_SOCKET_PATH, 0o600)
+        server_result_fd.listen(CTL_LISTEN_QUEUE_LEN)
+        logging.debug("%s bind and listen", RESULT_SOCKET_PATH)
+    except socket.error:
+        logging.error("server result fd create failed")
+        server_result_fd = None
+
+    return server_result_fd
+
+
 def main_loop():
     """main loop"""
     server_fd = server_fd_create()
     if not server_fd:
         return
 
+    server_result_fd = server_result_fd_create()
+    if not server_result_fd:
+        server_fd.close()
+        return
+
     heartbeat_fd = heartbeat_fd_create()
     if not heartbeat_fd:
         server_fd.close()
+        server_result_fd.close()
         return
 
     epoll_fd = select.epoll()
     epoll_fd.register(server_fd.fileno(), select.EPOLLIN)
+    epoll_fd.register(server_result_fd.fileno(), select.EPOLLIN)
     epoll_fd.register(heartbeat_fd.fileno(), select.EPOLLIN)
 
     logging.debug("start main loop")
@@ -216,6 +381,8 @@ def main_loop():
             for event_fd, _ in events_list:
                 if event_fd == server_fd.fileno():
                     server_recv(server_fd)
+                elif event_fd == server_result_fd.fileno():
+                    server_result_recv(server_result_fd)
                 elif event_fd == heartbeat_fd.fileno():
                     heartbeat_recv(heartbeat_fd)
                 else:
@@ -279,6 +446,7 @@ def sigchld_handler(signum, _f):
                     set_runtime_status(task.name, "EXITED")
                 else:
                     set_runtime_status(task.name, "FAILED")
+            task.result_info["end_time"] = get_current_time_string()
         except:
             break
 
