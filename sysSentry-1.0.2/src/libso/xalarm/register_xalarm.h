@@ -71,5 +71,31 @@ int xalarm_Report(unsigned short usAlarmId,
         unsigned char ucAlarmLevel,
         unsigned char ucAlarmType,
         char *pucParas);
- 
+
+#define RESULT_REPORT_SOCKET "/var/run/sysSentry/result.sock"
+#define RESULT_LEVEL_NUM 6
+
+enum RESULT_LEVEL {
+    RESULT_LEVEL_PASS = 0,
+    RESULT_LEVEL_FAIL = 1,
+    RESULT_LEVEL_SKIP = 2,
+    RESULT_LEVEL_MINOR_ALM = 3,
+    RESULT_LEVEL_MAJOR_ALM = 4,
+    RESULT_LEVEL_CRITICAL_ALM = 5,
+};
+
+#define RESULT_INFO_HEAD_LEN 10
+#define RESULT_INFO_HEAD_MAGIC "RESULT"
+#define RESULT_INFO_MAX_LEN 4096
+#define RESULT_INFO_LOG_MGS_MAX_LEN 255
+
+#define RETURE_CODE_FAIL (-1)
+#define RETURE_CODE_SUCCESS 0
+
+extern int report_result(const char *task_name,
+                         enum RESULT_LEVEL result_level,
+                         const char *report_data);
+
+extern int send_data_to_socket(const char *socket_path, const char *message);
+
 #endif

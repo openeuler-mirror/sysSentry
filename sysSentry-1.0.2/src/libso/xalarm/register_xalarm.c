@@ -18,6 +18,9 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <json-c/json.h>
+#include <regex.h>
+#include <ctype.h>
 
 #include "register_xalarm.h"
 
@@ -34,6 +37,7 @@
 
 #define ALARM_ENABLED 1
 #define RECV_DELAY_MSEC 100
+#define TASK_NAME_MAX_LEN 256
 
 struct alarm_register_info {
     char alarm_enable_bitmap[MAX_NUM_OF_ALARM_ID];
@@ -42,6 +46,15 @@ struct alarm_register_info {
     bool is_registered;
     alarm_callback_func callback;
     int thread_should_stop;
+};
+
+const char *g_result_level_string[] = {
+    "PASS",
+    "FAIL",
+    "SKIP",
+    "MINOR_ALM",
+    "MAJOR_ALM",
+    "CRITICAL_ALM",
 };
 
 struct alarm_register_info g_register_info = {{0}, -1, ULONG_MAX, false, NULL, 1};
@@ -409,4 +422,165 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
     close(fd);
 
     return (ret > 0) ? 0 : -1;
+}
+
+
+/**
+ * @brief send data to socket
+ *
+ * @param socket_path unix socket file path
+ * @param message string data to send, must end in '\0'
+ * @return int success or not, 0 means success, -1 means failure
+ */
+int send_data_to_socket(const char *socket_path, const char *message)
+{
+    int sockfd;
+    int ret;
+    struct sockaddr_un addr;
+
+    // initialize socket
+    sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        fprintf(stderr, "failed to create socket\n");
+        return RETURE_CODE_FAIL;
+    }
+
+    // set socket address
+    ret = memset_s(&addr, sizeof(addr), 0, sizeof(struct sockaddr_un));
+    if (ret != 0) {
+        fprintf(stderr, "%s: memset_s info failed, ret: %d\n", __func__, ret);
+        return RETURE_CODE_FAIL;
+    }
+
+    addr.sun_family = AF_UNIX;
+    ret = strncpy_s(addr.sun_path, sizeof(addr.sun_path), socket_path, sizeof(addr.sun_path) - 1);
+    if (ret != 0) {
+        fprintf(stderr, "%s: strncpy_s failed\n", __func__);
+        return RETURE_CODE_FAIL;
+    }
+    // connect socket
+    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un)) == -1) {
+        fprintf(stderr, "failed to connect socket %s\n", socket_path);
+        close(sockfd);
+        return RETURE_CODE_FAIL;
+    }
+
+    // write data
+    if (write(sockfd, message, strlen(message)) == -1) {
+        fprintf(stderr, "failed to send data to socket %s\n", socket_path);
+        close(sockfd);
+        return RETURE_CODE_FAIL;
+    }
+
+    close(sockfd);
+    return RETURE_CODE_SUCCESS;
+}
+
+
+static bool is_valid_task_name(const char *task_name)
+{
+    if (task_name == NULL) {
+        fprintf(stderr, "task_name is null\n");
+        return false;
+    }
+
+    if (!isalpha(task_name[0])) {
+        fprintf(stderr, "task_name does not start with an English letter\n");
+        return false;
+    }
+
+    if (strlen(task_name) > TASK_NAME_MAX_LEN) {
+        fprintf(stderr, "task_name is too long\n");
+        return false;
+    }
+
+    int ret;
+
+    const char *pattern_task_name = "^[a-zA-Z][a-zA-Z0-9_]*$";
+    regex_t regex_task_name;
+
+    ret = regcomp(&regex_task_name, pattern_task_name, REG_EXTENDED);
+    if (ret) {
+        fprintf(stderr, "Could not compile regex\n");
+        return false;
+    }
+
+    ret = regexec(&regex_task_name, task_name, 0, NULL, 0);
+    if (ret) {
+        fprintf(stderr, "'task_name' (%s) contains illegal characters\n", task_name);
+        regfree(&regex_task_name);
+        return false;
+    }
+
+    regfree(&regex_task_name);
+    return true;
+}
+
+
+/**
+ * @brief send result to sysSentry
+ *
+ * @param task_name task name, eg. "memory_sentry"
+ * @param result_level result level, eg. RESULT_LEVEL_PASS
+ * @param report_data result details info, Character string converted from the JSON format.
+ * @return int success or not, 0 means success, -1 means failure
+ */
+int report_result(const char *task_name, enum RESULT_LEVEL result_level, const char *report_data)
+{
+    if (result_level < 0 || result_level >= RESULT_LEVEL_NUM) {
+        fprintf(stderr, "result_level (%u) is invaild, it must be in [0-5]\n", result_level);
+        return RETURE_CODE_FAIL;
+    }
+
+    if (!is_valid_task_name(task_name)) {
+        return RETURE_CODE_FAIL;
+    }
+
+    json_object *send_data = json_object_new_object();
+    json_object *result_data = json_object_new_object();
+    json_object_object_add(result_data, "result", json_object_new_string(g_result_level_string[result_level]));
+    // The null pointer does not need to be determined. json_object_new_string () can receive null pointers.
+    json_object_object_add(result_data, "details", json_object_new_string(report_data));
+    json_object_object_add(send_data, "result_data", result_data);
+    json_object_object_add(send_data, "task_name", json_object_new_string(task_name));
+
+    const char *result_json_string = json_object_to_json_string(send_data);
+    if (result_json_string == NULL) {
+        fprintf(stderr, "%s: json_object_to_json_string return NULL", __func__);
+        json_object_put(send_data);
+        return RETURE_CODE_FAIL;
+    }
+
+    int send_data_len = strlen(result_json_string);
+    if (send_data_len > RESULT_INFO_MAX_LEN) {
+        fprintf(stderr, "%s: failed to send result message (%s) to sysSentry! send data is too long (%zu) > (%d)\n",
+                __func__, result_json_string, send_data_len, RESULT_INFO_MAX_LEN);
+        json_object_put(send_data);
+        return RETURE_CODE_FAIL;
+    }
+
+    char message[RESULT_INFO_HEAD_LEN + RESULT_INFO_MAX_LEN];
+    int ret = memset_s(message, sizeof(message), 0, RESULT_INFO_HEAD_LEN + RESULT_INFO_MAX_LEN);
+    if (ret != 0) {
+        fprintf(stderr, "%s: memset_s message failed", __func__);
+        json_object_put(send_data);
+        return RETURE_CODE_FAIL;
+    }
+
+    ret = sprintf_s(message, sizeof(message) - 1, "%s%04d%s", RESULT_INFO_HEAD_MAGIC,
+            send_data_len, result_json_string);
+    if (ret < 0) {
+        fprintf(stderr, "%s: failed to send result message (%s) to sysSentry, sprintf_s failed\n", __func__, message);
+        json_object_put(send_data);
+        return RETURE_CODE_FAIL;
+    }
+
+    if (send_data_to_socket(RESULT_REPORT_SOCKET, message)) {
+        fprintf(stderr, "%s: failed to send result message (%s) to sysSentry!\n", __func__, message);
+        json_object_put(send_data);
+        return RETURE_CODE_FAIL;
+    }
+
+    json_object_put(send_data);
+    return RETURE_CODE_SUCCESS;
 }
