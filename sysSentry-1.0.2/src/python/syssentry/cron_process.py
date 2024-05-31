@@ -18,6 +18,8 @@ import time
 import logging
 import subprocess
 
+from .utils import get_current_time_string
+from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
 from .global_values import InspectTask
 from .task_map import TasksMap, PERIOD_TYPE
 from .mod_status import set_runtime_status, WAITING_STATUS, RUNNING_STATUS, \
@@ -43,6 +45,15 @@ class PeriodTask(InspectTask):
             self.runtime_status = EXITED_STATUS
 
     def start(self):
+        """
+        start function we use async mode
+        when we have called the start command, function return
+        """
+        self.result_info["result"] = ""
+        self.result_info["start_time"] = get_current_time_string()
+        self.result_info["end_time"] = ""
+        self.result_info["error_msg"] = ""
+        self.result_info["details"] = {}
         if not self.period_enabled:
             self.period_enabled = True
             self.upgrade_period_timestamp()
@@ -52,12 +63,16 @@ class PeriodTask(InspectTask):
             logfile = open(self.log_file, 'a')
             os.chmod(self.log_file, 0o600)
         except OSError:
+            self.result_info["result"] = ResultLevel.FAIL.name
+            self.result_info["error_msg"] = RESULT_LEVEL_ERR_MSG_DICT.get(ResultLevel.FAIL.name)
             logging.error("task %s log_file %s open failed", self.name, self.log_file)
             logfile = subprocess.PIPE
         try:
             child = subprocess.Popen(cmd_list, stdout=logfile,
                                      stderr=subprocess.STDOUT, close_fds=True)
         except OSError:
+            self.result_info["result"] = ResultLevel.FAIL.name
+            self.result_info["error_msg"] = RESULT_LEVEL_ERR_MSG_DICT.get(ResultLevel.FAIL.name)
             logging.error("period task %s start Popen failed", self.name)
             self.runtime_status = FAILED_STATUS
             return False, "period task start popen failed, invalid command"

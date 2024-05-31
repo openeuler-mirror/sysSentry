@@ -18,6 +18,8 @@ import logging
 import time
 import os
 
+from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
+from .utils import get_current_time_string
 
 SENTRY_RUN_DIR = "/var/run/sysSentry"
 CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
@@ -59,11 +61,25 @@ class InspectTask:
         self.period_enabled = True
         # load enabled
         self.load_enabled = True
+        # init result
+        self.result_info = {
+            "result": "",
+            "start_time": "",
+            "end_time": "",
+            "error_msg": "",
+            "details": {}
+        }
 
-    # start function we use async mode
-    # when we have called the start command, function return
     def start(self):
-        """start"""
+        """
+        start function we use async mode
+        when we have called the start command, function return
+        """
+        self.result_info["result"] = ""
+        self.result_info["start_time"] = get_current_time_string()
+        self.result_info["end_time"] = ""
+        self.result_info["error_msg"] = ""
+        self.result_info["details"] = {}
         if not self.period_enabled:
             self.period_enabled = True
         if self.runtime_status in ("EXITED", "FAILED"):
@@ -72,12 +88,16 @@ class InspectTask:
                 logfile = open(self.log_file, 'a')
                 os.chmod(self.log_file, 0o600)
             except OSError:
+                self.result_info["result"] = ResultLevel.FAIL.name
+                self.result_info["error_msg"] = RESULT_LEVEL_ERR_MSG_DICT.get(ResultLevel.FAIL.name)
                 logging.error("task %s log_file %s open failed", self.name, self.log_file)
                 logfile = subprocess.PIPE
             try:
                 child = subprocess.Popen(cmd_list, stdout=logfile, stderr=subprocess.STDOUT, close_fds=True)
             except OSError:
                 logging.error("task %s start Popen error, invalid cmd")
+                self.result_info["result"] = ResultLevel.FAIL.name
+                self.result_info["error_msg"] = RESULT_LEVEL_ERR_MSG_DICT.get(ResultLevel.FAIL.name)
                 self.runtime_status = "FAILED"
                 return False, "start command is invalid, popen failed"
             finally:
@@ -106,3 +126,7 @@ class InspectTask:
     def get_status(self):
         """get status"""
         return self.runtime_status
+
+    def get_result(self):
+        """get result"""
+        return self.result_info

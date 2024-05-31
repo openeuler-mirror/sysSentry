@@ -17,15 +17,25 @@ import socket
 import argparse
 import json
 import sys
+import logging
+import json
 
 CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
 MAX_PARAM_LENGTH = 256
 
+RESULT_MSG_DATA_LEN = 4
+CTL_MSG_LEN_LEN = 3
 
 def status_output_format(res_data):
     """format output"""
     print(f"status: {res_data}")
 
+def result_output_format(res_data):
+    try:
+        print(json.dumps(res_data, indent=4))
+    except json.decoder.JSONDecodeError:
+        logging.warning("result_output_format: result is \n%s\n, but json.dumps failed!")
+        print(res_data)
 
 def mod_list_output_format(res_data):
     """format output list"""
@@ -45,6 +55,8 @@ def res_output_handle(res_struct, req_type):
         mod_list_output_format(res_struct['data'])
     elif req_type == 'get_status':
         status_output_format(res_struct['data'])
+    elif req_type == 'get_result':
+         result_output_format(res_struct['data'])
     elif res_struct['ret'] == "failed":
         print(res_struct['data'])
 
@@ -55,7 +67,7 @@ def res_msg_serial(res_msg):
     return res_struct
 
 
-def client_send_and_recv(request_data):
+def client_send_and_recv(request_data, data_str_len):
     """client socket send and recv message"""
     try:
         client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -75,7 +87,7 @@ def client_send_and_recv(request_data):
 
     try:
         client_socket.send(request_msg.encode())
-        res_data = client_socket.recv(6)
+        res_data = client_socket.recv(len("CTL") + data_str_len)
         res_data = res_data.decode()
     except (OSError, UnicodeError):
         client_socket.close()
@@ -114,6 +126,8 @@ if __name__ == '__main__':
     parser_reload.add_argument('task_name')
     parser_status = subparsers.add_parser('status', help='get task status')
     parser_status.add_argument('task_name')
+    parser_get_result = subparsers.add_parser('get_result', help='get task result')
+    parser_get_result.add_argument('task_name')
     parser_list = subparsers.add_parser('list', help='show all loaded task mod')
 
     client_args = parser.parse_args()
@@ -126,6 +140,8 @@ if __name__ == '__main__':
         req_msg_struct = {"type": "stop", "data": client_args.task_name}
     elif client_args.cmd_type == 'status':
         req_msg_struct = {"type": "get_status", "data": client_args.task_name}
+    elif client_args.cmd_type == 'get_result':
+        req_msg_struct = {"type": "get_result", "data": client_args.task_name}
     elif client_args.cmd_type == 'reload':
         req_msg_struct = {"type": "reload", "data": client_args.task_name}
     else:
@@ -137,7 +153,10 @@ if __name__ == '__main__':
         sys.exit(-1)
 
     request_message = json.dumps(req_msg_struct)
-    result_message = client_send_and_recv(request_message)
+    if client_args.cmd_type == 'get_result':
+        result_message = client_send_and_recv(request_message, RESULT_MSG_DATA_LEN)
+    else:
+        result_message = client_send_and_recv(request_message, CTL_MSG_LEN_LEN)
     if not result_message:
         print("sentryctl: client_send_and_recv failed")
         sys.exit(-1)

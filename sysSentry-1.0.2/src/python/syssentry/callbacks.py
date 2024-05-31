@@ -31,6 +31,17 @@ def task_get_status(mod_name):
     return "success", task.get_status()
 
 
+def task_get_result(mod_name):
+    """get result by mod name"""
+    task = TasksMap.get_task_by_name(mod_name)
+    if not task:
+        return "failed", f"cannot find task by name {mod_name}"
+    if not task.load_enabled:
+        return "failed", f"mod {mod_name} is not enabled"
+
+    return "success", task.get_result()
+
+
 def task_stop(mod_name):
     """stop by mod name"""
     ret = "success"
