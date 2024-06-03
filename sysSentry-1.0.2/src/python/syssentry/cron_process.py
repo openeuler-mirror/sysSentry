@@ -21,7 +21,7 @@ import subprocess
 from .utils import get_current_time_string
 from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
 from .global_values import InspectTask
-from .task_map import TasksMap, PERIOD_TYPE
+from .task_map import TasksMap, PERIOD_TYPE, ONESHOT_TYPE
 from .mod_status import set_runtime_status, WAITING_STATUS, RUNNING_STATUS, \
     FAILED_STATUS, EXITED_STATUS
 
@@ -33,10 +33,13 @@ class PeriodTask(InspectTask):
         self.interval = int(interval)
         self.last_exec_timestamp = 0
         self.runtime_status = WAITING_STATUS
+        self.onstart = True
 
     def stop(self):
         self.period_enabled = False
         cmd_list = self.task_stop.split()
+        if cmd_list[-1] == "$pid":
+            cmd_list[-1] = str(self.pid)
         try:
             subprocess.Popen(cmd_list, stdout=subprocess.PIPE, close_fds=True)
         except OSError:
@@ -57,6 +60,13 @@ class PeriodTask(InspectTask):
         if not self.period_enabled:
             self.period_enabled = True
             self.upgrade_period_timestamp()
+
+        if self.conflict != 'up':
+            ret = self.check_conflict()
+            if not ret:
+                return False, "check conflict failed"
+        if self.env_file:
+            self.load_env_file()
 
         cmd_list = self.task_start.split()
         try:
@@ -105,6 +115,20 @@ class PeriodTask(InspectTask):
         self.last_exec_timestamp = cur_timestamp
         logging.debug("period current timestamp %d", self.last_exec_timestamp)
 
+    def onstart_handle(self):
+        if not self.load_enabled:
+            return False
+        if not self.period_enabled:
+            logging.debug("period not enabled")
+            return False
+        if not self.onstart:
+            return False
+
+        res, _ = self.start()
+        if res:
+            set_runtime_status(self.name, RUNNING_STATUS)
+        self.upgrade_period_timestamp()
+
 
 def period_tasks_handle():
     """period tasks handler"""
@@ -116,6 +140,10 @@ def period_tasks_handle():
 
         if not task.period_enabled:
             logging.debug("period not enabled")
+            continue
+
+        if not task.onstart:
+            logging.debug("period onstart not enabled, task: %s", task.name)
             continue
 
         if task.runtime_status == WAITING_STATUS and \

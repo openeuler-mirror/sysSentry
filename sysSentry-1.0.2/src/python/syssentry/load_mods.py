@@ -38,11 +38,15 @@ CONF_PERIOD_INTERVAL = 'interval'
 CONF_HEARTBEAT_INTERVAL = 'heartbeat_interval'
 CONF_HEARTBEAT_ACTION = 'heartbeat_action'
 CONF_TASK_RESTART = 'task_restart'
+CONF_ONSTART = 'onstart'
+CONF_ENV_FILE = 'env_file'
+CONF_CONFLICT = 'conflict'
 
 MOD_FILE_SUFFIX = '.mod'
 MOD_SUFFIX_LEN = 4
 
 ENABLED_FLAGS_SET = ("yes", "no")
+ONSTART_FLAGS_SET = ("yes", "no")
 
 
 def mod_name_verify(mod_name):
@@ -190,6 +194,21 @@ def parse_mod_conf(mod_name, mod_conf):
     task.heartbeat_interval = heartbeat_interval
     task.load_enabled = is_enabled
 
+    if CONF_ONSTART in mod_conf.options(CONF_TASK):
+        is_onstart = (mod_conf.get(CONF_TASK, CONF_ONSTART) == 'yes')
+        if task_type == PERIOD_CONF:
+            is_onstart = (mod_conf.get(CONF_TASK, CONF_ONSTART) != 'no')
+        logging.debug("the task ready to start")
+        task.onstart = is_onstart
+
+    if CONF_ENV_FILE in mod_conf.options(CONF_TASK):
+        env_file_dir = mod_conf.get(CONF_TASK, CONF_ENV_FILE)
+        task.env_file = env_file_dir
+
+    if CONF_CONFLICT in mod_conf.options(CONF_TASK):
+        conflict = mod_conf.get(CONF_TASK, CONF_CONFLICT)
+        task.conflict = conflict
+
     return task
 
 
@@ -287,6 +306,9 @@ def reload_mod_by_name(mod_name):
         task.task_stop = new_task.task_stop
         task.load_enabled = new_task.load_enabled
         task.heartbeat_interval = new_task.heartbeat_interval
+        task.onstart = new_task.onstart
+        task.env_file = new_task.env_file
+        task.conflict = new_task.conflict
         if task.type == PERIOD_TYPE:
             task.interval = new_task.interval
         set_task_status(mod_name, "LOADED")
