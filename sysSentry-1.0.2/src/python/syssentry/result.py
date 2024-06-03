@@ -54,7 +54,7 @@ def report_result(task_name: str, result_level : ResultLevel, report_data : str)
         logging.warning("did not send data to sysSentry.")
         return -1
 
-    if not isinstance(task_name, str) \ 
+    if not isinstance(task_name, str) \
             or not isinstance(result_level, ResultLevel) \
             or not isinstance(report_data, str):
         logging.error("params type is wrong!")
