@@ -375,6 +375,14 @@ def main_loop():
     epoll_fd.register(heartbeat_fd.fileno(), select.EPOLLIN)
 
     logging.debug("start main loop")
+    # onstart_tasks_handle()
+    for task_type in TasksMap.tasks_dict:
+        for task_name in TasksMap.tasks_dict.get(task_type):
+            task = TasksMap.tasks_dict.get(task_type).get(task_name)
+            if not task:
+                continue
+            task.onstart_handle()
+
     while True:
         try:
             events_list = epoll_fd.poll(SERVER_EPOLL_TIMEOUT)

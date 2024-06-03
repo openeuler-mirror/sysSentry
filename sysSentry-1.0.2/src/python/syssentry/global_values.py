@@ -20,6 +20,7 @@ import os
 
 from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
 from .utils import get_current_time_string
+from .mod_status import set_runtime_status, RUNNING_STATUS
 
 SENTRY_RUN_DIR = "/var/run/sysSentry"
 CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
@@ -69,6 +70,12 @@ class InspectTask:
             "error_msg": "",
             "details": {}
         }
+        # pull task
+        self.onstart = False
+        # ccnfig env_file
+        self.env_file = ""
+        # start mode
+        self.conflict = "up"
 
     def start(self):
         """
@@ -83,6 +90,14 @@ class InspectTask:
         if not self.period_enabled:
             self.period_enabled = True
         if self.runtime_status in ("EXITED", "FAILED"):
+
+            if self.conflict != 'up':
+                ret = self.check_conflict()
+                if not ret:
+                    return False, "check conflict failed"
+            if self.env_file:
+                self.load_env_file()
+
             cmd_list = self.task_start.split()
             try:
                 logfile = open(self.log_file, 'a')
@@ -117,6 +132,8 @@ class InspectTask:
         self.period_enabled = False
         if self.runtime_status == "RUNNING":
             cmd_list = self.task_stop.split()
+            if cmd_list[-1] == "$pid":
+                cmd_list[-1] = str(self.pid)
             try:
                 subprocess.Popen(cmd_list, stdout=subprocess.PIPE, close_fds=True)
             except OSError:
@@ -130,3 +147,70 @@ class InspectTask:
     def get_result(self):
         """get result"""
         return self.result_info
+
+    def onstart_handle(self):
+        if not self.load_enabled:
+            return False
+        if not self.onstart:
+            return False
+        res, _ = self.start()
+        if not res:
+            return False
+        set_runtime_status(self.name, RUNNING_STATUS)
+
+    def check_conflict(self):
+        logging.debug("load_env_file detail, task_name: %s, conflict: %s, env_file: %s",
+                      self.name, self.conflict, self.env_file)
+        pid_list = []
+        check_cmd = ["ps", "aux"]
+        try:
+            result = subprocess.run(check_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"failed with return code {e.returncode}")
+
+        output_lines = result.stdout.decode("utf-8").splitlines()
+        for line in output_lines:
+            if self.task_start not in line:
+                continue
+            pid = int(line.split()[1])
+            pid_list.append(pid)
+        logging.debug("current pid_list = %s", pid_list)
+
+        if self.conflict == "kill" and pid_list:
+            for pid in pid_list:
+                subprocess.run(["kill", str(pid)], shell=False)
+                logging.debug("the program is killed, pid=%d", pid)
+        elif self.conflict == "down" and pid_list:
+            logging.warning("the conflict field is set to down, so program = [%s] is exited!", self.name)
+            return False
+        return True
+
+    def load_env_file(self):
+        if not os.path.exists(self.env_file):
+            logging.warning("env_file: %s is not exist, use default environ", self.env_file)
+            return
+
+        if not os.access(self.env_file, os.R_OK):
+            logging.warning("env_file: %s is not be read, use default environ", self.env_file)
+            return
+
+        # read config
+        environ_conf = {}
+        with open(self.env_file, 'r') as file:
+            for line in file:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                value = value.strip('"')
+                if not key or not value:
+                    logging.error("env_file = %s format is error, use default environ", self.env_file)
+                    return
+                environ_conf[key] = value
+
+        # set environ
+        for key, value in environ_conf.items():
+            logging.debug("environ key=%s, value=%s", key, value)
+            os.environ[key] = value
+
+        logging.debug("the subprocess=[%s] begin to run", self.name)
