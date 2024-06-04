@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <xalarm/register_xalarm.h>
 
 #include "cat_structs.h"
 #include "cpu_patrol_result.h"
@@ -164,6 +165,47 @@ static cat_return_t do_cpu_core_offline(unsigned int cpu)
     }
 
     return CAT_ERR;
+}
+
+/*
+ * 解析字符串(\d, \d)为一个pair
+*/
+void parse_string(char* str, int* arr, int size) {
+    char* token;
+    int i = 0;
+    
+    token = strtok(str, ",");
+    while (token != NULL && i < size) {
+        arr[i] = atoi(token);
+        i++;
+        token = strtok(NULL, ",");
+    }
+}
+
+/*
+ * 根据core_id获取socket_id
+*/
+int get_socket_id(int core_id) {
+    FILE *file;
+    char line[MAX_LINE_LEN];
+    int id_pair[PAIR_LEN];
+    int socket_id;
+
+    file = popen("lscpu -p=cpu,socket | grep '[0-9]\\+,[0-9]\\+'", "r");
+    if (file == NULL) {
+        perror("Error opening file");
+        return -1;
+    }
+
+    while (fgets(line, MAX_LINE_LEN, file) != NULL) {
+        parse_string(line, id_pair, 2);
+        if (id_pair[0] == core_id) {
+            return id_pair[1];
+        }
+    }
+
+    fclose(file);
+    return -1;
 }
 
 /*

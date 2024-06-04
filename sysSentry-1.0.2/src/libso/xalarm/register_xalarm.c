@@ -9,8 +9,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
-#include <stdio.h>
-#include <string.h>
+#include <securec.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/prctl.h>
@@ -416,6 +415,112 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
         } else {
             if (ret != (int)sizeof(struct alarm_info)) {
                 fprintf(stderr, "%s sendto failed, ret:%d, len:%u\n", __func__, ret, sizeof(struct alarm_info));
+            }
+        }
+        break;
+    }
+    close(fd);
+
+    return (ret > 0) ? 0 : -1;
+}
+
+
+bool is_valid_report_module(unsigned short module) {
+    switch ((int) module) {
+        case CPU:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool is_valid_report_type(unsigned short type) {
+    switch ((int) type) {
+        case CE:
+        case UCE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool is_valid_report_trans_to(unsigned short trans_to) {
+    switch ((int) trans_to) {
+        case BMC:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool check_params(unsigned short type, unsigned short module, unsigned short trans_to, int report_info_len) {
+    bool is_valid_type = is_valid_report_type(type);
+    bool is_valid_module = is_valid_report_module(module);
+    bool is_valid_trans_to = is_valid_report_trans_to(trans_to);
+    bool is_valid_report_info_len = (report_info_len >= 0 && report_info_len <= 999) ? true : false;
+
+    return is_valid_type && is_valid_module && is_valid_trans_to && is_valid_report_info_len;
+}
+
+int cpu_alarm_Report(unsigned short type, unsigned short module, unsigned short trans_to, unsigned short command,
+                     unsigned short event_type, int socket_id, int core_id)
+{
+    int ret, fd;
+    bool is_valid;
+    int report_info_len;
+    char report_info[MAX_CHAR_LEN];
+    char alarm_msg[MAX_CHAR_LEN];
+    struct sockaddr_un alarm_addr;
+
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        fprintf(stderr, "%s socket create error: %s\n", __func__, strerror(errno));
+        return -1;
+    }
+
+    ret = init_report_addr(&alarm_addr, PATH_REPORT_CPU_ALARM);
+    if (ret == -1) {
+        close(fd);
+        return -1;
+    }
+
+    sprintf(report_info, "%u %u %d %d", command, event_type, socket_id, core_id);
+
+    report_info_len = strlen(report_info);
+    is_valid = check_params(type, module, trans_to, report_info_len);
+    if (!is_valid) {
+        fprintf(stderr, "%s: cpu_alarm: invalid params\n", __func__);
+        close(fd);
+        return -1;
+    }
+
+    sprintf(alarm_msg, "REP%1u%1u%02u%03d%s", type, module, trans_to, report_info_len, report_info);
+
+    while (true) {
+        ret = connect(fd, (struct sockaddr *)&alarm_addr, offsetof(struct sockaddr_un, sun_path) + strlen(alarm_addr.sun_path));
+
+        if (ret < 0) {
+            if (errno == EINTR) {
+                /* interrupted by signal, ignore */
+                continue;
+            } else {
+                fprintf(stderr, "%s: connect failed errno: %d\n", __func__, errno);
+            }
+        }
+        
+        ret = write(fd, alarm_msg, strlen(alarm_msg));
+        if (ret < 0) {
+            if (errno == EINTR) {
+                /* interrupted by signal, ignore */
+                continue;
+            } else {
+                fprintf(stderr, "%s: write failed errno: %d\n", __func__, errno);
+            }
+        } else if (ret == 0) {
+            fprintf(stderr, "%s: write failed, ret is 0\n", __func__);
+        } else {
+            if (ret != strlen(alarm_msg)) {
+                fprintf(stderr, "%s write failed, ret:%d, len:%d\n", __func__, ret, strlen(alarm_msg));
             }
         }
         break;
