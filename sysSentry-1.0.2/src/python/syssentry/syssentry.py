@@ -36,6 +36,8 @@ from .heartbeat import (heartbeat_timeout_chk, heartbeat_fd_create,
 from .result import RESULT_MSG_HEAD_LEN, RESULT_MSG_MAGIC_LEN, RESULT_MAGIC
 from .result import RESULT_LEVEL_ERR_MSG_DICT, ResultLevel
 from .utils import get_current_time_string
+from .cpu_alarm import (upload_bmc, check_fixed_param, parser_cpu_alarm_info,
+                        Type, Module, TransTo, MIN_DATA_LEN, MAX_DATA_LEN)
 
 INSPECTOR = None
 
@@ -72,6 +74,47 @@ PID_FILE_FLOCK = None
 
 # result-specific socket
 RESULT_SOCKET_PATH = "/var/run/sysSentry/result.sock"
+
+CPU_ALARM_SOCKET_PATH = "/var/run/sysSentry/report.sock"
+PARAM_REP_LEN = 3
+PARAM_TYPE_LEN = 1
+PARAM_MODULE_LEN = 1
+PARAM_TRANS_TO_LEN = 2
+PARAM_DATA_LEN = 3
+
+
+def cpu_alarm_recv(server_socket: socket.socket):
+    try:
+        client_socket, _ = server_socket.accept()
+        logging.debug("cpu alarm fd listen ok")
+
+        data = client_socket.recv(PARAM_REP_LEN)
+        check_fixed_param(data, "REP")
+
+        data = client_socket.recv(PARAM_TYPE_LEN)
+        _type = check_fixed_param(data, Type)
+
+        data = client_socket.recv(PARAM_MODULE_LEN)
+        module = check_fixed_param(data, Module)
+
+        data = client_socket.recv(PARAM_TRANS_TO_LEN)
+        trans_to = check_fixed_param(data, TransTo)
+
+        data = client_socket.recv(PARAM_DATA_LEN)
+        data_len = check_fixed_param(data, (MIN_DATA_LEN, MAX_DATA_LEN))
+
+        data = client_socket.recv(data_len)
+
+        command, event_type, socket_id, core_id = parser_cpu_alarm_info(data)
+    except socket.error:
+        logging.error("socket error")
+        return
+    except (ValueError, OSError, UnicodeError, TypeError, NotImplementedError):
+        logging.error("server recv cpu alarm msg failed!")
+        client_socket.close()
+        return
+
+    upload_bmc(_type, module, command, event_type, socket_id, core_id)
 
 
 def msg_data_process(msg_data):
@@ -280,6 +323,42 @@ def server_fd_create():
     return server_fd
 
 
+def cpu_alarm_fd_create():
+    """create heartbeat fd"""
+    if not os.path.exists(SENTRY_RUN_DIR):
+        logging.debug("%s not exist", SENTRY_RUN_DIR)
+        return None
+
+    try:
+        cpu_alarm_fd = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    except socket.error:
+        logging.error("cpu alarm fd create failed")
+        return None
+
+    cpu_alarm_fd.setblocking(False)
+    if os.path.exists(CPU_ALARM_SOCKET_PATH):
+        os.remove(CPU_ALARM_SOCKET_PATH)
+
+    try:
+        cpu_alarm_fd.bind(CPU_ALARM_SOCKET_PATH)
+    except OSError:
+        logging.error("cpu alarm fd bind failed")
+        cpu_alarm_fd.close()
+        return None
+
+    os.chmod(CPU_ALARM_SOCKET_PATH, 0o600)
+    try:
+        cpu_alarm_fd.listen(5)
+    except OSError:
+        logging.error("cpu alarm fd listen failed")
+        cpu_alarm_fd.close()
+        return None
+
+    logging.debug("%s bind and listen", CPU_ALARM_SOCKET_PATH)
+
+    return cpu_alarm_fd
+
+
 def server_result_recv(server_socket: socket.socket):
     """server result receive"""
     try:
@@ -369,20 +448,20 @@ def main_loop():
         server_result_fd.close()
         return
 
+    cpu_alarm_fd = cpu_alarm_fd_create()
+    if not cpu_alarm_fd:
+        server_fd.close()
+        heartbeat_fd.close()
+        server_result_fd.close()
+        return
+
     epoll_fd = select.epoll()
     epoll_fd.register(server_fd.fileno(), select.EPOLLIN)
     epoll_fd.register(server_result_fd.fileno(), select.EPOLLIN)
     epoll_fd.register(heartbeat_fd.fileno(), select.EPOLLIN)
+    epoll_fd.register(cpu_alarm_fd.fileno(), select.EPOLLIN)
 
     logging.debug("start main loop")
-    # onstart_tasks_handle()
-    for task_type in TasksMap.tasks_dict:
-        for task_name in TasksMap.tasks_dict.get(task_type):
-            task = TasksMap.tasks_dict.get(task_type).get(task_name)
-            if not task:
-                continue
-            task.onstart_handle()
-
     while True:
         try:
             events_list = epoll_fd.poll(SERVER_EPOLL_TIMEOUT)
@@ -393,6 +472,8 @@ def main_loop():
                     server_result_recv(server_result_fd)
                 elif event_fd == heartbeat_fd.fileno():
                     heartbeat_recv(heartbeat_fd)
+                elif event_fd == cpu_alarm_fd.fileno():
+                    cpu_alarm_recv(cpu_alarm_fd)
                 else:
                     continue
 

@@ -30,6 +30,9 @@
 
 #define MAX_NUM_OF_ALARM_ID 128
 
+#define PATH_REPORT_CPU_ALARM "/var/run/sysSentry/report.sock"
+#define MAX_CHAR_LEN 128
+
 /*
  * usAlarmId：unsigned short，告警id，某一类故障一个id，id定义避免重复。
  * ucAlarmLevel: 告警级别，从FATAL到DEBUG
@@ -45,6 +48,25 @@ struct alarm_info {
     struct timeval AlarmTime;
     char pucParas[ALARM_INFO_MAX_PARAS_LEN];
 };
+
+enum report_module {
+    CPU = 0x00
+};
+enum report_type {
+    CE = 0x00,
+    UCE = 0x01
+};
+enum report_trans_to {
+    BMC = 0x01
+};
+
+enum report_event_type {
+    ASSERTION = 0x00,
+    DEASSERTION = 0x01
+};
+
+int cpu_alarm_Report(unsigned short type, unsigned short module, unsigned short trans_to, unsigned short command,
+                     unsigned short event_type, int socket_id, int core_id);
  
 /*
  * hook回调函数处理

@@ -12,6 +12,7 @@
 """
 some common function
 """
+import logging
 import subprocess
 from datetime import datetime, timezone, timedelta
 
@@ -56,3 +57,21 @@ def get_current_time_string():
     current_utc_time = datetime.now(timezone.utc)
     utc8_timezone = timezone(timedelta(hours=8))
     return current_utc_time.astimezone(utc8_timezone).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def execute_command(cmd_list):
+    try:
+        process = subprocess.run(
+            cmd_list,
+            shell=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        returncode = process.returncode
+        if returncode != 0:
+            logging.error("execute command with illegal returncode")
+            return None
+        return process.stdout
+    except OSError:
+        logging.error("failed to execute command")

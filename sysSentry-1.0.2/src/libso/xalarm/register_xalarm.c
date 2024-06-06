@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/prctl.h>
@@ -22,6 +23,8 @@
 #include <json-c/json.h>
 #include <regex.h>
 #include <ctype.h>
+
+#include <stddef.h>
 
 #include "register_xalarm.h"
 
@@ -115,17 +118,13 @@ static int create_unix_socket(const char *path)
         }
     }
 
-    ret = memset_s(&alarm_addr, sizeof(alarm_addr), 0, sizeof(alarm_addr));
-    if (ret != 0) {
-        printf("create_unix_socket:  memset_s alarm_addr failed, ret: %d\n", ret);
+    if (memset(&alarm_addr, 0, sizeof(alarm_addr)) == NULL) {
+        printf("create_unix_socket:  memset alarm_addr failed, ret: %d\n", ret);
         goto remove_dir;
     }
     alarm_addr.sun_family = AF_UNIX;
-    ret = strncpy_s(alarm_addr.sun_path, sizeof(alarm_addr.sun_path), path, sizeof(alarm_addr.sun_path) - 1);
-    if (ret != 0) {
-        printf("create_unix_socket: strncpy_s alarm_addr.sun_path failed, ret: %d\n", ret);
-        goto remove_dir;
-    }
+    strncpy(alarm_addr.sun_path, path, sizeof(alarm_addr.sun_path) - 1);
+
     if (bind(fd, (struct sockaddr *)&alarm_addr, sizeof(alarm_addr.sun_family) + strlen(alarm_addr.sun_path)) < 0) {
         printf("bind socket failed:%s\n", strerror(errno));
         goto remove_dir;
@@ -197,8 +196,7 @@ static void set_alarm_id(struct alarm_subscription_info id_filter)
 {
     int i;
 
-    memset_s(g_register_info.alarm_enable_bitmap, MAX_NUM_OF_ALARM_ID * sizeof(char),
-        0, MAX_NUM_OF_ALARM_ID * sizeof(char));
+    memset(g_register_info.alarm_enable_bitmap, 0, MAX_NUM_OF_ALARM_ID * sizeof(char));
     for (i = 0; i < id_filter.len; i++) {
         g_register_info.alarm_enable_bitmap[id_filter.id_list[i] - MIN_ALARM_ID] = ALARM_ENABLED;
     }
@@ -300,8 +298,7 @@ void xalarm_UnRegister(int client_id)
         }
     }
 
-    memset_s(g_register_info.alarm_enable_bitmap, MAX_NUM_OF_ALARM_ID * sizeof(char),
-        0, MAX_NUM_OF_ALARM_ID * sizeof(char));
+    memset(g_register_info.alarm_enable_bitmap, 0, MAX_NUM_OF_ALARM_ID * sizeof(char));
     g_register_info.callback = NULL;
     g_register_info.is_registered = false;
 }
@@ -333,7 +330,7 @@ char *xalarm_getdesc(const struct alarm_info *palarm)
     return palarm == NULL ? NULL : (char *)palarm->pucParas;
 }
 
-static int init_report_addr(struct sockaddr_un *alarm_addr)
+static int init_report_addr(struct sockaddr_un *alarm_addr, char *report_path)
 {
     int ret;
 
@@ -342,18 +339,12 @@ static int init_report_addr(struct sockaddr_un *alarm_addr)
         return -1;
     }
 
-    ret = memset_s(alarm_addr, sizeof(struct sockaddr_un), 0, sizeof(struct sockaddr_un));
-    if (ret != 0) {
-        fprintf(stderr, "%s: memset_s  alarm_addr failed, ret: %d\n", __func__, ret);
+    if (memset(alarm_addr, 0, sizeof(struct sockaddr_un)) == NULL) {
+        fprintf(stderr, "%s: memset  alarm_addr failed, ret: %d\n", __func__, ret);
         return -1;
     }
     alarm_addr->sun_family = AF_UNIX;
-    ret = strncpy_s(alarm_addr->sun_path, sizeof(alarm_addr->sun_path), PATH_REPORT_ALARM,
-        sizeof(alarm_addr->sun_path) - 1);
-    if (ret != 0) {
-        fprintf(stderr, "%s: strncpy_s alarm_addr->sun_path failed, ret: %d\n", __func__, ret);
-        return -1;
-    }
+    strncpy(alarm_addr->sun_path, report_path, sizeof(alarm_addr->sun_path) - 1);
 
     return 0;
 }
@@ -372,9 +363,8 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
         return -1;
     }
 
-    ret = memset_s(&info, sizeof(struct alarm_info), 0, sizeof(struct alarm_info));
-    if (ret != 0) {
-        fprintf(stderr, "%s: memset_s info failed, ret: %d\n", __func__, ret);
+    if (memset(&info, 0, sizeof(struct alarm_info)) == NULL) {
+        fprintf(stderr, "%s: memset info failed, ret: %d\n", __func__, ret);
         return -1;
     }
     info.usAlarmId = usAlarmId;
@@ -382,11 +372,7 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
     info.ucAlarmType = ucAlarmType;
     gettimeofday(&info.AlarmTime, NULL);
     if (pucParas != NULL) {
-        ret = strncpy_s((char *)info.pucParas, MAX_PARAS_LEN, (char *)pucParas, MAX_PARAS_LEN - 1);
-        if (ret != 0) {
-            fprintf(stderr, "%s: strncpy_s  info.pucParas failed, ret: %d\n", __func__, ret);
-            return -1;
-        }
+        strncpy((char *)info.pucParas, (char *)pucParas, MAX_PARAS_LEN - 1);
     }
 
     fd = socket(AF_UNIX, SOCK_DGRAM, 0);
@@ -395,7 +381,7 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
         return -1;
     }
 
-    ret = init_report_addr(&alarm_addr);
+    ret = init_report_addr(&alarm_addr, PATH_REPORT_ALARM);
     if (ret == -1) {
         close(fd);
         return -1;
@@ -416,6 +402,112 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
         } else {
             if (ret != (int)sizeof(struct alarm_info)) {
                 fprintf(stderr, "%s sendto failed, ret:%d, len:%u\n", __func__, ret, sizeof(struct alarm_info));
+            }
+        }
+        break;
+    }
+    close(fd);
+
+    return (ret > 0) ? 0 : -1;
+}
+
+
+bool is_valid_report_module(unsigned short module) {
+    switch ((int) module) {
+        case CPU:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool is_valid_report_type(unsigned short type) {
+    switch ((int) type) {
+        case CE:
+        case UCE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool is_valid_report_trans_to(unsigned short trans_to) {
+    switch ((int) trans_to) {
+        case BMC:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool check_params(unsigned short type, unsigned short module, unsigned short trans_to, int report_info_len) {
+    bool is_valid_type = is_valid_report_type(type);
+    bool is_valid_module = is_valid_report_module(module);
+    bool is_valid_trans_to = is_valid_report_trans_to(trans_to);
+    bool is_valid_report_info_len = (report_info_len >= 0 && report_info_len <= 999) ? true : false;
+
+    return is_valid_type && is_valid_module && is_valid_trans_to && is_valid_report_info_len;
+}
+
+int cpu_alarm_Report(unsigned short type, unsigned short module, unsigned short trans_to, unsigned short command,
+                     unsigned short event_type, int socket_id, int core_id)
+{
+    int ret, fd;
+    bool is_valid;
+    int report_info_len;
+    char report_info[MAX_CHAR_LEN];
+    char alarm_msg[MAX_CHAR_LEN];
+    struct sockaddr_un alarm_addr;
+
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        fprintf(stderr, "%s socket create error: %s\n", __func__, strerror(errno));
+        return -1;
+    }
+
+    ret = init_report_addr(&alarm_addr, PATH_REPORT_CPU_ALARM);
+    if (ret == -1) {
+        close(fd);
+        return -1;
+    }
+
+    sprintf(report_info, "%u %u %d %d", command, event_type, socket_id, core_id);
+
+    report_info_len = strlen(report_info);
+    is_valid = check_params(type, module, trans_to, report_info_len);
+    if (!is_valid) {
+        fprintf(stderr, "%s: cpu_alarm: invalid params\n", __func__);
+        close(fd);
+        return -1;
+    }
+
+    sprintf(alarm_msg, "REP%1u%1u%02u%03d%s", type, module, trans_to, report_info_len, report_info);
+
+    while (true) {
+        ret = connect(fd, (struct sockaddr *)&alarm_addr, offsetof(struct sockaddr_un, sun_path) + strlen(alarm_addr.sun_path));
+
+        if (ret < 0) {
+            if (errno == EINTR) {
+                /* interrupted by signal, ignore */
+                continue;
+            } else {
+                fprintf(stderr, "%s: connect failed errno: %d\n", __func__, errno);
+            }
+        }
+        
+        ret = write(fd, alarm_msg, strlen(alarm_msg));
+        if (ret < 0) {
+            if (errno == EINTR) {
+                /* interrupted by signal, ignore */
+                continue;
+            } else {
+                fprintf(stderr, "%s: write failed errno: %d\n", __func__, errno);
+            }
+        } else if (ret == 0) {
+            fprintf(stderr, "%s: write failed, ret is 0\n", __func__);
+        } else {
+            if (ret != strlen(alarm_msg)) {
+                fprintf(stderr, "%s write failed, ret:%d, len:%d\n", __func__, ret, strlen(alarm_msg));
             }
         }
         break;
@@ -447,18 +539,13 @@ int send_data_to_socket(const char *socket_path, const char *message)
     }
 
     // set socket address
-    ret = memset_s(&addr, sizeof(addr), 0, sizeof(struct sockaddr_un));
-    if (ret != 0) {
-        fprintf(stderr, "%s: memset_s info failed, ret: %d\n", __func__, ret);
+    if (memset(&addr, 0, sizeof(struct sockaddr_un)) == NULL) {
+        fprintf(stderr, "%s: memset info failed.\n", __func__);
         return RETURE_CODE_FAIL;
     }
 
     addr.sun_family = AF_UNIX;
-    ret = strncpy_s(addr.sun_path, sizeof(addr.sun_path), socket_path, sizeof(addr.sun_path) - 1);
-    if (ret != 0) {
-        fprintf(stderr, "%s: strncpy_s failed\n", __func__);
-        return RETURE_CODE_FAIL;
-    }
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
     // connect socket
     if (connect(sockfd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un)) == -1) {
         fprintf(stderr, "failed to connect socket %s\n", socket_path);
@@ -561,20 +648,13 @@ int report_result(const char *task_name, enum RESULT_LEVEL result_level, const c
     }
 
     char message[RESULT_INFO_HEAD_LEN + RESULT_INFO_MAX_LEN];
-    int ret = memset_s(message, sizeof(message), 0, RESULT_INFO_HEAD_LEN + RESULT_INFO_MAX_LEN);
-    if (ret != 0) {
-        fprintf(stderr, "%s: memset_s message failed", __func__);
+    if (memset(message, 0, RESULT_INFO_HEAD_LEN + RESULT_INFO_MAX_LEN) == NULL) {
+        fprintf(stderr, "%s: memset message failed", __func__);
         json_object_put(send_data);
         return RETURE_CODE_FAIL;
     }
 
-    ret = sprintf_s(message, sizeof(message) - 1, "%s%04d%s", RESULT_INFO_HEAD_MAGIC,
-            send_data_len, result_json_string);
-    if (ret < 0) {
-        fprintf(stderr, "%s: failed to send result message (%s) to sysSentry, sprintf_s failed\n", __func__, message);
-        json_object_put(send_data);
-        return RETURE_CODE_FAIL;
-    }
+    sprintf(message, "%s%04d%s", RESULT_INFO_HEAD_MAGIC, send_data_len, result_json_string);
 
     if (send_data_to_socket(RESULT_REPORT_SOCKET, message)) {
         fprintf(stderr, "%s: failed to send result message (%s) to sysSentry!\n", __func__, message);
@@ -585,3 +665,4 @@ int report_result(const char *task_name, enum RESULT_LEVEL result_level, const c
     json_object_put(send_data);
     return RETURE_CODE_SUCCESS;
 }
+

@@ -8,6 +8,9 @@
 #define CPU_PATH_FORMAT "/sys/devices/system/cpu/cpu%d/online"
 #define PATROL_RESULT_LEN 512
 #define MAX_CPU_SYS_FILE_PATH_LEN 256
+#define BMC_COMMAND 0x0001
+#define MAX_LINE_LEN 256
+#define PAIR_LEN 2
 
 typedef enum {
     CPU_STATE_OFFLINE = '0',
