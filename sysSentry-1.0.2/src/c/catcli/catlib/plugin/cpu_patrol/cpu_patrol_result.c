@@ -211,25 +211,37 @@ int get_socket_id(int core_id) {
 /*
  * 功能说明：隔离巡检故障核，并把成功隔离的故障核添加到隔离列表
  */
+
 void isolate_cpu_core(core_list_st *isolated_core_list, const core_list_st *fault_list)
 {
+    int ret, core_id, socket_id;
     unsigned int total_core = sysconf(_SC_NPROCESSORS_CONF);
     if (total_core == -1) {
         CAT_LOG_E("Get total cpu cores failed.");
         return;
     }
     for (unsigned short i = 0; i < fault_list->current_nums; i++) {
+        core_id = fault_list->order_list[i];
+        socket_id = get_socket_id(core_id);
         // 0核不隔离
-        if ((fault_list->order_list[i] >= total_core) || (fault_list->order_list[i] == 0)) {
-            CAT_LOG_E("Isolate cpu core failed, invalid core id(%u)", fault_list->order_list[i]);
+        if ((core_id >= total_core) || (core_id == 0)) {
+            CAT_LOG_E("Isolate cpu core failed, invalid core id(%u)", core_id);
             continue;
         }
-        if (get_cpu_core_status(fault_list->order_list[i]) != CPU_STATE_ONLINE) {
+        if (get_cpu_core_status(core_id) != CPU_STATE_ONLINE) {
             continue;
         }
-        if (do_cpu_core_offline(fault_list->order_list[i]) == CAT_OK) {
-            (void)insert_core_to_list(isolated_core_list, fault_list->order_list[i]);
-            CAT_LOG_I("<ISOLATE-CORE>:%d", fault_list->order_list[i]);
+        if (socket_id == -1) {
+            CAT_LOG_E("Get socket id failed, core id is (%u)", core_id);
+        } else {
+            int ret = cpu_alarm_Report(UCE, CPU, BMC, BMC_COMMAND, ASSERTION, socket_id, core_id);
+            if (ret != 0) {
+                CAT_LOG_E("Failed to report to xlarm");
+            }
+        }
+        if (do_cpu_core_offline(core_id) == CAT_OK) {
+            (void)insert_core_to_list(isolated_core_list, core_id);
+            CAT_LOG_I("<ISOLATE-CORE>:%d", core_id);
         }
     }
 }
