@@ -17,7 +17,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="syssentry",
-    version="1.0.1",
+    version="1.0.2",
     description="System inspection framework tool set",
     packages=find_packages(),
     include_package_data=True,
