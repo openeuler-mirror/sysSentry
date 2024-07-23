@@ -21,7 +21,7 @@ import subprocess
 from .utils import get_current_time_string
 from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
 from .global_values import InspectTask
-from .task_map import TasksMap, PERIOD_TYPE, ONESHOT_TYPE
+from .task_map import TasksMap, PERIOD_TYPE
 from .mod_status import set_runtime_status, WAITING_STATUS, RUNNING_STATUS, \
     FAILED_STATUS, EXITED_STATUS
 
