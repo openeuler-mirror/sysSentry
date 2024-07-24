@@ -87,7 +87,7 @@ class CpuSentry:
         }
 
     def handle_cpu_output(self, stdout: str):
-        if "<ERROR>" in stdout:
+        if "ERROR" in stdout:
             self.send_result["result"] = ResultLevel.FAIL
             self.send_result["details"]["code"] = 1004
             self.send_result["details"]["msg"] = stdout.split("\n")[0]
