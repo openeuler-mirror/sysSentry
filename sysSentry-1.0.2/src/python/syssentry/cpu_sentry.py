@@ -133,6 +133,7 @@ class CpuSentry:
 
         result_level = self.send_result.get("result", ResultLevel.FAIL)
         report_result(task_name, result_level, details)
+        self.init_send_result()
 
 def kill_process(signum, _f, cpu_sentry_obj):
     """kill process by 'pkill -9'"""
@@ -179,6 +180,6 @@ def main():
         cpu_sentry_task.send_result["result"] = ResultLevel.FAIL
         cpu_sentry_task.send_result["details"]["code"] = 1004
         cpu_sentry_task.send_result["details"]["msg"] = "run cmd [%s] raise Error" % cpu_sentry_task_cmd
-    finally:
         cpu_sentry_task.cpu_report_result()
-        cpu_sentry_task.init_send_result()
+    else:
+        cpu_sentry_task.cpu_report_result()
