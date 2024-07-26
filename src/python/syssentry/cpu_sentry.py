@@ -87,11 +87,19 @@ class CpuSentry:
         }
 
     def handle_cpu_output(self, stdout: str):
+        if not stdout:
+            logging.error("%s process output is None, it may be killed!", LOW_LEVEL_INSPECT_CMD)
+            self.send_result["result"] = ResultLevel.FAIL
+            self.send_result["details"]["code"] = 1005
+            self.send_result["details"]["msg"] = "cpu_sentry task is killed!"
+            return
+
         if "ERROR" in stdout:
             self.send_result["result"] = ResultLevel.FAIL
             self.send_result["details"]["code"] = 1004
             self.send_result["details"]["msg"] = stdout.split("\n")[0]
             return
+
         out_split = stdout.split("\n")
         isolated_cores_number = 0
         found_fault_cores_list = []
