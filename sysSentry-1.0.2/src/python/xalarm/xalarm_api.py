@@ -98,7 +98,7 @@ class Xalarm:
         """msg1 setter
         """
         if len(msg) > 512:
-            raise ValueError("msg1 length must below 255")
+            raise ValueError("msg1 length must below 512")
         self._msg1 = msg
 
 
