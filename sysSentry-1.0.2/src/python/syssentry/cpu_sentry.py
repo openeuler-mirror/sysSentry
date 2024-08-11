@@ -97,7 +97,14 @@ class CpuSentry:
         if "ERROR" in stdout:
             self.send_result["result"] = ResultLevel.FAIL
             self.send_result["details"]["code"] = 1004
-            self.send_result["details"]["msg"] = stdout.split("\n")[0]
+
+            # Remove ANSI escape sequences
+            error_info = stdout.split("\n")[0]
+            if error_info.startswith("\u001b"):
+                ansi_escape = r'\x1b\[([0-9]+)(;[0-9]+)*([A-Za-z])'
+                error_info = re.sub(ansi_escape, '', error_info)
+
+            self.send_result["details"]["msg"] = error_info
             return
 
         out_split = stdout.split("\n")
