@@ -43,23 +43,23 @@ function install()
 }
 
 [ "$1" == "-b" ] && {
-	INTALL_DIR=$2
+	INSTALL_DIR=$2
 	[ -z $2 ] && {
-		INTALL_DIR=/usr/lib64
-		mkdir -p ${INTALL_DIR}
+		INSTALL_DIR=/usr/lib64
+		mkdir -p ${INSTALL_DIR}
 	}
 
-	build ${INTALL_DIR}
+	build ${INSTALL_DIR}
 	exit  0
 }
 
 [ "$1" == "-i" ] && {
-    INTALL_DIR=$2
+    INSTALL_DIR=$2
     [ -z $2 ] && {
-        INTALL_DIR=/usr/lib64
-        mkdir -p ${INTALL_DIR}
+        INSTALL_DIR=/usr/lib64
+        mkdir -p ${INSTALL_DIR}
     }
-	install ${INTALL_DIR}
+	install ${INSTALL_DIR}
 	exit  0
 }
 
