@@ -31,7 +31,9 @@ setup(
         'console_scripts': [
             'cpu_sentry=syssentry.cpu_sentry:main',
             'syssentry=syssentry.syssentry:main',
-            'xalarmd=xalarm.xalarm_daemon:alarm_process_create'
+            'xalarmd=xalarm.xalarm_daemon:alarm_process_create',
+            'sentryCollector=sentryCollector.collectd:main',
+            'avg_block_io=plugins.avg_block_io:main'
         ]
     },
 )
