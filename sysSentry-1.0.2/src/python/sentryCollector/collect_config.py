@@ -15,6 +15,7 @@ Read and save collector.conf value.
 import configparser
 import logging
 import os
+import re
 
 
 COLLECT_CONF_PATH = "/etc/sysSentry/collector.conf"
@@ -53,12 +54,18 @@ class CollectConfig:
         
         try:
             common_config = self.config[CONF_COMMON]
-            modules_list = common_config.get(CONF_MODULES, '').split(',')
+            modules_str = common_config[CONF_MODULES]
+            # remove space
+            modules_list = modules_str.replace(" ", "").split(',')
         except KeyError as e:
             logging.error("read config data failed, %s", e)
             return
 
+        pattern = r'^[a-zA-Z0-9-_]+$'
         for module_name in modules_list:
+            if not re.match(pattern, module_name):
+                logging.warning("module_name: %s is invalid", module_name)
+                continue
             if not self.config.has_section(module_name):
                 logging.warning("module_name: %s config is incorrect", module_name)
                 continue
@@ -94,6 +101,11 @@ class CollectConfig:
         disk = io_map_value.get(CONF_IO_DISK)
         if disk:
             disk_str = disk.replace(" ", "")
+            pattern = r'^[a-zA-Z0-9-_,]+$'
+            if not re.match(pattern, disk_str):
+                logging.warning("module_name = %s section, field = %s is incorrect, use default %s", 
+                CONF_IO, CONF_IO_DISK, CONF_IO_DISK_DEFAULT)
+                disk_str = CONF_IO_DISK_DEFAULT
             result_io_config[CONF_IO_DISK] = disk_str
         else:
             logging.warning("module_name = %s section, field = %s is incorrect, use default %s", 

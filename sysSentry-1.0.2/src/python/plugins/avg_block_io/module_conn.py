@@ -77,5 +77,5 @@ def process_report_data(disk_name, rw, io_data):
     for stage_name in kernel_stage:
         if is_abnormal((disk_name, stage_name, rw), io_data):
             logging.warning("{} - {} - {} report kernel".format(time.ctime(), disk_name, rw))
-
+            return
     logging.warning("{} - {} - {} report IO press".format(time.ctime(), disk_name, rw))
