@@ -13,7 +13,7 @@ import logging
 import sys
 import time
 
-from utils import is_abnormal
+from .utils import is_abnormal
 from sentryCollector.collect_plugin import is_iocollect_valid, get_io_data, Result_Messages
 from syssentry.result import ResultLevel, report_result
 

@@ -13,9 +13,9 @@ import signal
 import configparser
 import time
 
-from stage_window import IoWindow, IoDumpWindow
-from module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data
-from utils import update_avg_and_check_abnormal
+from .stage_window import IoWindow, IoDumpWindow
+from .module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data
+from .utils import update_avg_and_check_abnormal
 
 CONFIG_FILE = "/etc/sysSentry/plugins/avg_block_io.ini"
 
