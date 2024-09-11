@@ -103,14 +103,18 @@ class CpuPluginsParamsConfig:
         """read config file"""
         config_param_section_args = {}
         if os.path.exists(self.config_file):
-            self.config.read(self.config_file)
             try:
+                self.config.read(self.config_file)
                 config_param_section_args = dict(self.config[self.param_section_name])
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, configparser.InterpolationSyntaxError):
                 config_param_section_args = {}
+                logging.error("Failed to parse cpu_sentry.ini!")
         return config_param_section_args
 
     def join_cpu_start_cmd(self, cpu_param_dict: dict) -> str:
+        if not cpu_param_dict:
+            return ""
+
         cpu_list = cpu_param_dict.get("cpu_list", "default")
         if cpu_list == "default":
             cpu_list = CpuPluginsParamsConfig.get_cpu_info()
