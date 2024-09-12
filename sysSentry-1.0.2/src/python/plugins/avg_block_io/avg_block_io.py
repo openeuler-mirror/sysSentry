@@ -77,7 +77,7 @@ def read_config_algorithm(config):
         if not (1 <= win_size <= 300):
             raise ValueError("Invalid win_size")
         win_threshold = int(config.get("algorithm", "win_threshold"))
-        if not (1 <= win_threshold <= 300):
+        if win_threshold < 1 or win_threshold > 300 or win_threshold > win_size:
             raise ValueError("Invalid win_threshold")
     except ValueError:
         report_alarm_fail("Invalid win_threshold or win_size")

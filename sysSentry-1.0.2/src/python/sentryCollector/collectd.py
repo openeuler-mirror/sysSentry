@@ -79,7 +79,7 @@ def main():
 
         # collect thread
         for info in module_list:
-            class_name = Module_Map_Class[info]
+            class_name = Module_Map_Class.get(info)
             if not class_name:
                 logging.info("%s correspond to class is not exists", info)
                 continue

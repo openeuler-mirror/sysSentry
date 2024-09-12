@@ -96,19 +96,43 @@ class CollectIo():
                 IO_GLOBAL_DATA[disk_name][stage][Io_Category[index]].insert(0, [curr_lat, curr_io_dump, curr_io_length, curr_iops])
 
     def get_iops(self, curr_stage_value, last_stage_value, category):
-        finish = int(curr_stage_value[category * 3 + IoStatus.FINISH]) - int(last_stage_value[category * 3 + IoStatus.FINISH])
-        return finish // self.period_time
+        try:
+            finish = int(curr_stage_value[category * 3 + IoStatus.FINISH]) - int(last_stage_value[category * 3 + IoStatus.FINISH])
+        except ValueError as e:
+            logging.error("get_iops convert to int failed, %s", e)
+            return 0
+        value = finish / self.period_time
+        if value.is_integer():
+            return int(value)
+        else:
+            return round(value, 1)
 
     def get_latency_value(self, curr_stage_value, last_stage_value, category):
-        finish = self.get_iops(curr_stage_value, last_stage_value, category)
-        lat_time = (int(curr_stage_value[category * 3 + IoStatus.LATENCY]) - int(last_stage_value[category * 3 + IoStatus.LATENCY]))  // self.period_time
-        if finish > 0 and lat_time > 0:
-            return lat_time // finish
-        return 0
+        try:
+            finish = int(curr_stage_value[category * 3 + IoStatus.FINISH]) - int(last_stage_value[category * 3 + IoStatus.FINISH])
+            lat_time = (int(curr_stage_value[category * 3 + IoStatus.LATENCY]) - int(last_stage_value[category * 3 + IoStatus.LATENCY]))
+        except ValueError as e:
+            logging.error("get_latency_value convert to int failed, %s", e)
+            return 0
+        if finish <= 0 or lat_time <= 0:
+            return 0
+        value = lat_time / finish / 1000 / 1000
+        if value.is_integer():
+            return int(value)
+        else:
+            return round(value, 1)
 
     def get_io_length(self, curr_stage_value, last_stage_value, category):
-        finish = self.get_iops(curr_stage_value, last_stage_value, category)
-        return finish // self.period_time
+        try:
+            finish = int(curr_stage_value[category * 3 + IoStatus.FINISH]) - int(last_stage_value[category * 3 + IoStatus.FINISH])
+        except ValueError as e:
+            logging.error("get_io_length convert to int failed, %s", e)
+            return 0
+        value = finish / self.period_time / 1000 / 1000
+        if value.is_integer():
+            return int(value)
+        else:
+            return round(value, 1)
 
     def get_io_dump(self, disk_name, stage, category):
         io_dump_file = '/sys/kernel/debug/block/{}/blk_io_hierarchy/{}/io_dump'.format(disk_name, stage)
