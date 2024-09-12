@@ -33,7 +33,7 @@ setup(
             'syssentry=syssentry.syssentry:main',
             'xalarmd=xalarm.xalarm_daemon:alarm_process_create',
             'sentryCollector=sentryCollector.collectd:main',
-            'avg_block_io=plugins.avg_block_io.avg_block_io:main'
+            'avg_block_io=sentryPlugins.avg_block_io.avg_block_io:main'
         ]
     },
 )
