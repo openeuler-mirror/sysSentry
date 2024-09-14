@@ -43,7 +43,6 @@ try:
     from .cpu_alarm import cpu_alarm_recv
 except ImportError:
     CPU_EXIST = False
-    logging.debug("Cannot find cpu sentry mod")
 
 
 INSPECTOR = None
@@ -563,12 +562,13 @@ def main():
     if not os.path.exists(SENTRY_RUN_DIR):
         os.mkdir(SENTRY_RUN_DIR)
         os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
-    if not chk_and_set_pidfile():
-        logging.error("get pid file lock failed, exist")
-        sys.exit(17)
 
     logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=logging.INFO)
     os.chmod(SYSSENTRY_LOG_FILE, 0o600)
+
+    if not chk_and_set_pidfile():
+        logging.error("get pid file lock failed, exist")
+        sys.exit(17)
 
     try:
         signal.signal(signal.SIGINT, sig_handler)
@@ -576,7 +576,7 @@ def main():
         signal.signal(signal.SIGHUP, sig_handler)
         signal.signal(signal.SIGCHLD, sigchld_handler)
 
-        logging.debug("finish main parse_args")
+        logging.info("finish main parse_args")
 
         _ = SentryConfig.init_param()
         TasksMap.init_task_map()
@@ -587,3 +587,4 @@ def main():
         logging.error('%s', traceback.format_exc())
     finally:
         release_pidfile()
+
