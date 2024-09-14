@@ -14,18 +14,10 @@ import configparser
 import time
 
 from .stage_window import IoWindow, IoDumpWindow
-from .module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data
+from .module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data, sig_handler
 from .utils import update_avg_and_check_abnormal
 
 CONFIG_FILE = "/etc/sysSentry/plugins/avg_block_io.ini"
-
-
-def sig_handler(signum, _f):
-    """stop avg_block_io"""
-    report_result(TASK_NAME, ResultLevel.PASS, {})
-    logging.info("Finished avg_block_io plugin running.")
-    sys.exit(0)
-
 
 def log_invalid_keys(not_in_list, keys_name, config_list, default_list):
     """print invalid log"""

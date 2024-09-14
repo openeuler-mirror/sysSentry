@@ -20,6 +20,11 @@ from syssentry.result import ResultLevel, report_result
 
 TASK_NAME = "avg_block_io"
 
+def sig_handler(signum, _f):
+    """stop avg_block_io"""
+    report_result(TASK_NAME, ResultLevel.PASS, json.dumps({}))
+    logging.info("Finished avg_block_io plugin running.")
+    sys.exit(0)
 
 def avg_get_io_data(io_dic):
     """get_io_data from sentryCollector"""
@@ -53,7 +58,7 @@ def check_result_validation(res, reason):
 
 def report_alarm_fail(alarm_info):
     """report result to xalarmd"""
-    report_result(TASK_NAME, ResultLevel.FAIL, {"msg": alarm_info})
+    report_result(TASK_NAME, ResultLevel.FAIL, json.dumps({"msg": alarm_info}))
     logging.error(alarm_info)
     sys.exit(1)
 
