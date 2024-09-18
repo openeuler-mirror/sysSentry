@@ -256,7 +256,7 @@ class CollectServer():
 
     def server_loop(self):
         """main loop"""
-        logging.info("collect server thread start")
+        logging.info("collect listen thread start")
         server_fd = self.server_fd_create()
         if not server_fd:
             return
@@ -267,7 +267,7 @@ class CollectServer():
         logging.debug("start server_loop loop")
         while True:
             if self.stop_event.is_set():
-                logging.info("collect server thread exit")
+                logging.debug("collect listen thread exit")
                 server_fd = None
                 return
             try:
@@ -281,5 +281,5 @@ class CollectServer():
                 pass
 
     def stop_thread(self):
-        logging.info("collect server thread is preparing to exit")
+        logging.debug("collect listen thread is preparing to exit")
         self.stop_event.set() 
