@@ -49,7 +49,6 @@ def sig_handler(signum, _f):
         Thread_List[i][0].stop_thread()
 
     remove_sock_file()
-    sys.exit(0)
 
 def main():
     """main
@@ -64,7 +63,6 @@ def main():
     try:
         signal.signal(signal.SIGINT, sig_handler)
         signal.signal(signal.SIGTERM, sig_handler)
-        signal.signal(signal.SIGHUP, sig_handler)
 
         logging.info("finish main parse_args")
 
