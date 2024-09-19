@@ -142,21 +142,20 @@ def validate_parameters(param, len_limit, char_limit):
         ret =  ResultMessage.RESULT_INVALID_LENGTH
         return [False, ret]
 
-    if len(param) > len_limit:
-        print(f"{param} length more than {len_limit}")
-        ret =  ResultMessage.RESULT_EXCEED_LIMIT
-        return [False, ret]
-
     pattern = r'^[a-zA-Z0-9_-]+$'
     for info in param:
-        if len(info) > char_limit:
-            print(f"{info} length more than {char_limit}")
-            ret =  ResultMessage.RESULT_EXCEED_LIMIT
-            return [False, ret]
         if not re.match(pattern, info):
             print(f"{info} is invalid char")
             ret =  ResultMessage.RESULT_INVALID_CHAR
             return [False, ret]
+
+    # length of len_limit is exceeded, keep len_limit
+    if len(param) > len_limit:
+        print(f"{param} length more than {len_limit}, keep the first {len_limit}")
+        param[:] = param[0:len_limit]
+
+    # only keep elements under the char_limit length
+    param[:] = [elem for elem in param if len(elem) <= char_limit]
 
     return [True, ret]
 
