@@ -23,7 +23,7 @@ static cat_return_t insert_core_to_list(core_list_st *core_list, int coreid)
         return CAT_OK;
     }
     if ((core_list->current_nums == MAX_ISOLATE_CORES_PER_PATROL) || (coreid < 0)) {
-        CAT_LOG_E("Insert error, core id(%d)", coreid);
+        CAT_LOG_W("Too many cores need to isolate,do not isolate core(%d)", coreid);
         return CAT_ERR;
     }
 
