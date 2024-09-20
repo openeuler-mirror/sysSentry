@@ -175,8 +175,7 @@ class CollectIo():
 
         threading.Timer(self.period_time, self.task_loop).start()
 
-    def main_loop(self):
-        logging.info("collect io thread start")
+    def is_kernel_avaliable(self):
         base_path = '/sys/kernel/debug/block'
         for disk_name in os.listdir(base_path):
             if not self.loop_all and disk_name not in self.disk_list:
@@ -198,8 +197,13 @@ class CollectIo():
                     self.window_value[disk_name] = {}
                     IO_GLOBAL_DATA[disk_name] = {}
 
-        if len(self.disk_map_stage) == 0:
-            logging.warning("no disks meet the requirements. the thread exits")
+        return len(IO_GLOBAL_DATA) != 0
+
+    def main_loop(self):
+        logging.info("collect io thread start")
+        
+        if not self.is_kernel_avaliable() or len(self.disk_map_stage) == 0:
+            logging.warning("no disks meet the requirements. collect io thread exits")
             return
 
         for disk_name, stage_list in self.disk_map_stage.items():
@@ -213,7 +217,7 @@ class CollectIo():
             start_time = time.time()
 
             if self.stop_event.is_set():
-                logging.info("collect io thread exit")
+                logging.debug("collect io thread exit")
                 return
 
             for disk_name, stage_list in self.disk_map_stage.items():
@@ -227,7 +231,7 @@ class CollectIo():
                 continue
             while sleep_time > 1:
                 if self.stop_event.is_set():
-                    logging.info("collect io thread exit")
+                    logging.debug("collect io thread exit")
                     return
                 time.sleep(1)
                 sleep_time -= 1
@@ -235,5 +239,5 @@ class CollectIo():
 
     # set stop event, notify thread exit
     def stop_thread(self):
-        logging.info("collect io thread is preparing to exit")
+        logging.debug("collect io thread is preparing to exit")
         self.stop_event.set() 
