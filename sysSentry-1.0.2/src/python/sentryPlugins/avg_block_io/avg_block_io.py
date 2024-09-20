@@ -21,7 +21,7 @@ CONFIG_FILE = "/etc/sysSentry/plugins/avg_block_io.ini"
 
 def log_invalid_keys(not_in_list, keys_name, config_list, default_list):
     """print invalid log"""
-    if config_list and default_list:
+    if config_list and not_in_list:
         logging.warning("{} in common.{} are not valid, set {}={}".format(not_in_list, keys_name, keys_name, default_list))
     elif config_list == ["default"]:
         logging.warning("Default {} use {}".format(keys_name, default_list))
@@ -144,9 +144,11 @@ def init_io_win(io_dic, config, common_param):
 
                 if avg_lim_value and avg_time_value and tot_lim_value:
                     io_data[disk_name][stage_name][rw]["latency"] = IoWindow(window_size=io_dic["win_size"], window_threshold=io_dic["win_threshold"], abnormal_multiple=avg_time_value, abnormal_multiple_lim=avg_lim_value, abnormal_time=tot_lim_value)
+                    logging.debug("Successfully create {}-{}-{} latency window".format(disk_name, stage_name, rw))
 
                 if iodump_lim_value is not None:
                     io_data[disk_name][stage_name][rw]["iodump"] = IoDumpWindow(window_size=io_dic["win_size"], window_threshold=io_dic["win_threshold"], abnormal_time=iodump_lim_value)
+                    logging.debug("Successfully create {}-{}-{} iodump window".format(disk_name, stage_name, rw))
     return io_data, io_avg_value
 
 
@@ -159,10 +161,10 @@ def get_valid_disk_stage_list(io_dic, config_disk, config_stage):
     for disk_stage_list in json_data.values():
         all_stage_set.update(disk_stage_list)
 
-    disk_list = [key for key in config_disk if key in all_disk_set]
+    disk_list = [key for key in all_disk_set if key in config_disk]
     not_in_disk_list = [key for key in config_disk if key not in all_disk_set]
 
-    stage_list = [key for key in config_stage if key in all_stage_set]
+    stage_list = [key for key in all_stage_set if key in config_stage]
     not_in_stage_list = [key for key in config_stage if key not in all_stage_set]
 
     if not config_disk:
@@ -170,6 +172,9 @@ def get_valid_disk_stage_list(io_dic, config_disk, config_stage):
 
     if not config_stage:
         stage_list = [key for key in all_stage_set]
+
+    disk_list = disk_list[:10] if len(disk_list) > 10 else disk_list
+    stage_list = stage_list[:15] if len(stage_list) > 15 else stage_list
 
     if config_disk and not disk_list:
         logging.warning("Cannot get valid disk by disk={}, set to default".format(config_disk))
@@ -227,6 +232,8 @@ def main():
     # 注册停止信号-2/-15
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
+
+    logging.basicConfig(level=logging.INFO)
 
     # 初始化配置读取
     config = configparser.ConfigParser(comment_prefixes=('#', ';'))
