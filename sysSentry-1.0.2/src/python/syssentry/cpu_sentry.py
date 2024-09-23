@@ -26,6 +26,8 @@ CPU_SENTRY_PARAM_CONFIG = "/etc/sysSentry/plugins/cpu_sentry.ini"
 # Inspection commands running at the bottom layer
 LOW_LEVEL_INSPECT_CMD = "cat-cli"
 
+# max length of msg in details
+DETAILS_LOG_MSG_MAX_LEN = 255
 
 class CpuSentry:
     """
@@ -94,22 +96,10 @@ class CpuSentry:
             self.send_result["details"]["msg"] = "cpu_sentry task is killed!"
             return
 
-        if "ERROR" in stdout:
-            self.send_result["result"] = ResultLevel.FAIL
-            self.send_result["details"]["code"] = 1004
-
-            # Remove ANSI escape sequences
-            error_info = stdout.split("\n")[0]
-            if error_info.startswith("\u001b"):
-                ansi_escape = r'\x1b\[([0-9]+)(;[0-9]+)*([A-Za-z])'
-                error_info = re.sub(ansi_escape, '', error_info)
-
-            self.send_result["details"]["msg"] = error_info
-            return
-
         out_split = stdout.split("\n")
-        isolated_cores_number = 0
+        isolated_cores_number = -1
         found_fault_cores_list = []
+        error_msg_list = []
         for out_line_i in out_split:
             if "handle_patrol_result: Found fault cores" in out_line_i:
                 cores_number_tmp = out_line_i.split("Found fault cores:")[1]
@@ -121,9 +111,25 @@ class CpuSentry:
             elif out_line_i.startswith('<ISOLATED-CORE-LIST>'):
                 self.send_result["details"]["isolated_cpu_list"] = out_line_i.split(':')[1]
                 break
+            elif "ERROR" in out_line_i:
+                logging.error("[cat-cli error] - %s\n", out_line_i)
+                error_msg_list.append(out_line_i)
 
         found_fault_cores_number = len(set(found_fault_cores_list))
-        if found_fault_cores_number == 0:
+        if isolated_cores_number == -1:
+            self.send_result["result"] = ResultLevel.FAIL
+            self.send_result["details"]["code"] = 1004
+
+            send_error_msg = ""
+            # Remove ANSI escape sequences
+            for error_info in error_msg_list:
+                if error_info.startswith("\u001b"):
+                    ansi_escape = r'\x1b\[([0-9]+)(;[0-9]+)*([A-Za-z])'
+                    error_info = re.sub(ansi_escape, '', error_info)
+                if len(send_error_msg) + len(error_info) < DETAILS_LOG_MSG_MAX_LEN:
+                    send_error_msg += error_info
+            self.send_result["details"]["msg"] = send_error_msg
+        elif found_fault_cores_number == 0:
             self.send_result["details"]["code"] = 0
             self.send_result["result"] = ResultLevel.PASS
         elif 0 in found_fault_cores_list:
