@@ -28,33 +28,53 @@ def log_invalid_keys(not_in_list, keys_name, config_list, default_list):
 
 
 def read_config_common(config):
-    """read config file, get [common] section value"""
-    try:
-        common_sec = config['common']
-    except configparser.NoSectionError:
+    """read config file, get [common] section value"""    
+    if not config.has_section("common"):
         report_alarm_fail("Cannot find common section in config file")
 
     try:
-        period_time = int(common_sec.get("period_time", 1))
-        if not (1 <= period_time <= 300):
-            raise ValueError("Invalid period_time")
-    except ValueError:
-        period_time = 1
-        logging.warning("Invalid period_time, set to 1s")
+        disk_name = config.get("common", "disk")
+        disk = [] if disk_name == "default" else disk_name.split(",")
+    except configparser.NoOptionError:
+        disk = []
+        logging.warning("Unset disk, set to default")
 
-    disk = common_sec.get('disk').split(",") if common_sec.get('disk') not in [None, 'default'] else []
-    stage = common_sec.get('stage').split(",") if common_sec.get('stage') not in [None, 'default'] else []
+    try:
+        stage_name = config.get("common", "stage")
+        stage = [] if stage_name == "default" else stage_name.split(",")
+    except configparser.NoOptionError:
+        stage = []
+        logging.warning("Unset stage, set to read,write")
 
     if len(disk) > 10:
         logging.warning("Too many disks, record only max 10 disks")
         disk = disk[:10]
 
-    iotype = common_sec.get('iotype', 'read,write').split(",")
-    iotype_list = [rw.lower() for rw in iotype if rw.lower() in ['read', 'write', 'flush', 'discard']]
-    err_iotype =  [rw for rw in iotype if rw.lower() not in ['read', 'write', 'flush', 'discard']]
+    try:
+        iotype_name = config.get("common", "iotype").split(",")
+        iotype_list = [rw.lower() for rw in iotype_name if rw.lower() in ['read', 'write', 'flush', 'discard']]
+        err_iotype =  [rw.lower() for rw in iotype_name if rw.lower() not in ['read', 'write', 'flush', 'discard']]
+
+        if iotype_list in [None, []]:
+            iotype_list = ["read", "write"]
+    except configparser.NoOptionError:
+        iotype = ["read", "write"]
+        logging.warning("Unset iotype, set to default")
 
     if err_iotype:
         logging.warning("{} in common.iotype are not valid, set iotype={}".format(err_iotype, iotype_list))
+    
+    
+    try:
+        period_time = int(config.get("common", "period_time"))
+        if not (1 <= period_time <= 300):
+            raise ValueError("Invalid period_time")
+    except ValueError:
+        period_time = 1
+        logging.warning("Invalid period_time, set to 1s")
+    except configparser.NoOptionError:
+        period_time = 1
+        logging.warning("Unset period_time, use 1s as default")
 
     return period_time, disk, stage, iotype_list
 
@@ -68,11 +88,23 @@ def read_config_algorithm(config):
         win_size = int(config.get("algorithm", "win_size"))
         if not (1 <= win_size <= 300):
             raise ValueError("Invalid win_size")
+    except ValueError:
+        win_size = 30
+        logging.warning("Invalid win_size, set to 30")
+    except configparser.NoOptionError:
+        win_size = 30
+        logging.warning("Unset win_size, use 30 as default")
+    
+    try:
         win_threshold = int(config.get("algorithm", "win_threshold"))
         if win_threshold < 1 or win_threshold > 300 or win_threshold > win_size:
             raise ValueError("Invalid win_threshold")
     except ValueError:
-        report_alarm_fail("Invalid win_threshold or win_size")
+        win_threshold = 6
+        logging.warning("Invalid win_threshold, set to 6")
+    except configparser.NoOptionError:
+        win_threshold = 6
+        logging.warning("Unset win_threshold, use 6 as default")
 
     return win_size, win_threshold
 
@@ -80,6 +112,21 @@ def read_config_algorithm(config):
 def read_config_lat_iodump(io_dic, config):
     """read config file, get [latency] [iodump] section value"""
     common_param = {}
+    lat_sec = None
+    if not config.has_section("latency"):
+        logging.warning("Cannot find algorithm section in config file")
+    else:
+        lat_sec = config["latency"]
+
+    iodump_sec = None
+    if not config.has_section("iodump"):
+        logging.warning("Cannot find iodump section in config file")
+    else:
+        lat_sec = config["iodump"]
+    
+    if not lat_sec and not iodump_sec:
+        return common_param
+
     for io_type in io_dic["iotype_list"]:
         common_param[io_type] = {}
 
@@ -90,13 +137,16 @@ def read_config_lat_iodump(io_dic, config):
         }
         iodump_key = "{}_iodump_lim".format(io_type)
 
-        for key_suffix, key_template in latency_keys.items():
-            if key_template in config["latency"] and config["latency"][key_template].isdecimal():
-                common_param[io_type][key_template] = int(config["latency"][key_template])
+        if iodump_sec and iodump_key in iodump_sec and iodump_sec[iodump_key].isdecimal():
+            common_param[io_type][iodump_key] = int(iodump_sec[iodump_key])
 
-        if iodump_key in config["iodump"] and config["iodump"][iodump_key].isdecimal():
-            common_param[io_type][iodump_key] = int(config["iodump"][iodump_key])
-   
+        if not lat_sec:
+            continue
+
+        for key_suffix, key_template in latency_keys.items():
+            if key_template in lat_sec and lat_sec[key_template].isdecimal():
+                common_param[io_type][key_template] = int(lat_sec[key_template])
+
     return common_param
 
 
