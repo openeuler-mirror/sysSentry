@@ -127,7 +127,7 @@ class CpuSentry:
                     ansi_escape = r'\x1b\[([0-9]+)(;[0-9]+)*([A-Za-z])'
                     error_info = re.sub(ansi_escape, '', error_info)
                 if len(send_error_msg) + len(error_info) < DETAILS_LOG_MSG_MAX_LEN:
-                    send_error_msg += error_info
+                    send_error_msg += ";" + error_info
             self.send_result["details"]["msg"] = send_error_msg
         elif found_fault_cores_number == 0:
             self.send_result["details"]["code"] = 0
