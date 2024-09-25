@@ -10,7 +10,7 @@
 # See the Mulan PSL v2 for more details.
 
 """
-collcet plugin
+collect plugin
 """
 import json
 import socket
@@ -75,7 +75,7 @@ def client_send_and_recv(request_data, data_str_len, protocol):
     try:
         client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     except socket.error:
-        print("collect_plugin: client creat socket error")
+        print("collect_plugin: client create socket error")
         return None
 
     try:
@@ -128,7 +128,7 @@ def client_send_and_recv(request_data, data_str_len, protocol):
 def validate_parameters(param, len_limit, char_limit):
     ret = ResultMessage.RESULT_SUCCEED
     if not param:
-        print("parm is invalid")
+        print("param is invalid")
         ret = ResultMessage.RESULT_NOT_PARAM
         return [False, ret]
 

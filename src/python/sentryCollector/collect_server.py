@@ -281,5 +281,4 @@ class CollectServer():
                 pass
 
     def stop_thread(self):
-        logging.debug("collect listen thread is preparing to exit")
         self.stop_event.set() 
