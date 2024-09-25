@@ -163,18 +163,6 @@ class CollectIo():
             logging.error("An error occurred2: %s", e)
         return column_names
 
-    def task_loop(self):
-        if self.stop_event.is_set():
-            logging.info("collect io thread exit")
-            return
-
-        for disk_name, stage_list in self.disk_map_stage.items():
-            if self.get_blk_io_hierarchy(disk_name, stage_list) < 0:
-                continue
-            self.append_period_lat(disk_name, stage_list)
-
-        threading.Timer(self.period_time, self.task_loop).start()
-
     def is_kernel_avaliable(self):
         base_path = '/sys/kernel/debug/block'
         all_disk = []
@@ -190,6 +178,9 @@ class CollectIo():
                 file_path = os.path.join(blk_io_hierarchy_path, file_name)
                 if file_name == 'stats':
                     all_disk.append(disk_name)
+
+        if self.loop_all:
+            self.disk_list = all_disk
 
         for disk_name in self.disk_list:
             if not self.loop_all and disk_name not in all_disk:

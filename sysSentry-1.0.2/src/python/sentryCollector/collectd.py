@@ -57,7 +57,8 @@ def main():
         os.mkdir(SENTRY_RUN_DIR)
         os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
 
-    logging.basicConfig(filename=COLLECT_LOG_FILE, level=logging.INFO)
+    logging.basicConfig(filename=COLLECT_LOG_FILE, level=logging.INFO, 
+        format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     os.chmod(COLLECT_LOG_FILE, 0o600)
 
     try:
