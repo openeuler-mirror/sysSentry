@@ -79,7 +79,7 @@ def main():
         for info in module_list:
             class_name = Module_Map_Class.get(info)
             if not class_name:
-                logging.info("%s correspond to class is not exists", info)
+                logging.info("%s correspond to class is not exist", info)
                 continue
             cn = class_name(module_config)
             collect_thread = threading.Thread(target=cn.main_loop)
@@ -94,4 +94,4 @@ def main():
     finally:
         pass
 
-    logging.info("All threads have finished. Main thread is exiting.")
+    logging.info("all threads have finished. main thread exit.")

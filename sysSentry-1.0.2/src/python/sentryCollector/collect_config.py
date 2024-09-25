@@ -49,14 +49,14 @@ class CollectConfig:
             self.config = configparser.ConfigParser()
             self.config.read(self.filename)
         except configparser.Error:
-            logging.error("collectd configure file read failed")
+            logging.error("collect configure file read failed")
             return
         
         try:
             common_config = self.config[CONF_COMMON]
-            modules_str = common_config[CONF_MODULES]
+            modules_str = common_config[CONF_MODULES].lower()
             # remove space
-            modules_list = modules_str.replace(" ", "").split(',')
+            modules_list = set(modules_str.replace(" ", "").split(','))
         except KeyError as e:
             logging.error("read config data failed, %s", e)
             return
@@ -98,7 +98,7 @@ class CollectConfig:
                 CONF_IO, CONF_IO_MAX_SAVE, CONF_IO_MAX_SAVE_DEFAULT)
             result_io_config[CONF_IO_MAX_SAVE] = CONF_IO_MAX_SAVE_DEFAULT
         # disk
-        disk = io_map_value.get(CONF_IO_DISK)
+        disk = io_map_value.get(CONF_IO_DISK).lower()
         if disk:
             disk_str = disk.replace(" ", "")
             pattern = r'^[a-zA-Z0-9-_,]+$'
@@ -106,12 +106,13 @@ class CollectConfig:
                 logging.warning("module_name = %s section, field = %s is incorrect, use default %s", 
                 CONF_IO, CONF_IO_DISK, CONF_IO_DISK_DEFAULT)
                 disk_str = CONF_IO_DISK_DEFAULT
+            disk_str = ",".join(set(disk_str.split(',')))
             result_io_config[CONF_IO_DISK] = disk_str
         else:
             logging.warning("module_name = %s section, field = %s is incorrect, use default %s", 
                 CONF_IO, CONF_IO_DISK, CONF_IO_DISK_DEFAULT)
             result_io_config[CONF_IO_DISK] = CONF_IO_DISK_DEFAULT
-        logging.info("config get_io_config: %s", result_io_config)
+        logging.debug("config get_io_config: %s", result_io_config)
         return result_io_config
 
     def get_common_config(self):

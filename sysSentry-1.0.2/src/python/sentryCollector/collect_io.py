@@ -177,10 +177,8 @@ class CollectIo():
 
     def is_kernel_avaliable(self):
         base_path = '/sys/kernel/debug/block'
+        all_disk = []
         for disk_name in os.listdir(base_path):
-            if not self.loop_all and disk_name not in self.disk_list:
-                continue
-
             disk_path = os.path.join(base_path, disk_name)
             blk_io_hierarchy_path = os.path.join(disk_path, 'blk_io_hierarchy')
 
@@ -190,12 +188,18 @@ class CollectIo():
 
             for file_name in os.listdir(blk_io_hierarchy_path):
                 file_path = os.path.join(blk_io_hierarchy_path, file_name)
-
                 if file_name == 'stats':
-                    stage_list = self.extract_first_column(file_path)
-                    self.disk_map_stage[disk_name] = stage_list
-                    self.window_value[disk_name] = {}
-                    IO_GLOBAL_DATA[disk_name] = {}
+                    all_disk.append(disk_name)
+
+        for disk_name in self.disk_list:
+            if not self.loop_all and disk_name not in all_disk:
+                logging.warning("the %s disk not exist!", disk_name)
+                continue
+            stats_file = '/sys/kernel/debug/block/{}/blk_io_hierarchy/stats'.format(disk_name)
+            stage_list = self.extract_first_column(stats_file)
+            self.disk_map_stage[disk_name] = stage_list
+            self.window_value[disk_name] = {}
+            IO_GLOBAL_DATA[disk_name] = {}
 
         return len(IO_GLOBAL_DATA) != 0
 
@@ -203,7 +207,7 @@ class CollectIo():
         logging.info("collect io thread start")
         
         if not self.is_kernel_avaliable() or len(self.disk_map_stage) == 0:
-            logging.warning("no disks meet the requirements. collect io thread exits")
+            logging.warning("no disks meet the requirements. collect io thread exit")
             return
 
         for disk_name, stage_list in self.disk_map_stage.items():
@@ -239,5 +243,4 @@ class CollectIo():
 
     # set stop event, notify thread exit
     def stop_thread(self):
-        logging.debug("collect io thread is preparing to exit")
-        self.stop_event.set() 
+        self.stop_event.set()
