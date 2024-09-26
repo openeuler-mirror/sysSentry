@@ -75,14 +75,14 @@ def client_send_and_recv(request_data, data_str_len, protocol):
     try:
         client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     except socket.error:
-        print("collect_plugin: client create socket error")
+        logging.error("collect_plugin: client create socket error")
         return None
 
     try:
         client_socket.connect(COLLECT_SOCKET_PATH)
     except OSError:
         client_socket.close()
-        print("collect_plugin: client connect error")
+        logging.error("collect_plugin: client connect error")
         return None
 
     req_data_len = len(request_data)
@@ -94,23 +94,23 @@ def client_send_and_recv(request_data, data_str_len, protocol):
         res_data = res_data.decode()
     except (OSError, UnicodeError):
         client_socket.close()
-        print("collect_plugin: client communicate error")
+        logging.error("collect_plugin: client communicate error")
         return None
 
     res_magic = res_data[:CLT_MSG_MAGIC_LEN]
     if res_magic != "RES":
-        print("res msg format error")
+        logging.error("res msg format error")
         return None
 
     protocol_str = res_data[CLT_MSG_MAGIC_LEN:CLT_MSG_MAGIC_LEN+CLT_MSG_PRO_LEN]
     try:
         protocol_id = int(protocol_str)
     except ValueError:
-        print("recv msg protocol id is invalid %s", protocol_str)
+        logging.error("recv msg protocol id is invalid %s", protocol_str)
         return None
 
     if protocol_id >= ClientProtocol.PRO_END:
-        print("protocol id is invalid")
+        logging.error("protocol id is invalid")
         return None
 
     try:
@@ -119,7 +119,7 @@ def client_send_and_recv(request_data, data_str_len, protocol):
         res_msg_data = res_msg_data.decode()
         return res_msg_data
     except (OSError, ValueError, UnicodeError):
-        print("collect_plugin: client recv res msg error")
+        logging.error("collect_plugin: client recv res msg error")
     finally:
         client_socket.close()
 
@@ -128,30 +128,30 @@ def client_send_and_recv(request_data, data_str_len, protocol):
 def validate_parameters(param, len_limit, char_limit):
     ret = ResultMessage.RESULT_SUCCEED
     if not param:
-        print("param is invalid")
+        logging.error("param is invalid, param = %s", param)
         ret = ResultMessage.RESULT_NOT_PARAM
         return [False, ret]
 
     if not isinstance(param, list):
-        print(f"{param} is not list type.")
+        logging.error("%s is not list type.", param)
         ret = ResultMessage.RESULT_NOT_PARAM
         return [False, ret]
 
     if len(param) <= 0:
-        print(f"{param} length is 0.")
+        logging.error("%s length is 0.", param)
         ret =  ResultMessage.RESULT_INVALID_LENGTH
         return [False, ret]
 
     pattern = r'^[a-zA-Z0-9_-]+$'
     for info in param:
         if not re.match(pattern, info):
-            print(f"{info} is invalid char")
+            logging.error("%s is invalid char", info)
             ret =  ResultMessage.RESULT_INVALID_CHAR
             return [False, ret]
 
     # length of len_limit is exceeded, keep len_limit
     if len(param) > len_limit:
-        print(f"{param} length more than {len_limit}, keep the first {len_limit}")
+        logging.error("%s length more than %d, keep the first %d", param, len_limit, len_limit)
         param[:] = param[0:len_limit]
 
     # only keep elements under the char_limit length
@@ -202,13 +202,13 @@ def inter_is_iocollect_valid(period, disk_list=None, stage=None):
     request_message = json.dumps(req_msg_struct)
     result_message = client_send_and_recv(request_message, CLT_MSG_LEN_LEN, ClientProtocol.IS_IOCOLLECT_VALID)
     if not result_message:
-        print("collect_plugin: client_send_and_recv failed")
+        logging.error("collect_plugin: client_send_and_recv failed")
         return result
         
     try:
         json.loads(result_message)
     except json.JSONDecodeError:
-        print("is_iocollect_valid: json decode error")
+        logging.error("is_iocollect_valid: json decode error")
         result['ret'] = ResultMessage.RESULT_PARSE_FAILED
         return result
 
@@ -260,12 +260,12 @@ def inter_get_io_data(period, disk_list, stage, iotype):
     request_message = json.dumps(req_msg_struct)
     result_message = client_send_and_recv(request_message, CLT_MSG_LEN_LEN, ClientProtocol.GET_IO_DATA)
     if not result_message:
-        print("collect_plugin: client_send_and_recv failed")
+        logging.error("collect_plugin: client_send_and_recv failed")
         return result
     try:
         json.loads(result_message)
     except json.JSONDecodeError:
-        print("get_io_data: json decode error")
+        logging.error("get_io_data: json decode error")
         result['ret'] = ResultMessage.RESULT_PARSE_FAILED
         return result
 
