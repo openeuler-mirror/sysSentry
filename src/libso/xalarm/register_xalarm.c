@@ -35,7 +35,7 @@
 #define ALARM_SOCKET_PERMISSION 0700
 #define TIME_UNIT_MILLISECONDS 1000
 
-#define MAX_PARAS_LEN 511
+#define MAX_PARAS_LEN 8191
 #define MIN_ALARM_ID 1001
 #define MAX_ALARM_ID (MIN_ALARM_ID + MAX_NUM_OF_ALARM_ID - 1)
 
@@ -91,7 +91,7 @@ static int create_unix_socket(const char *path)
         return -1;
     }
 
-    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         printf("socket failed:%s\n", strerror(errno));
         return -1;
@@ -103,14 +103,6 @@ static int create_unix_socket(const char *path)
         goto release_socket;
     }
 
-    if (access(PATH_REG_ALARM, F_OK) == 0) {
-        ret = unlink(PATH_REG_ALARM);
-        if (ret != 0) {
-            printf("unlink register socket file failed\n");
-            goto release_socket;
-        }
-    }
-
     if (access(DIR_XALARM, F_OK) == -1) {
         if (mkdir(DIR_XALARM, ALARM_DIR_PERMISSION) == -1) {
             printf("mkdir %s failed\n", DIR_XALARM);
@@ -120,32 +112,22 @@ static int create_unix_socket(const char *path)
 
     if (memset(&alarm_addr, 0, sizeof(alarm_addr)) == NULL) {
         printf("create_unix_socket:  memset alarm_addr failed, ret: %d\n", ret);
-        goto remove_dir;
+        goto release_socket;
     }
     alarm_addr.sun_family = AF_UNIX;
     strncpy(alarm_addr.sun_path, path, sizeof(alarm_addr.sun_path) - 1);
 
-    if (bind(fd, (struct sockaddr *)&alarm_addr, sizeof(alarm_addr.sun_family) + strlen(alarm_addr.sun_path)) < 0) {
-        printf("bind socket failed:%s\n", strerror(errno));
-        goto remove_dir;
+    if (connect(fd, (struct sockaddr*)&alarm_addr, sizeof(alarm_addr)) == -1) {
+        printf("create_unix_socket:  connect alarm_addr failed, ret: %d\n", ret);
+        goto release_socket;
     }
     if (chmod(path, ALARM_SOCKET_PERMISSION) < 0) {
         printf("chmod %s failed: %s\n", path, strerror(errno));
-        goto unlink_sockfile;
+        goto release_socket;
     }
 
     return fd;
 
-unlink_sockfile:
-    ret = unlink(PATH_REG_ALARM);
-    if (ret != 0) {
-        printf("unlink register socket file failed\n");
-    }
-remove_dir:
-    ret = rmdir(DIR_XALARM);
-    if (ret != 0) {
-        printf("rmdir %s failed: %s\n", path, strerror(errno));
-    }
 release_socket:
     (void)close(fd);
 
@@ -174,6 +156,10 @@ static void *alarm_recv(void *arg)
                 continue;
             }
             printf("recv error len:%d errno:%d\n", recvlen, errno);
+        } else if (recvlen == 0) {
+            printf("connection closed by xalarmd, maybe connections reach max num or service stopped.\n");
+            g_register_info.thread_should_stop = 1;
+            break;
         }
     }
     return NULL;
@@ -229,6 +215,10 @@ bool xalarm_Upgrade(struct alarm_subscription_info id_filter, int client_id)
         printf("%s: invalid args\n", __func__);
         return false;
     }
+    if (g_register_info.thread_should_stop) {
+        printf("%s: upgrade failed, alarm thread has stopped\n", __func__);
+        return false;
+    }
     set_alarm_id(id_filter);
 
     return true;
@@ -271,8 +261,6 @@ int xalarm_Register(alarm_callback_func callback, struct alarm_subscription_info
 
 void xalarm_UnRegister(int client_id)
 {
-    int ret;
-
     if (!g_register_info.is_registered) {
         printf("%s: alarm has not registered\n", __func__);
         return;
@@ -292,10 +280,6 @@ void xalarm_UnRegister(int client_id)
     if (g_register_info.register_fd != -1) {
         (void)close(g_register_info.register_fd);
         g_register_info.register_fd = -1;
-        ret = unlink(PATH_REG_ALARM);
-        if (ret != 0) {
-            printf("%s: unlink register socket file failed\n", __func__);
-        }
     }
 
     memset(g_register_info.alarm_enable_bitmap, 0, MAX_NUM_OF_ALARM_ID * sizeof(char));
@@ -357,8 +341,13 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
     struct sockaddr_un alarm_addr;
 
     if ((usAlarmId < MIN_ALARM_ID || usAlarmId > MAX_ALARM_ID) ||
-        (ucAlarmLevel < ALARM_LEVEL_FATAL || ucAlarmLevel > ALARM_LEVEL_DEBUG) ||
+        (ucAlarmLevel < MINOR_ALM || ucAlarmLevel > CRITICAL_ALM) ||
         (ucAlarmType < ALARM_TYPE_OCCUR || ucAlarmType > ALARM_TYPE_RECOVER)) {
+        fprintf(stderr, "%s: alarm info invalid\n", __func__);
+        return -1;
+    }
+
+    if (pucParas == NULL || (int)strlen(pucParas) > MAX_PARAS_LEN) {
         fprintf(stderr, "%s: alarm info invalid\n", __func__);
         return -1;
     }
@@ -670,4 +659,5 @@ int report_result(const char *task_name, enum RESULT_LEVEL result_level, const c
     json_object_put(send_data);
     return RETURE_CODE_SUCCESS;
 }
+
 
