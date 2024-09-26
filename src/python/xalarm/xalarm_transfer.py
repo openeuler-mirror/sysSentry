@@ -16,10 +16,12 @@ Create: 2023-11-02
 
 import socket
 import logging
+import select
 
-USER_RECV_SOCK = "/var/run/xalarm/alarm"
 MIN_ID_NUMBER = 1001
 MAX_ID_NUMBER = 1128
+MAX_CONNECTION_NUM = 100 
+TEST_CONNECT_BUFFER_SIZE = 32
 
 
 def check_filter(alarm_info, alarm_filter):
@@ -35,16 +37,84 @@ def check_filter(alarm_info, alarm_filter):
     return True
 
 
-def transmit_alarm(bin_data):
-    """forward alarm message
+def cleanup_closed_connections(server_sock, epoll, fd_to_socket):
     """
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-    try:
-        sock.sendto(bin_data, USER_RECV_SOCK)
-        logging.debug("transfer alarm success")
-    except ConnectionRefusedError:
-        logging.debug("transfer sendto failed")
-    except FileNotFoundError:
-        logging.debug("transfer sendto failed")
-    finally:
-        sock.close()
+    clean invalid client socket connections saved in 'fd_to_socket'
+    :param server_sock: server socket instance of alarm
+    :param epoll: epoll instance, used to unregister invalid client connections
+    :param fd_to_socket: dict instance, used to hold client connections and server connections
+    """
+    to_remove = []
+    for fileno, connection in fd_to_socket.items():
+        if connection is server_sock:
+            continue
+        try:
+            # test whether connection still alive, use MSG_DONTWAIT to avoid blocking thread
+            # use MSG_PEEK to avoid consuming buffer data
+            data = connection.recv(TEST_CONNECT_BUFFER_SIZE, socket.MSG_DONTWAIT | socket.MSG_PEEK)
+            if not data:
+                to_remove.append(fileno)
+        except BlockingIOError:
+            pass
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            to_remove.append(fileno)
+    
+    for fileno in to_remove:
+        epoll.unregister(fileno)
+        fd_to_socket[fileno].close()
+        del fd_to_socket[fileno]
+        logging.info(f"cleaned up connection {fileno} for client lost connection.")
+
+
+def wait_for_connection(server_sock, epoll, fd_to_socket, thread_should_stop):
+    """
+    thread function for catch and save client connection
+    :param server_sock: server socket instance of alarm
+    :param epoll: epoll instance, used to unregister invalid client connections
+    :param fd_to_socket: dict instance, used to hold client connections and server connections
+    :param thread_should_stop: bool instance
+    """
+    while not thread_should_stop:
+        try:
+            events = epoll.poll(1)
+            
+            for fileno, event in events:
+                if fileno == server_sock.fileno():
+                    connection, client_address = server_sock.accept()
+                    # if reach max connection, cleanup closed connections
+                    if len(fd_to_socket) - 1 >= MAX_CONNECTION_NUM:
+                        cleanup_closed_connections(server_sock, epoll, fd_to_socket)
+                    # if connections still reach max num, close this connection automatically
+                    if len(fd_to_socket) - 1 >= MAX_CONNECTION_NUM:
+                        logging.info(f"connection reach max num of {MAX_CONNECTION_NUM}, closed current connection!")
+                        connection.close()
+                        continue
+                    epoll.register(connection.fileno(), select.EPOLLOUT)
+                    fd_to_socket[connection.fileno()] = connection
+        except socket.error as e: 
+            logging.debug(f"socket error, reason is {e}")
+            break
+        except (KeyError, OSError, ValueError) as e:
+            logging.debug(f"wait for connection failed {e}")
+
+
+def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data):
+    """
+    this function is to broadcast alarm data to client, if fail to send data, remove connections held by fd_to_socket
+    :param server_sock: server socket instance of alarm
+    :param epoll: epoll instance, used to unregister invalid client connections
+    :param fd_to_socket: dict instance, used to hold client connections and server connections
+    :param bin_data: binary instance, alarm info data in C-style struct format defined in xalarm_api.py
+    """
+    to_remove = []
+    for fileno, connection in fd_to_socket.items():
+        if connection is not server_sock:
+            try:
+                connection.sendall(bin_data)
+            except (BrokenPipeError, ConnectionResetError):
+                to_remove.append(fileno)
+    for fileno in to_remove:
+        epoll.unregister(fileno)
+        fd_to_socket[fileno].close()
+        del fd_to_socket[fileno]
+
