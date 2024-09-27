@@ -8,8 +8,40 @@
 # IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
 # PURPOSE.
 # See the Mulan PSL v2 for more details.
+import configparser
+import logging
+import os
+
 AVG_VALUE = 0
 AVG_COUNT = 1
+
+CONF_LOG = 'log'
+CONF_LOG_LEVEL = 'level'
+LogLevel = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL
+}
+
+
+def get_log_level(filename):
+    if not os.path.exists(filename):
+        return logging.INFO
+
+    try:
+        config = configparser.ConfigParser()
+        config.read(filename)
+        if not config.has_option(CONF_LOG, CONF_LOG_LEVEL):
+            return logging.INFO
+        log_level = config.get(CONF_LOG, CONF_LOG_LEVEL)
+
+        if log_level.lower() in LogLevel:
+            return LogLevel.get(log_level.lower())
+        return logging.INFO
+    except configparser.Error:
+        return logging.INFO
 
 
 def get_nested_value(data, keys):

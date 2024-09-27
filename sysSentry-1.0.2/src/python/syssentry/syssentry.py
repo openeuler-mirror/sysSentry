@@ -23,7 +23,7 @@ import fcntl
 
 import select
 
-from .sentry_config import SentryConfig
+from .sentry_config import SentryConfig, get_log_level
 
 from .task_map import TasksMap
 from .global_values import SENTRY_RUN_DIR, CTL_SOCKET_PATH, SENTRY_RUN_DIR_PERM
@@ -563,7 +563,10 @@ def main():
         os.mkdir(SENTRY_RUN_DIR)
         os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
 
-    logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=logging.INFO)
+    log_level = get_log_level()
+    log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+
+    logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=log_level, format=log_format)
     os.chmod(SYSSENTRY_LOG_FILE, 0o600)
 
     if not chk_and_set_pidfile():

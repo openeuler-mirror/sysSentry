@@ -15,9 +15,10 @@ Create: 2023-11-02
 """
 
 import re
+import os
 import dataclasses
 import logging
-from configparser import ConfigParser
+import configparser
 
 
 MAIN_CONFIG_PATH = '/etc/sysSentry/xalarm.conf'
@@ -26,6 +27,34 @@ ALARM_ID_RANGE_PATTERN = r'^\d+-\d+$'
 MIN_ID_NUMBER = 1001
 MAX_ID_NUMBER = 1128
 MAX_ID_MASK_CAPACITY = 128
+
+# log
+CONF_LOG = 'log'
+CONF_LOG_LEVEL = 'level'
+LogLevel = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL
+}
+
+
+def get_log_level(filename=MAIN_CONFIG_PATH):
+    if not os.path.exists(filename):
+        return logging.INFO
+
+    try:
+        config = configparser.ConfigParser()
+        config.read(filename)
+        if not config.has_option(CONF_LOG, CONF_LOG_LEVEL):
+            return logging.INFO
+        log_level = config.get(CONF_LOG, CONF_LOG_LEVEL)
+        if log_level.lower() in LogLevel:
+            return LogLevel.get(log_level.lower())
+        return logging.INFO
+    except configparser.Error:
+        return logging.INFO
 
 
 @dataclasses.dataclass
@@ -106,7 +135,7 @@ def config_init():
     """
     alarm_config = AlarmConfig()
 
-    cfg = ConfigParser()
+    cfg = configparser.ConfigParser()
     cfg.read(MAIN_CONFIG_PATH)
 
     id_mask = parse_id_mask(cfg)
