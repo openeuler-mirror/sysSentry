@@ -16,12 +16,18 @@ import os
 import time
 import logging
 import threading
+import subprocess
+from typing import Union
 
 from .collect_config import CollectConfig
 
 Io_Category = ["read", "write", "flush", "discard"]
 IO_GLOBAL_DATA = {}
 IO_CONFIG_DATA = []
+EBPF_GLOBAL_DATA = []
+EBPF_PROCESS = None
+EBPF_STAGE_LIST = ["wbt", "rq_driver", "bio", "gettag"]
+EBPF_SUPPORT_VERSION = ["4.19.90"]
 
 class IoStatus():
     TOTAL = 0
@@ -40,6 +46,8 @@ class CollectIo():
 
         self.disk_map_stage = {}
         self.window_value = {}
+
+        self.ebpf_base_path = 'ebpf_collector'
 
         self.loop_all = False
 
@@ -62,7 +70,7 @@ class CollectIo():
             logging.error("The file %s does not exist", stats_file)
             return -1
         except Exception as e:
-            logging.error("An error occurred3: %s", e)
+            logging.error("An error occurred: %s", e)
             return -1
 
         curr_value = lines.strip().split('\n')
@@ -193,33 +201,109 @@ class CollectIo():
             IO_GLOBAL_DATA[disk_name] = {}
 
         return len(IO_GLOBAL_DATA) != 0
-
-    def main_loop(self):
-        logging.info("collect io thread start")
+    
+    def is_ebpf_avaliable(self):
+        with open('/proc/version', 'r') as f:
+            kernel_version = f.read().split()[2]
+            major_version = kernel_version.split('-')[0]
         
-        if not self.is_kernel_avaliable() or len(self.disk_map_stage) == 0:
-            logging.warning("no disks meet the requirements. collect io thread exit")
-            return
-
+        base_path = '/sys/kernel/debug/block'
+        for disk_name in os.listdir(base_path):
+            if not self.loop_all and disk_name not in self.disk_list:
+                continue
+            self.disk_map_stage[disk_name] = EBPF_STAGE_LIST
+            self.window_value[disk_name] = {}
+            IO_GLOBAL_DATA[disk_name] = {}
+        
         for disk_name, stage_list in self.disk_map_stage.items():
             for stage in stage_list:
-                self.window_value[disk_name][stage] = []
+                self.window_value[disk_name][stage] = {}
                 IO_GLOBAL_DATA[disk_name][stage] = {}
                 for category in Io_Category:
                     IO_GLOBAL_DATA[disk_name][stage][category] = []
+                    self.window_value[disk_name][stage][category] = [[0,0,0], [0,0,0]]
+
+        return major_version in EBPF_SUPPORT_VERSION and os.path.exists('/usr/bin/ebpf_collector') and len(IO_GLOBAL_DATA) != 0 
+    
+    def get_ebpf_raw_data(
+        self
+    ) -> None:
+        global EBPF_PROCESS
+        global EBPF_GLOBAL_DATA
 
         while True:
-            start_time = time.time()
-
             if self.stop_event.is_set():
                 logging.debug("collect io thread exit")
                 return
+            line = EBPF_PROCESS.stdout.readline()
+            if not line:
+                logging.info("no ebpf data found, wait for collect")
+                break
+            EBPF_GLOBAL_DATA.append(line.strip())
+            time.sleep(0.1)
+    
+    def update_ebpf_collector_data(
+        self,
+    ) -> None:
+        global EBPF_GLOBAL_DATA
 
+        while True:
+            if self.stop_event.is_set():
+                logging.debug("collect io thread exit")
+                return
+            if EBPF_GLOBAL_DATA:
+                for data in EBPF_GLOBAL_DATA:
+                    data_list = data.split()
+                    stage, finish_count, latency, io_dump, io_type ,disk_name = data_list
+                    if disk_name not in self.window_value:
+                        continue
+                    io_type = self.get_ebpf_io_type(io_type)
+                    if not io_type:
+                        continue                  
+                    if (len(self.window_value[disk_name][stage][io_type])) >= 2:
+                        self.window_value[disk_name][stage][io_type].pop()
+                    self.window_value[disk_name][stage][io_type].append([int(finish_count), int(latency), int(io_dump)])
+                EBPF_GLOBAL_DATA.clear()
+            time.sleep(0.1)
+    
+    def get_ebpf_io_type(
+        self,
+        io_type: str
+    ) -> str:
+        io_type_mapping = {
+            "R": "read",
+            "W": "write",
+            "F": "flush",
+            "D": "discard"
+        }
+        io_type = io_type_mapping.get(io_type, None)
+        return io_type
+    
+    def append_ebpf_period_data(
+        self, 
+    ) -> None:
+        global IO_GLOBAL_DATA
+        while True:
+            if self.stop_event.is_set():
+                logging.debug("collect io thread exit")
+                return
+            start_time = time.time()
             for disk_name, stage_list in self.disk_map_stage.items():
-                if self.get_blk_io_hierarchy(disk_name, stage_list) < 0:
-                    continue
-                self.append_period_lat(disk_name, stage_list)
-                
+                for stage in stage_list:
+                    for io_type in Io_Category:
+                        if len(self.window_value[disk_name][stage][io_type]) < 2:
+                            return
+                        if (len(IO_GLOBAL_DATA[disk_name][stage][io_type])) >= self.max_save:
+                            IO_GLOBAL_DATA[disk_name][stage][io_type].pop()
+                        curr_finish_count, curr_latency, curr_io_dump_count = self.window_value[disk_name][stage][io_type][-1]
+                        prev_finish_count, prev_latency, prev_io_dump_count = self.window_value[disk_name][stage][io_type][-2]
+                        self.window_value[disk_name][stage][io_type].pop(0)
+                        self.window_value[disk_name][stage][io_type].insert(1, self.window_value[disk_name][stage][io_type][0])
+                        curr_lat = self.get_ebpf_latency_value(curr_latency=curr_latency, prev_latency=prev_latency, curr_finish_count=curr_finish_count, prev_finish_count=prev_finish_count)
+                        curr_iops = self.get_ebpf_iops(curr_finish_count=curr_finish_count, prev_finish_count=prev_finish_count)
+                        curr_io_length = self.get_ebpf_io_length(curr_latency=curr_latency, prev_latency=prev_latency)
+                        curr_io_dump = self.get_ebpf_io_dump(curr_io_dump_count=curr_io_dump_count, prev_io_dump_count=prev_io_dump_count)
+                        IO_GLOBAL_DATA[disk_name][stage][io_type].insert(0, [curr_lat, curr_iops, curr_io_length, curr_io_dump])
             elapsed_time = time.time() - start_time
             sleep_time = self.period_time - elapsed_time
             if sleep_time < 0:
@@ -231,6 +315,133 @@ class CollectIo():
                 time.sleep(1)
                 sleep_time -= 1
             time.sleep(sleep_time)
+            
+    def get_ebpf_latency_value(
+        self,
+        curr_latency: int,
+        prev_latency: int,
+        curr_finish_count: int,
+        prev_finish_count: int
+    ) -> Union[int, float]:
+        finish = curr_finish_count - prev_finish_count
+        lat_time = curr_latency - prev_latency
+        if finish <= 0 or lat_time <= 0:
+            return 0
+        value = lat_time / finish / 1000 / 1000
+        if value.is_integer():
+            return int(value)
+        else:
+            return round(value, 1)
+    
+    def get_ebpf_iops(
+        self,
+        curr_finish_count: int,
+        prev_finish_count: int
+    ) -> Union[int, float]:
+        finish = curr_finish_count - prev_finish_count
+        if finish <= 0:
+            return 0
+        value = finish / self.period_time / 1000 / 1000
+        if value.is_integer():
+            return int(value)
+        else:
+            return round(value, 1)
+    
+    def get_ebpf_io_length(
+        self,
+        curr_latency: int,
+        prev_latency: int,
+    ) -> Union[int, float]:
+        lat_time = curr_latency - prev_latency
+        if lat_time <= 0:
+            return 0
+        value = lat_time / self.period_time
+        if value.is_integer():
+            return int(value)
+        else:
+            return round(value, 1)
+    
+    def get_ebpf_io_dump(
+        self,
+        curr_io_dump_count: int,
+        prev_io_dump_count: int
+    ) -> Union[int, float]:
+        io_dump_count = curr_io_dump_count - prev_io_dump_count
+        if io_dump_count <= 0:
+            return 0
+        value = io_dump_count
+        return int(value)                         
+    
+    def start_ebpf_subprocess(
+        self
+    ) -> None:
+        global EBPF_PROCESS
+        EBPF_PROCESS = subprocess.Popen(self.ebpf_base_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    
+    def stop_ebpf_subprocess(
+        self
+    ) -> None:
+        global EBPF_PROCESS
+        if EBPF_PROCESS:
+            EBPF_PROCESS.terminate()
+            EBPF_PROCESS.wait()
+            logging.info("ebpf collector thread exit")
+
+    def main_loop(self):
+        global IO_GLOBAL_DATA
+        logging.info("collect io thread start")
+        
+        if self.is_kernel_avaliable() and len(self.disk_map_stage) != 0:
+            for disk_name, stage_list in self.disk_map_stage.items():
+                for stage in stage_list:
+                    self.window_value[disk_name][stage] = []
+                    IO_GLOBAL_DATA[disk_name][stage] = {}
+                    for category in Io_Category:
+                        IO_GLOBAL_DATA[disk_name][stage][category] = []
+
+            while True:
+                start_time = time.time()
+
+                if self.stop_event.is_set():
+                    logging.debug("collect io thread exit")
+                    return
+
+                for disk_name, stage_list in self.disk_map_stage.items():
+                    if self.get_blk_io_hierarchy(disk_name, stage_list) < 0:
+                        continue
+                    self.append_period_lat(disk_name, stage_list)
+                    
+                elapsed_time = time.time() - start_time
+                sleep_time = self.period_time - elapsed_time
+                if sleep_time < 0:
+                    continue
+                while sleep_time > 1:
+                    if self.stop_event.is_set():
+                        logging.debug("collect io thread exit")
+                        return
+                    time.sleep(1)
+                    sleep_time -= 1
+                time.sleep(sleep_time)
+        elif self.is_ebpf_avaliable():
+            self.start_ebpf_subprocess()
+            
+            thread_get_data = threading.Thread(target=self.get_ebpf_raw_data)
+            thread_update_data = threading.Thread(target=self.update_ebpf_collector_data)
+            thread_append_data = threading.Thread(target=self.append_ebpf_period_data)
+            
+            thread_get_data.start()
+            thread_update_data.start()
+            thread_append_data.start()
+            
+            thread_get_data.join()
+            thread_update_data.join()
+            thread_append_data.join()
+
+            self.stop_ebpf_subprocess()
+            logging.info("ebpf collector thread exits")
+        else:
+            logging.warning("fail to start ebpf collector thread. collect io thread exits")
+            return
 
     # set stop event, notify thread exit
     def stop_thread(self):

@@ -114,7 +114,7 @@ def read_config_lat_iodump(io_dic, config):
     common_param = {}
     lat_sec = None
     if not config.has_section("latency"):
-        logging.warning("Cannot find algorithm section in config file")
+        logging.warning("Cannot find latency section in config file")
     else:
         lat_sec = config["latency"]
 
@@ -122,7 +122,7 @@ def read_config_lat_iodump(io_dic, config):
     if not config.has_section("iodump"):
         logging.warning("Cannot find iodump section in config file")
     else:
-        lat_sec = config["iodump"]
+        iodump_sec = config["iodump"]
     
     if not lat_sec and not iodump_sec:
         return common_param
