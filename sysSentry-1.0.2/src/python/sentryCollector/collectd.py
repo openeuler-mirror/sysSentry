@@ -26,7 +26,7 @@ import threading
 
 from .collect_io import CollectIo
 from .collect_server import CollectServer
-from .collect_config import CollectConfig
+from .collect_config import CollectConfig, get_log_level
 
 SENTRY_RUN_DIR = "/var/run/sysSentry"
 COLLECT_SOCKET_PATH = "/var/run/sysSentry/collector.sock"
@@ -57,8 +57,9 @@ def main():
         os.mkdir(SENTRY_RUN_DIR)
         os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
 
-    logging.basicConfig(filename=COLLECT_LOG_FILE, level=logging.INFO, 
-        format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    log_level = get_log_level()
+    log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+    logging.basicConfig(filename=COLLECT_LOG_FILE, level=log_level, format=log_format)
     os.chmod(COLLECT_LOG_FILE, 0o600)
 
     try:
