@@ -21,6 +21,34 @@ import sys
 DEFAULT_INSPECT_DELAY = 3
 INSPECT_CONF_PATH = "/etc/sysSentry/inspect.conf"
 
+CONF_LOG = 'log'
+CONF_LOG_LEVEL = 'level'
+LogLevel = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL
+}
+
+
+def get_log_level(filename=INSPECT_CONF_PATH):
+    if not os.path.exists(filename):
+        return logging.INFO
+
+    try:
+        config = configparser.ConfigParser()
+        config.read(filename)
+        if not config.has_option(CONF_LOG, CONF_LOG_LEVEL):
+            return logging.INFO
+        log_level = config.get(CONF_LOG, CONF_LOG_LEVEL)
+
+        if log_level.lower() in LogLevel:
+            return LogLevel.get(log_level.lower())
+        return logging.INFO
+    except configparser.Error:
+        return logging.INFO
+
 
 class SentryConfig:
     """

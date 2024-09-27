@@ -21,7 +21,7 @@ import signal
 import fcntl
 import socket
 
-from .xalarm_config import config_init
+from .xalarm_config import config_init, get_log_level
 from .xalarm_server import server_loop, SOCK_FILE
 
 ALARM_DIR = "/var/run/xalarm"
@@ -120,9 +120,10 @@ def alarm_process_create():
         os.mkdir(ALARM_DIR)
         os.chmod(ALARM_DIR, ALARM_DIR_PERMISSION)
 
+    log_level = get_log_level()
+    log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
 
-    logging.basicConfig(filename=ALARM_LOGFILE, level=logging.INFO,
-                        format='%(asctime)s|%(levelname)s| %(message)s')
+    logging.basicConfig(filename=ALARM_LOGFILE, level=log_level, format=log_format)
 
     signal.signal(signal.SIGTERM, signal_handler)
 

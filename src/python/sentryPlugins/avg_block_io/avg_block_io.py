@@ -15,7 +15,7 @@ import time
 
 from .stage_window import IoWindow, IoDumpWindow
 from .module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data, sig_handler
-from .utils import update_avg_and_check_abnormal
+from .utils import update_avg_and_check_abnormal, get_log_level
 
 CONFIG_FILE = "/etc/sysSentry/plugins/avg_block_io.ini"
 
@@ -283,7 +283,10 @@ def main():
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
 
-    logging.basicConfig(level=logging.INFO)
+    log_level = get_log_level(CONFIG_FILE)
+    log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+
+    logging.basicConfig(level=log_level, format=log_format)
 
     # 初始化配置读取
     config = configparser.ConfigParser(comment_prefixes=('#', ';'))
