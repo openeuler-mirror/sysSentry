@@ -17,6 +17,8 @@ from sentryCollector.collect_plugin import (
     get_io_data,
     is_iocollect_valid,
 )
+
+
 from .io_data import IOStageData, IOData
 
 COLLECT_STAGES = [
@@ -31,6 +33,7 @@ COLLECT_STAGES = [
     "bio",
     "iocost",
 ]
+
 
 def check_collect_valid(period):
     data_raw = is_iocollect_valid(period)

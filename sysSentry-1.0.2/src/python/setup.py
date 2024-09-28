@@ -34,7 +34,7 @@ setup(
             'xalarmd=xalarm.xalarm_daemon:alarm_process_create',
             'sentryCollector=sentryCollector.collectd:main',
             'avg_block_io=sentryPlugins.avg_block_io.avg_block_io:main',
-            'ai_threshold_slow_io_detection=sentryPlugins.ai_threshold_slow_io_detection.slow_io_detection:main'
+            'ai_block_io=sentryPlugins.ai_block_io.ai_block_io:main'
         ]
     },
 )
