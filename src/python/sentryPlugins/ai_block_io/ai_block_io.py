@@ -23,7 +23,7 @@ from .data_access import get_io_data_from_collect_plug, check_collect_valid
 from .io_data import MetricName
 from .alarm_report import AlarmReport
 
-CONFIG_FILE = "/etc/sysSentry/plugins/ai_threshold_slow_io_detection.ini"
+CONFIG_FILE = "/etc/sysSentry/plugins/ai_block_io.ini"
 
 
 def sig_handler(signum, frame):
@@ -40,34 +40,48 @@ class SlowIODetection:
 
     def __init__(self, config_parser: ConfigParser):
         self._config_parser = config_parser
-        self.__set_log_format()
         self.__init_detector_name_list()
         self.__init_detector()
 
-    def __set_log_format(self):
-        log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
-        log_level = get_log_level(self._config_parser.get_log_level())
-        logging.basicConfig(level=log_level, format=log_format)
-
     def __init_detector_name_list(self):
         self._disk_list = check_collect_valid(self._config_parser.get_slow_io_detect_frequency())
-        for disk in self._disk_list:
-            self._detector_name_list.append(MetricName(disk, "bio", "read", "latency"))
-            self._detector_name_list.append(MetricName(disk, "bio", "write", "latency"))
+        disks_to_detection: list = self._config_parser.get_disks_to_detection()
+        # 情况1：None，则启用所有磁盘检测
+        # 情况2：is not None and len = 0，则不启动任何磁盘检测
+        # 情况3：len ！= 0，则取交集
+        if disks_to_detection is None:
+            for disk in self._disk_list:
+                self._detector_name_list.append(MetricName(disk, "bio", "read", "latency"))
+                self._detector_name_list.append(MetricName(disk, "bio", "write", "latency"))
+        elif len(disks_to_detection) == 0:
+            logging.warning('please attention: conf file not specify any disk to detection, '
+                            'so it will not start ai block io.')
+        else:
+            disks_name_to_detection = []
+            for disk_name_to_detection in disks_to_detection:
+                disks_name_to_detection.append(disk_name_to_detection.get_disk_name())
+            disk_intersection = [disk for disk in self._disk_list if disk in disks_name_to_detection]
+            for disk in disk_intersection:
+                self._detector_name_list.append(MetricName(disk, "bio", "read", "latency"))
+                self._detector_name_list.append(MetricName(disk, "bio", "write", "latency"))
+        logging.info(f'start to detection follow disk and it\'s metric: {self._detector_name_list}')
 
     def __init_detector(self):
         train_data_duration, train_update_duration = (self._config_parser.
                                                       get_train_data_duration_and_train_update_duration())
         slow_io_detection_frequency = self._config_parser.get_slow_io_detect_frequency()
-        threshold_type = get_threshold_type_enum(self._config_parser.get_algorithm_type())
+        threshold_type = self._config_parser.get_algorithm_type()
         data_queue_size, update_size = get_data_queue_size_and_update_size(train_data_duration,
                                                                            train_update_duration,
                                                                            slow_io_detection_frequency)
-        sliding_window_type = get_sliding_window_type_enum(self._config_parser.get_sliding_window_type())
+        sliding_window_type = self._config_parser.get_sliding_window_type()
         window_size, window_threshold = self._config_parser.get_window_size_and_window_minimum_threshold()
 
         for detector_name in self._detector_name_list:
-            threshold = ThresholdFactory().get_threshold(threshold_type, data_queue_size=data_queue_size,
+            threshold = ThresholdFactory().get_threshold(threshold_type,
+                                                         boxplot_parameter=self._config_parser.get_boxplot_parameter(),
+                                                         n_sigma_paramter=self._config_parser.get_n_sigma_parameter(),
+                                                         data_queue_size=data_queue_size,
                                                          data_queue_update_size=update_size)
             sliding_window = SlidingWindowFactory().get_sliding_window(sliding_window_type, queue_length=window_size,
                                                                        threshold=window_threshold)
@@ -89,6 +103,7 @@ class SlowIODetection:
             logging.debug(f'step1. Get io data: {str(io_data_dict_with_disk_name)}')
             if io_data_dict_with_disk_name is None:
                 continue
+
             # Step2：慢IO检测
             logging.debug('step2. Start to detection slow io event.')
             slow_io_event_list = []
@@ -103,13 +118,14 @@ class SlowIODetection:
             for slow_io_event in slow_io_event_list:
                 metric_name: MetricName = slow_io_event[0]
                 result = slow_io_event[1]
-                AlarmReport.report_major_alm(f"disk {metric_name.get_disk_name()} has slow io event."
-                                             f"stage: {metric_name.get_metric_name()},"
-                                             f"type: {metric_name.get_io_access_type_name()},"
-                                             f"metric: {metric_name.get_metric_name()},"
-                                             f"current window: {result[1]},"
-                                             f"threshold: {result[2]}")
-                logging.error(f"slow io event happen: {str(slow_io_event)}")
+                alarm_content = (f"disk {metric_name.get_disk_name()} has slow io event. "
+                                 f"stage is: {metric_name.get_stage_name()}, "
+                                 f"io access type is: {metric_name.get_io_access_type_name()}, "
+                                 f"metric is: {metric_name.get_metric_name()}, "
+                                 f"current window is: {result[1]}, "
+                                 f"threshold is: {result[2]}")
+                AlarmReport.report_major_alm(alarm_content)
+                logging.warning(alarm_content)
 
             # Step4：等待检测时间
             logging.debug('step4. Wait to start next slow io event detection loop.')
@@ -120,6 +136,7 @@ def main():
     # Step1：注册消息处理函数
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
+
     # Step2：断点恢复
     # todo:
 

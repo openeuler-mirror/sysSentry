@@ -15,7 +15,7 @@ import json
 
 
 class AlarmReport:
-    TASK_NAME = "SLOW_IO_DETECTION"
+    TASK_NAME = "ai_block_io"
 
     @staticmethod
     def report_pass(info: str):

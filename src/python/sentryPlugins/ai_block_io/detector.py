@@ -26,19 +26,26 @@ class Detector:
         self._threshold = threshold
         self._slidingWindow = sliding_window
         self._threshold.attach_observer(self._slidingWindow)
+        self._count = 0
 
     def get_metric_name(self):
         return self._metric_name
 
     def is_slow_io_event(self, io_data_dict_with_disk_name: dict):
-        logging.debug(f'Enter Detector: {self}')
+        self._count += 1
+        if self._count % 15 == 0:
+            self._count = 0
+            logging.info(f"({self._metric_name}) 's latest threshold is: {self._threshold.get_threshold()}.")
+        logging.debug(f'enter Detector: {self}')
         metric_value = get_metric_value_from_io_data_dict_by_metric_name(io_data_dict_with_disk_name, self._metric_name)
-        if metric_value > 1e-6:
-            logging.debug(f'Input metric value: {str(metric_value)}')
-            self._threshold.push_latest_data_to_queue(metric_value)
+        if metric_value is None:
+            logging.debug('not found metric value, so return None.')
+            return False, None, None
+        logging.debug(f'input metric value: {str(metric_value)}')
+        self._threshold.push_latest_data_to_queue(metric_value)
         detection_result = self._slidingWindow.is_slow_io_event(metric_value)
         logging.debug(f'Detection result: {str(detection_result)}')
-        logging.debug(f'Exit Detector: {self}')
+        logging.debug(f'exit Detector: {self}')
         return detection_result
 
     def __repr__(self):
