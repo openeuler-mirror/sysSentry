@@ -28,7 +28,7 @@ from .sentry_config import SentryConfig, get_log_level
 from .task_map import TasksMap
 from .global_values import SENTRY_RUN_DIR, CTL_SOCKET_PATH, SENTRY_RUN_DIR_PERM
 from .cron_process import period_tasks_handle
-from .callbacks import mod_list_show, task_start, task_get_status, task_stop, task_get_result
+from .callbacks import mod_list_show, task_start, task_get_status, task_stop, task_get_result, task_get_alarm
 from .mod_status import get_task_by_pid, set_runtime_status
 from .load_mods import load_tasks, reload_single_mod
 from .heartbeat import (heartbeat_timeout_chk, heartbeat_fd_create,
@@ -36,7 +36,11 @@ from .heartbeat import (heartbeat_timeout_chk, heartbeat_fd_create,
 from .result import RESULT_MSG_HEAD_LEN, RESULT_MSG_MAGIC_LEN, RESULT_MAGIC
 from .result import RESULT_LEVEL_ERR_MSG_DICT, ResultLevel
 from .utils import get_current_time_string
+from .alarm import alarm_register
 
+from xalarm.register_xalarm import xalarm_unregister
+
+clientId = -1
 
 CPU_EXIST = True
 try:
@@ -62,6 +66,7 @@ type_func = {
     'stop': task_stop,
     'get_status': task_get_status,
     'get_result': task_get_result,
+    'get_alarm': task_get_alarm,
     'reload': reload_single_mod
 }
 
@@ -107,11 +112,12 @@ def msg_data_process(msg_data):
         return "Invaild cmd type"
 
     cmd_param = data_struct['data']
-    logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, cmd_param)
+    logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, str(cmd_param))
     if cmd_type in type_func:
         ret, res_data = type_func[cmd_type](cmd_param)
     else:
         ret, res_data = type_func_void[cmd_type]()
+    logging.debug("msg_data_process res_data:%s",str(res_data))
     res_msg_struct = {"ret": ret, "data": res_data}
     res_msg = json.dumps(res_msg_struct)
 
@@ -584,10 +590,13 @@ def main():
         _ = SentryConfig.init_param()
         TasksMap.init_task_map()
         load_tasks()
+        clientId = alarm_register()
         main_loop()
 
     except Exception:
         logging.error('%s', traceback.format_exc())
     finally:
+        if clientId != -1:
+            xalarm_unregister(clientId)
         release_pidfile()
 

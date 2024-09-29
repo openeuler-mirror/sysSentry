@@ -27,6 +27,7 @@ CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
 SYSSENTRY_CONF_PATH = "/etc/sysSentry"
 INSPECT_CONF_PATH = "/etc/sysSentry/inspect.conf"
 TASK_LOG_DIR = "/var/log/sysSentry"
+DEFAULT_ALARM_CLEAR_TIME = 15
 
 SENTRY_RUN_DIR_PERM = 0o750
 
@@ -76,6 +77,9 @@ class InspectTask:
         self.env_file = ""
         # start mode
         self.conflict = "up"
+        # alarm id
+        self.alarm_id = -1
+        self.alarm_clear_time = DEFAULT_ALARM_CLEAR_TIME
 
     def start(self):
         """
