@@ -18,6 +18,7 @@ import logging
 
 from .task_map import TasksMap, ONESHOT_TYPE, PERIOD_TYPE
 from .mod_status import EXITED_STATUS, RUNNING_STATUS, WAITING_STATUS, set_runtime_status
+from .alarm import get_alarm_result
 
 
 def task_get_status(mod_name):
@@ -41,6 +42,22 @@ def task_get_result(mod_name):
 
     return "success", task.get_result()
 
+def task_get_alarm(data):
+    """get alarm by mod name"""
+    task_name = data['task_name']
+    time_range = data['time_range']
+    try:
+        detailed = data['detailed']
+    except KeyError:
+        logging.debug("Key 'detailed' does not exist in the dictionary")
+        detailed = None
+    task = TasksMap.get_task_by_name(task_name)
+    if not task:
+        return "failed", f"cannot find task by name {task_name}"
+    if not task.load_enabled:
+        return "failed", f"mod {task_name} is not enabled"
+
+    return "success", get_alarm_result(task_name, time_range, detailed)
 
 def task_stop(mod_name):
     """stop by mod name"""
