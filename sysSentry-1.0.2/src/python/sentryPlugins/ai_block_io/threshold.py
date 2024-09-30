@@ -79,9 +79,9 @@ class AbsoluteThreshold(Threshold):
 
 
 class BoxplotThreshold(Threshold):
-    def __init__(self, parameter: float = 1.5, data_queue_size: int = 10000, data_queue_update_size: int = 1000):
+    def __init__(self, boxplot_parameter: float = 1.5, data_queue_size: int = 10000, data_queue_update_size: int = 1000, **kwargs):
         super().__init__(data_queue_size, data_queue_update_size)
-        self.parameter = parameter
+        self.parameter = boxplot_parameter
 
     def _update_threshold(self):
         data = list(self.data_queue.queue)
@@ -94,6 +94,8 @@ class BoxplotThreshold(Threshold):
         self.notify_observer()
 
     def push_latest_data_to_queue(self, data):
+        if data < 1e-6:
+            return
         try:
             self.data_queue.put(data, block=False)
         except queue.Full:
@@ -111,9 +113,9 @@ class BoxplotThreshold(Threshold):
 
 
 class NSigmaThreshold(Threshold):
-    def __init__(self, parameter: float = 2.0, data_queue_size: int = 10000, data_queue_update_size: int = 1000):
+    def __init__(self, n_sigma_parameter: float = 3.0, data_queue_size: int = 10000, data_queue_update_size: int = 1000, **kwargs):
         super().__init__(data_queue_size, data_queue_update_size)
-        self.parameter = parameter
+        self.parameter = n_sigma_parameter
 
     def _update_threshold(self):
         data = list(self.data_queue.queue)
@@ -125,6 +127,8 @@ class NSigmaThreshold(Threshold):
         self.notify_observer()
 
     def push_latest_data_to_queue(self, data):
+        if data < 1e-6:
+            return
         try:
             self.data_queue.put(data, block=False)
         except queue.Full:
@@ -157,4 +161,3 @@ class ThresholdFactory:
             return NSigmaThreshold(*args, **kwargs)
         else:
             raise ValueError(f"Invalid threshold type: {threshold_type}")
-

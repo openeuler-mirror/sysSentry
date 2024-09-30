@@ -8,12 +8,15 @@
 # IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
 # PURPOSE.
 # See the Mulan PSL v2 for more details.
+
 import logging
 from dataclasses import asdict
+
 
 from .threshold import ThresholdType
 from .sliding_window import SlidingWindowType
 from .io_data import MetricName, IOData
+
 
 def get_threshold_type_enum(algorithm_type: str):
     if algorithm_type.lower() == 'absolute':
@@ -22,7 +25,7 @@ def get_threshold_type_enum(algorithm_type: str):
         return ThresholdType.BoxplotThreshold
     if algorithm_type.lower() == 'n_sigma':
         return ThresholdType.NSigmaThreshold
-    logging.info('not found correct algorithm type, use default: boxplot.')
+    logging.warning(f"the algorithm type: {algorithm_type} you set is invalid, use default value: boxplot")
     return ThresholdType.BoxplotThreshold
 
 
@@ -33,7 +36,7 @@ def get_sliding_window_type_enum(sliding_window_type: str):
         return SlidingWindowType.ContinuousSlidingWindow
     if sliding_window_type.lower() == 'median':
         return SlidingWindowType.MedianSlidingWindow
-    logging.info('not found correct sliding window type, use default: not_continuous.')
+    logging.warning(f"the sliding window type: {sliding_window_type} you set is invalid, use default value: not_continuous")
     return SlidingWindowType.NotContinuousSlidingWindow
 
 
@@ -62,6 +65,8 @@ def get_log_level(log_level: str):
         return logging.INFO
     elif log_level.lower() == 'warning':
         return logging.WARNING
-    elif log_level.lower() == 'fatal':
-        return logging.FATAL
-    return None
+    elif log_level.lower() == 'error':
+        return logging.ERROR
+    elif log_level.lower() == 'critical':
+        return logging.CRITICAL
+    return logging.INFO
