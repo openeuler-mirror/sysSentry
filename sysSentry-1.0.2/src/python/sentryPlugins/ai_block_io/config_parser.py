@@ -21,7 +21,9 @@ LOG_FORMAT = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(messag
 
 
 def init_log_format(log_level: str):
-    logging.basicConfig(level=get_log_level(log_level), format=LOG_FORMAT)
+    logging.basicConfig(level=get_log_level(log_level.lower()), format=LOG_FORMAT)
+    if log_level.lower() not in ('info', 'warning', 'error', 'debug'):
+        logging.warning(f'the log_level: {log_level} you set is invalid, use default value: info.')
 
 
 class ConfigParser:
@@ -189,8 +191,12 @@ class ConfigParser:
 
     def read_config_from_file(self):
         con = configparser.ConfigParser()
-        con.read(self.__config_file_name, encoding='utf-8')
-
+        try:
+            con.read(self.__config_file_name, encoding='utf-8')
+        except configparser.Error as e:
+            logging.warning(f'config file read error: {e}, use default value.')
+            con = configparser.ConfigParser()
+            
         if con.has_section('common'):
             items_common = dict(con.items('common'))
             self.__log_level = items_common.get('log_level', ConfigParser.DEFAULT_LOG_LEVEL)
