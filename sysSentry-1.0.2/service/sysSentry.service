@@ -2,7 +2,7 @@
 Description=EulerOS System Inspection Frame
 
 [Service]
-ExecStart=/usr/bin/syssentry
+ExecStart=/usr/bin/python3 /usr/bin/syssentry
 ExecStop=/bin/kill $MAINPID
 KillMode=process
 Restart=on-failure
