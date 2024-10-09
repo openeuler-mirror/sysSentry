@@ -25,6 +25,7 @@ MAX_PARAM_LENGTH = 256
 
 RESULT_MSG_DATA_LEN = 4
 CTL_MSG_LEN_LEN = 3
+ALARM_MSG_DATA_LEN = 6
 DEFAULT_ALARM_TIME_RANGE = 10
 
 def status_output_format(res_data):
@@ -173,6 +174,8 @@ if __name__ == '__main__':
     request_message = json.dumps(req_msg_struct)
     if client_args.cmd_type == 'get_result':
         result_message = client_send_and_recv(request_message, RESULT_MSG_DATA_LEN)
+    elif client_args.cmd_type == 'get_alarm':
+        result_message = client_send_and_recv(request_message, ALARM_MSG_DATA_LEN)
     else:
         result_message = client_send_and_recv(request_message, CTL_MSG_LEN_LEN)
     if not result_message:
