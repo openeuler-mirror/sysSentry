@@ -118,11 +118,13 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Di
         logging.debug(f"get_alarm_result: final alarm_list of {alarm_id} has {len(alarm_list)} elements")
 
         def xalarm_to_dict(alarm_info: Xalarm) -> dict:
+            timestamp = alarm_info.timetamp.tv_sec + alarm_info.timetamp.tv_usec / 1000000
+            dt_object = datetime.fromtimestamp(int(timestamp))
             return {
                 'alarm_id': xalarm_getid(alarm_info),
                 'alarm_type': xalarm_gettype(alarm_info),
                 'alarm_level': xalarm_getlevel(alarm_info),
-                'timetamp': xalarm_gettime(alarm_info),
+                'timestamp': dt_object.strftime("%Y-%m-%d %H:%M:%S"),
                 'msg1': xalarm_getdesc(alarm_info)
             }
 
