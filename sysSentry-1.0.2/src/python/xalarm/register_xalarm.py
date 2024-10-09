@@ -26,7 +26,7 @@ ALARM_REGISTER_INFO = None
 
 
 class AlarmRegister:
-    def __init__(self, id_filter: list[bool], callback: callable):
+    def __init__(self, id_filter: list, callback: callable):
         self.id_filter = id_filter
         self.callback = callback
         self.socket = self.create_unix_socket()
@@ -49,7 +49,7 @@ class AlarmRegister:
             return False
         return True
     
-    def set_id_filter(self, id_filter: list[bool]) -> bool:
+    def set_id_filter(self, id_filter: list) -> bool:
         if (len(id_filter) > MAX_NUM_OF_ALARM_ID):
             sys.stderr.write("set_id_filter: invalid param id_filter\n")
             return False
@@ -117,7 +117,7 @@ class AlarmRegister:
         self.thread.join()
 
 
-def xalarm_register(callback: callable, id_filter: list[bool]) -> int:
+def xalarm_register(callback: callable, id_filter: list) -> int:
     global ALARM_REGISTER_INFO
 
     if ALARM_REGISTER_INFO is not None:
@@ -147,7 +147,7 @@ def xalarm_unregister(clientId: int) -> None:
     ALARM_REGISTER_INFO = None
 
 
-def xalarm_upgrade(clientId: int, id_filter: list[bool]) -> None:
+def xalarm_upgrade(clientId: int, id_filter: list) -> None:
     global ALARM_REGISTER_INFO
     if clientId < 0:
         sys.stderr.write("xalarm_unregister: invalid client\n")
@@ -184,5 +184,9 @@ def xalarm_gettime(alarm_info: Xalarm) -> int:
 def xalarm_getdesc(alarm_info: Xalarm) -> str:
     if not alarm_info:
         return None
-    return alarm_info.msg1
+    try:
+        desc_str = alarm_info.msg1.rstrip(b'\x00').decode('utf-8')
+    except UnicodeError:
+        desc_str = None
+    return desc_str
 
