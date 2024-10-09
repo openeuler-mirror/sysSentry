@@ -16,6 +16,7 @@ import time
 from .utils import is_abnormal
 from sentryCollector.collect_plugin import is_iocollect_valid, get_io_data, Result_Messages
 from syssentry.result import ResultLevel, report_result
+from xalarm.sentry_notify import xalarm_report, MINOR_ALM, ALARM_TYPE_OCCUR
 
 
 TASK_NAME = "avg_block_io"
@@ -68,19 +69,33 @@ def process_report_data(disk_name, rw, io_data):
     if not is_abnormal((disk_name, 'bio', rw), io_data):
         return
 
+    msg = {"alarm_source": TASK_NAME, "driver_name": disk_name, "io_type": rw}
+
     ctrl_stage = ['throtl', 'wbt', 'iocost', 'bfq']
     for stage_name in ctrl_stage:
         if is_abnormal((disk_name, stage_name, rw), io_data):
-            logging.warning("{} - {} - {} report IO press".format(time.ctime(), disk_name, rw))
+            msg["reason"] = "IO press slow"
+            msg["block_stack"] = f"bio,{stage_name}"
+            logging.warning("{} - {} report IO press slow".format(disk_name, rw))
+            xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
             return
 
     if is_abnormal((disk_name, 'rq_driver', rw), io_data):
-        logging.warning("{} - {} - {} report driver".format(time.ctime(), disk_name, rw))
+        msg["reason"] = "driver slow"
+        msg["block_stack"] = "bio,rq_driver"
+        logging.warning("{} - {} report driver slow".format(disk_name, rw))
+        xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
         return
 
     kernel_stage = ['gettag', 'plug', 'deadline', 'hctx', 'requeue']
     for stage_name in kernel_stage:
         if is_abnormal((disk_name, stage_name, rw), io_data):
-            logging.warning("{} - {} - {} report kernel".format(time.ctime(), disk_name, rw))
+            msg["reason"] = "kernel slow"
+            msg["block_stack"] = f"bio,{stage_name}"
+            logging.warning("{} - {} report kernel slow".format(disk_name, rw))
+            xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
             return
-    logging.warning("{} - {} - {} report IO press".format(time.ctime(), disk_name, rw))
+    msg["reason"] = "unknown"
+    msg["block_stack"] = "bio"
+    logging.warning("{} - {} report UNKNOWN slow".format(disk_name, rw))
+    xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
