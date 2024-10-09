@@ -30,7 +30,7 @@
 #define WBT_RES    (map_fd[5]) 
 #define TAG_MAP    (map_fd[7])
 #define TAG_RES    (map_fd[8])
-#define BPF_FILE   "/usr/lib64/ebpf_collector.bpf.o"
+#define BPF_FILE   "/usr/lib/ebpf_collector.bpf.o"
 
 typedef struct {
     int major;
