@@ -326,7 +326,7 @@ def get_disk_type(disk):
             result['ret'] = ResultMessage.RESULT_DISK_NOEXIST
             return result
         except Exception as e:
-            logging.error("open disk_file %s hanppen an error: %s", disk_file, e)
+            logging.error("open disk_file %s happen an error: %s", disk_file, e)
             return result
     else:
         result['ret'] = ResultMessage.RESULT_DISK_TYPE_MISMATCH
