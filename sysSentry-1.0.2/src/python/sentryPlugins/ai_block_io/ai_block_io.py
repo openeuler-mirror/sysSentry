@@ -16,8 +16,7 @@ import logging
 from .detector import Detector
 from .threshold import ThresholdFactory, AbsoluteThreshold
 from .sliding_window import SlidingWindowFactory
-from .utils import (get_threshold_type_enum, get_sliding_window_type_enum, get_data_queue_size_and_update_size,
-                   get_log_level)
+from .utils import get_data_queue_size_and_update_size
 from .config_parser import ConfigParser
 from .data_access import get_io_data_from_collect_plug, check_collect_valid
 from .io_data import MetricName
@@ -45,25 +44,25 @@ class SlowIODetection:
 
     def __init_detector_name_list(self):
         self._disk_list = check_collect_valid(self._config_parser.get_slow_io_detect_frequency())
+        logging.info(f"ai_block_io plug has found disks: {self._disk_list}")
         disks_to_detection: list = self._config_parser.get_disks_to_detection()
         # 情况1：None，则启用所有磁盘检测
         # 情况2：is not None and len = 0，则不启动任何磁盘检测
         # 情况3：len ！= 0，则取交集
         if disks_to_detection is None:
+            logging.warning("you not specify any disk or use default, so ai_block_io will enable all available disk.")
             for disk in self._disk_list:
                 self._detector_name_list.append(MetricName(disk, "bio", "read", "latency"))
                 self._detector_name_list.append(MetricName(disk, "bio", "write", "latency"))
         elif len(disks_to_detection) == 0:
-            logging.warning('please attention: conf file not specify any disk to detection, '
-                            'so it will not start ai block io.')
+            logging.warning('please attention: conf file not specify any disk to detection, so it will not start ai block io.')
         else:
-            disks_name_to_detection = []
-            for disk_name_to_detection in disks_to_detection:
-                disks_name_to_detection.append(disk_name_to_detection.get_disk_name())
-            disk_intersection = [disk for disk in self._disk_list if disk in disks_name_to_detection]
-            for disk in disk_intersection:
-                self._detector_name_list.append(MetricName(disk, "bio", "read", "latency"))
-                self._detector_name_list.append(MetricName(disk, "bio", "write", "latency"))
+            for disk_to_detection in disks_to_detection:
+                if disk_to_detection in self._disk_list:
+                    self._detector_name_list.append(MetricName(disk_to_detection, "bio", "read", "latency"))
+                    self._detector_name_list.append(MetricName(disk_to_detection, "bio", "write", "latency"))
+                else:
+                    logging.warning(f"disk：[{disk_to_detection}] not in available disk list, so it will be ignored.")
         logging.info(f'start to detection follow disk and it\'s metric: {self._detector_name_list}')
 
     def __init_detector(self):
