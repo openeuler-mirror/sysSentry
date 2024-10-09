@@ -75,7 +75,7 @@ class AbsoluteThreshold(Threshold):
         pass
 
     def __repr__(self):
-        return "AbsoluteThreshold"
+        return "[AbsoluteThreshold]"
 
 
 class BoxplotThreshold(Threshold):
@@ -109,7 +109,7 @@ class BoxplotThreshold(Threshold):
             self.new_data_size = 0
 
     def __repr__(self):
-        return "BoxplotThreshold"
+        return f"[BoxplotThreshold, param is: {self.parameter}]"
 
 
 class NSigmaThreshold(Threshold):
@@ -142,7 +142,7 @@ class NSigmaThreshold(Threshold):
             self.new_data_size = 0
 
     def __repr__(self):
-        return "NSigmaThreshold"
+        return f"[NSigmaThreshold, param is: {self.parameter}]"
 
 
 class ThresholdType(Enum):

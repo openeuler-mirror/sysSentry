@@ -10,18 +10,19 @@
 # See the Mulan PSL v2 for more details.
 
 import configparser
-import json
 import logging
 
-from .io_data import MetricName
 from .threshold import ThresholdType
 from .utils import get_threshold_type_enum, get_sliding_window_type_enum, get_log_level
+
 
 LOG_FORMAT = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
 
 
 def init_log_format(log_level: str):
-    logging.basicConfig(level=get_log_level(log_level), format=LOG_FORMAT)
+    logging.basicConfig(level=get_log_level(log_level.lower()), format=LOG_FORMAT)
+    if log_level.lower() not in ('info', 'warning', 'error', 'debug'):
+        logging.warning(f'the log_level: {log_level} you set is invalid, use default value: info.')
 
 
 class ConfigParser:
@@ -43,7 +44,7 @@ class ConfigParser:
         self.__absolute_threshold = ConfigParser.DEFAULT_ABSOLUTE_THRESHOLD
         self.__slow_io_detect_frequency = ConfigParser.DEFAULT_SLOW_IO_DETECTION_FREQUENCY
         self.__log_level = ConfigParser.DEFAULT_LOG_LEVEL
-        self.__disks_to_detection: list = []
+        self.__disks_to_detection = None
 
         self.__algorithm_type = ConfigParser.DEFAULT_ALGORITHM_TYPE
         self.__train_data_duration = ConfigParser.DEFAULT_TRAIN_UPDATE_DURATION
@@ -83,26 +84,20 @@ class ConfigParser:
             logging.warning(f'slow_io_detect_frequency type conversion has error, use default value: {self.__slow_io_detect_frequency}.')
 
     def __read__disks_to_detect(self, items_common: dict):
-        disks_to_detection = items_common.get('disks_to_detect')
+        disks_to_detection = items_common.get('disk')
         if disks_to_detection is None:
-            logging.warning(f'config of disks_to_detect not found, the default value be used.')
+            logging.warning(f'config of disk not found, the default value will be used.')
             self.__disks_to_detection = None
             return
-        try:
-            disks_to_detection_list = json.loads(disks_to_detection)
-            for disk_to_detection in disks_to_detection_list:
-                disk_name = disk_to_detection.get('disk_name', None)
-                stage_name = disk_to_detection.get('stage_name', None)
-                io_access_type_name = disk_to_detection.get('io_access_type_name', None)
-                metric_name = disk_to_detection.get('metric_name', None)
-                if not (disk_name is None or stage_name is None or io_access_type_name is None or metric_name is None):
-                    metric_name_object = MetricName(disk_name, stage_name, io_access_type_name, metric_name)
-                    self.__disks_to_detection.append(metric_name_object)
-                else:
-                    logging.warning(f'config of disks_to_detect\'s some part has some error: {disk_to_detection}, it will be ignored.')
-        except json.decoder.JSONDecodeError as e:
-            logging.warning(f'config of disks_to_detect is error: {e}, it will be ignored and default value be used.')
+        disk_list = disks_to_detection.split(',')
+        if len(disk_list) == 0 or (len(disk_list) == 1 and disk_list[0] == ''):
+            logging.warning("you don't specify any disk.")
+            self.__disks_to_detection = []
+            return
+        if len(disk_list) == 1 and disk_list[0] == 'default':
             self.__disks_to_detection = None
+            return
+        self.__disks_to_detection = disk_list
 
     def __read__train_data_duration(self, items_algorithm: dict):
         try:
@@ -189,7 +184,12 @@ class ConfigParser:
 
     def read_config_from_file(self):
         con = configparser.ConfigParser()
-        con.read(self.__config_file_name, encoding='utf-8')
+        try:
+            con.read(self.__config_file_name, encoding='utf-8')
+        except configparser.Error as e:
+            init_log_format(self.__log_level)
+            logging.critical(f'config file read error: {e}, ai_block_io plug will exit.')
+            exit(1)
 
         if con.has_section('common'):
             items_common = dict(con.items('common'))

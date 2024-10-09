@@ -50,6 +50,6 @@ class Detector:
 
     def __repr__(self):
         return (f'disk_name: {self._metric_name.get_disk_name()}, stage_name: {self._metric_name.get_stage_name()},'
-                f' access_type_name: {self._metric_name.get_io_access_type_name()},'
+                f' io_type_name: {self._metric_name.get_io_access_type_name()},'
                 f' metric_name: {self._metric_name.get_metric_name()}, threshold_type: {self._threshold},'
                 f' sliding_window_type: {self._slidingWindow}')
