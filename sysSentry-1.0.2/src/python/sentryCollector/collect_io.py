@@ -179,13 +179,17 @@ class CollectIo():
             blk_io_hierarchy_path = os.path.join(disk_path, 'blk_io_hierarchy')
 
             if not os.path.exists(blk_io_hierarchy_path):
-                logging.error("no blk_io_hierarchy directory found in %s, skipping.", disk_name)
+                logging.warning("no blk_io_hierarchy directory found in %s, skipping.", disk_name)
                 continue
 
             for file_name in os.listdir(blk_io_hierarchy_path):
                 file_path = os.path.join(blk_io_hierarchy_path, file_name)
                 if file_name == 'stats':
                     all_disk.append(disk_name)
+        
+        if len(all_disk) == 0:
+            logging.debug("no blk_io_hierarchy disk, it is not lock-free collection")
+            return False
 
         if self.loop_all:
             self.disk_list = all_disk
