@@ -187,8 +187,9 @@ class ConfigParser:
         try:
             con.read(self.__config_file_name, encoding='utf-8')
         except configparser.Error as e:
-            logging.warning(f'config file read error: {e}, use default value.')
-            con = configparser.ConfigParser()
+            init_log_format(self.__log_level)
+            logging.critical(f'config file read error: {e}, ai_block_io plug will exit.')
+            exit(1)
 
         if con.has_section('common'):
             items_common = dict(con.items('common'))
