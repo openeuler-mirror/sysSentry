@@ -52,7 +52,7 @@ class SlidingWindow:
         return False, None, None
 
     def __repr__(self):
-        return "SlidingWindow"
+        return "[SlidingWindow]"
 
 
 class NotContinuousSlidingWindow(SlidingWindow):
@@ -65,7 +65,7 @@ class NotContinuousSlidingWindow(SlidingWindow):
         return False, self._io_data_queue, self._ai_threshold
 
     def __repr__(self):
-        return "NotContinuousSlidingWindow"
+        return f"[NotContinuousSlidingWindow, window size: {self._queue_length}, threshold: {self._queue_threshold}]"
 
 
 class ContinuousSlidingWindow(SlidingWindow):
@@ -84,7 +84,7 @@ class ContinuousSlidingWindow(SlidingWindow):
         return False, self._io_data_queue, self._ai_threshold
 
     def __repr__(self):
-        return "ContinuousSlidingWindow"
+        return f"[ContinuousSlidingWindow, window size: {self._queue_length}, threshold: {self._queue_threshold}]"
 
 
 class MedianSlidingWindow(SlidingWindow):
@@ -98,7 +98,7 @@ class MedianSlidingWindow(SlidingWindow):
         return False, self._io_data_queue, self._ai_threshold
 
     def __repr__(self):
-        return "MedianSlidingWindow"
+        return f"[MedianSlidingWindow, window size: {self._queue_length}]"
 
 
 class SlidingWindowFactory:
