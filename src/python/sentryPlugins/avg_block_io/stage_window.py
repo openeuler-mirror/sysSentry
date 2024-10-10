@@ -14,6 +14,11 @@ class AbnormalWindowBase:
         self.window_size = window_size
         self.window_threshold = window_threshold
         self.abnormal_window = [False] * window_size
+        self.window_data = [-1] * window_size
+
+    def append_new_data(self, ab_res):
+        self.window_data.pop(0)
+        self.window_data.append(ab_res)
 
     def append_new_period(self, ab_res, avg_val=0):
         self.abnormal_window.pop(0)
@@ -24,6 +29,9 @@ class AbnormalWindowBase:
 
     def is_abnormal_window(self):
         return sum(self.abnormal_window) > self.window_threshold
+
+    def window_data_to_string(self):
+        return ",".join(str(x) for x in self.window_data)
 
 
 class IoWindow(AbnormalWindowBase):

@@ -13,7 +13,7 @@ import logging
 import sys
 import time
 
-from .utils import is_abnormal
+from .utils import is_abnormal, get_win_data, log_slow_win
 from sentryCollector.collect_plugin import is_iocollect_valid, get_io_data, Result_Messages
 from syssentry.result import ResultLevel, report_result
 from xalarm.sentry_notify import xalarm_report, MINOR_ALM, ALARM_TYPE_OCCUR
@@ -66,36 +66,51 @@ def report_alarm_fail(alarm_info):
 
 def process_report_data(disk_name, rw, io_data):
     """check abnormal window and report to xalarm"""
-    if not is_abnormal((disk_name, 'bio', rw), io_data):
+    abnormal, abnormal_list = is_abnormal((disk_name, 'bio', rw), io_data)
+    if not abnormal:
         return
 
-    msg = {"alarm_source": TASK_NAME, "driver_name": disk_name, "io_type": rw}
+    msg = {
+        "alarm_source": TASK_NAME, "driver_name": disk_name, "io_type": rw,
+        "reason": "unknown", "block_stack": "bio", "alarm_type": abnormal_list,
+        "details": get_win_data(disk_name, rw, io_data)
+        }
 
+    # io press
     ctrl_stage = ['throtl', 'wbt', 'iocost', 'bfq']
     for stage_name in ctrl_stage:
-        if is_abnormal((disk_name, stage_name, rw), io_data):
-            msg["reason"] = "IO press slow"
-            msg["block_stack"] = f"bio,{stage_name}"
-            logging.warning("{} - {} report IO press slow".format(disk_name, rw))
-            xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
-            return
-
-    if is_abnormal((disk_name, 'rq_driver', rw), io_data):
-        msg["reason"] = "driver slow"
-        msg["block_stack"] = "bio,rq_driver"
-        logging.warning("{} - {} report driver slow".format(disk_name, rw))
+        abnormal, abnormal_list = is_abnormal((disk_name, 'bio', rw), io_data)
+        if not abnormal:
+            continue
+        msg["reason"] = "IO press"
+        msg["block_stack"] = f"bio,{stage_name}"
+        msg["alarm_type"] = abnormal_list
+        log_slow_win(msg, "IO press")
         xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
         return
 
+    # driver slow
+    abnormal, abnormal_list = is_abnormal((disk_name, 'rq_driver', rw), io_data)
+    if abnormal:
+        msg["reason"] = "driver slow"
+        msg["block_stack"] = "bio,rq_driver"
+        msg["alarm_type"] = abnormal_list
+        log_slow_win(msg, "driver slow")
+        xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
+        return
+
+    # kernel slow
     kernel_stage = ['gettag', 'plug', 'deadline', 'hctx', 'requeue']
     for stage_name in kernel_stage:
-        if is_abnormal((disk_name, stage_name, rw), io_data):
-            msg["reason"] = "kernel slow"
-            msg["block_stack"] = f"bio,{stage_name}"
-            logging.warning("{} - {} report kernel slow".format(disk_name, rw))
-            xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
-            return
-    msg["reason"] = "unknown"
-    msg["block_stack"] = "bio"
-    logging.warning("{} - {} report UNKNOWN slow".format(disk_name, rw))
+        abnormal, abnormal_list = is_abnormal((disk_name, stage_name, rw), io_data)
+        if not abnormal:
+            continue
+        msg["reason"] = "kernel slow"
+        msg["block_stack"] = f"bio,{stage_name}"
+        msg["alarm_type"] = abnormal_list
+        log_slow_win(msg, "kernel slow")
+        xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
+        return
+
+    log_slow_win(msg, "unknown")
     xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
