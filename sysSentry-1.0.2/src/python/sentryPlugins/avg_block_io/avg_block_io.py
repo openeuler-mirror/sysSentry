@@ -194,11 +194,11 @@ def init_io_win(io_dic, config, common_param):
 
                 if avg_lim_value and avg_time_value and tot_lim_value:
                     io_data[disk_name][stage_name][rw]["latency"] = IoWindow(window_size=io_dic["win_size"], window_threshold=io_dic["win_threshold"], abnormal_multiple=avg_time_value, abnormal_multiple_lim=avg_lim_value, abnormal_time=tot_lim_value)
-                    logging.debug("Successfully create {}-{}-{} latency window".format(disk_name, stage_name, rw))
+                    logging.debug("Successfully create {}-{}-{}-latency window".format(disk_name, stage_name, rw))
 
                 if iodump_lim_value is not None:
                     io_data[disk_name][stage_name][rw]["iodump"] = IoDumpWindow(window_size=io_dic["win_size"], window_threshold=io_dic["win_threshold"], abnormal_time=iodump_lim_value)
-                    logging.debug("Successfully create {}-{}-{} iodump window".format(disk_name, stage_name, rw))
+                    logging.debug("Successfully create {}-{}-{}-iodump window".format(disk_name, stage_name, rw))
     return io_data, io_avg_value
 
 
