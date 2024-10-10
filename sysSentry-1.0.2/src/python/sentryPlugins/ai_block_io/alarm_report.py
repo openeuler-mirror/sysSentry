@@ -9,41 +9,72 @@
 # PURPOSE.
 # See the Mulan PSL v2 for more details.
 
-from syssentry.result import ResultLevel, report_result
 import logging
 import json
 
+from xalarm.sentry_notify import (
+    xalarm_report,
+    MINOR_ALM,
+    MAJOR_ALM,
+    CRITICAL_ALM,
+    ALARM_TYPE_OCCUR,
+    ALARM_TYPE_RECOVER,
+)
 
-class AlarmReport:
+from syssentry.result import ResultLevel, report_result
+
+
+class Report:
     TASK_NAME = "ai_block_io"
 
     @staticmethod
     def report_pass(info: str):
-        report_result(AlarmReport.TASK_NAME, ResultLevel.PASS, json.dumps({"msg": info}))
-        logging.info(f'Report {AlarmReport.TASK_NAME} PASS: {info}')
+        report_result(Report.TASK_NAME, ResultLevel.PASS, json.dumps({"msg": info}))
+        logging.info(f'Report {Report.TASK_NAME} PASS: {info}')
 
     @staticmethod
     def report_fail(info: str):
-        report_result(AlarmReport.TASK_NAME, ResultLevel.FAIL, json.dumps({"msg": info}))
-        logging.info(f'Report {AlarmReport.TASK_NAME} FAIL: {info}')
+        report_result(Report.TASK_NAME, ResultLevel.FAIL, json.dumps({"msg": info}))
+        logging.info(f'Report {Report.TASK_NAME} FAIL: {info}')
 
     @staticmethod
     def report_skip(info: str):
-        report_result(AlarmReport.TASK_NAME, ResultLevel.SKIP, json.dumps({"msg": info}))
-        logging.info(f'Report {AlarmReport.TASK_NAME} SKIP: {info}')
+        report_result(Report.TASK_NAME, ResultLevel.SKIP, json.dumps({"msg": info}))
+        logging.info(f'Report {Report.TASK_NAME} SKIP: {info}')
+
+
+class Xalarm:
+    ALARM_ID = 1002
 
     @staticmethod
-    def report_minor_alm(info: str):
-        report_result(AlarmReport.TASK_NAME, ResultLevel.MINOR_ALM, json.dumps({"msg": info}))
-        logging.info(f'Report {AlarmReport.TASK_NAME} MINOR_ALM: {info}')
+    def minor(info: dict):
+        info_str = json.dumps(info)
+        xalarm_report(Xalarm.ALARM_ID, MINOR_ALM, ALARM_TYPE_OCCUR, info_str)
+        logging.info(f"Report {Xalarm.ALARM_ID} MINOR_ALM: {info_str}")
 
     @staticmethod
-    def report_major_alm(info: str):
-        report_result(AlarmReport.TASK_NAME, ResultLevel.MAJOR_ALM, json.dumps({"msg": info}))
-        logging.info(f'Report {AlarmReport.TASK_NAME} MAJOR_ALM: {info}')
+    def major(info: dict):
+        info_str = json.dumps(info)
+        xalarm_report(Xalarm.ALARM_ID, MAJOR_ALM, ALARM_TYPE_OCCUR, info_str)
+        logging.info(f"Report {Xalarm.ALARM_ID} MAJOR_ALM: {info_str}")
 
     @staticmethod
-    def report_critical_alm(info: str):
-        report_result(AlarmReport.TASK_NAME, ResultLevel.CRITICAL_ALM, json.dumps({"msg": info}))
-        logging.info(f'Report {AlarmReport.TASK_NAME} CRITICAL_ALM: {info}')
+    def critical(info: dict):
+        info_str = json.dumps(info)
+        xalarm_report(Xalarm.ALARM_ID, CRITICAL_ALM, ALARM_TYPE_OCCUR, info_str)
+        logging.info(f"Report {Xalarm.ALARM_ID} CRITICAL_ALM: {info_str}")
 
+    def minor_recover(info: dict):
+        info_str = json.dumps(info)
+        xalarm_report(Xalarm.ALARM_ID, MINOR_ALM, ALARM_TYPE_RECOVER, info_str)
+        logging.info(f"Report {Xalarm.ALARM_ID} MINOR_ALM Recover: {info_str}")
+
+    def major_recover(info: dict):
+        info_str = json.dumps(info)
+        xalarm_report(Xalarm.ALARM_ID, MAJOR_ALM, ALARM_TYPE_RECOVER, info_str)
+        logging.info(f"Report {Xalarm.ALARM_ID} MAJOR_ALM Recover: {info_str}")
+
+    def critical_recover(info: dict):
+        info_str = json.dumps(info)
+        xalarm_report(Xalarm.ALARM_ID, CRITICAL_ALM, ALARM_TYPE_RECOVER, info_str)
+        logging.info(f"Report {Xalarm.ALARM_ID} CRITICAL_ALM Recover: {info_str}")
