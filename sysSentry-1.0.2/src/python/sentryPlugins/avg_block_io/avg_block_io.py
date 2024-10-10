@@ -14,8 +14,9 @@ import configparser
 import time
 
 from .stage_window import IoWindow, IoDumpWindow
-from .module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data, sig_handler
-from .utils import update_avg_and_check_abnormal, get_log_level
+from .module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data, sig_handler, get_disk_type_by_name
+from .utils import update_avg_and_check_abnormal, get_log_level, get_section_value
+from sentryCollector.collect_plugin import Disk_Type
 
 CONFIG_FILE = "/etc/sysSentry/plugins/avg_block_io.ini"
 
@@ -37,44 +38,40 @@ def read_config_common(config):
         disk = [] if disk_name == "default" else disk_name.split(",")
     except configparser.NoOptionError:
         disk = []
-        logging.warning("Unset disk, set to default")
+        logging.warning("Unset common.disk, set to default")
 
     try:
         stage_name = config.get("common", "stage")
         stage = [] if stage_name == "default" else stage_name.split(",")
     except configparser.NoOptionError:
         stage = []
-        logging.warning("Unset stage, set to read,write")
+        logging.warning("Unset common.stage, set to read,write")
 
     if len(disk) > 10:
-        logging.warning("Too many disks, record only max 10 disks")
+        logging.warning("Too many common.disks, record only max 10 disks")
         disk = disk[:10]
 
     try:
         iotype_name = config.get("common", "iotype").split(",")
-        iotype_list = [rw.lower() for rw in iotype_name if rw.lower() in ['read', 'write', 'flush', 'discard']]
-        err_iotype =  [rw.lower() for rw in iotype_name if rw.lower() not in ['read', 'write', 'flush', 'discard']]
+        iotype_list = [rw.lower() for rw in iotype_name if rw.lower() in ['read', 'write']]
+        err_iotype = [rw.lower() for rw in iotype_name if rw.lower() not in ['read', 'write']]
 
-        if iotype_list in [None, []]:
-            iotype_list = ["read", "write"]
+        if err_iotype:
+            report_alarm_fail("Invalid common.iotype config")
+
     except configparser.NoOptionError:
-        iotype = ["read", "write"]
-        logging.warning("Unset iotype, set to default")
-
-    if err_iotype:
-        logging.warning("{} in common.iotype are not valid, set iotype={}".format(err_iotype, iotype_list))
-    
+        iotype_list = ["read", "write"]
+        logging.warning("Unset common.iotype, set to default")
     
     try:
         period_time = int(config.get("common", "period_time"))
         if not (1 <= period_time <= 300):
             raise ValueError("Invalid period_time")
     except ValueError:
-        period_time = 1
-        logging.warning("Invalid period_time, set to 1s")
+        report_alarm_fail("Invalid common.period_time")
     except configparser.NoOptionError:
         period_time = 1
-        logging.warning("Unset period_time, use 1s as default")
+        logging.warning("Unset common.period_time, use 1s as default")
 
     return period_time, disk, stage, iotype_list
 
@@ -87,76 +84,56 @@ def read_config_algorithm(config):
     try:
         win_size = int(config.get("algorithm", "win_size"))
         if not (1 <= win_size <= 300):
-            raise ValueError("Invalid win_size")
+            raise ValueError("Invalid algorithm.win_size")
     except ValueError:
-        win_size = 30
-        logging.warning("Invalid win_size, set to 30")
+        report_alarm_fail("Invalid algorithm.win_size config")
     except configparser.NoOptionError:
         win_size = 30
-        logging.warning("Unset win_size, use 30 as default")
+        logging.warning("Unset algorithm.win_size, use 30 as default")
     
     try:
         win_threshold = int(config.get("algorithm", "win_threshold"))
         if win_threshold < 1 or win_threshold > 300 or win_threshold > win_size:
-            raise ValueError("Invalid win_threshold")
+            raise ValueError("Invalid algorithm.win_threshold")
     except ValueError:
-        win_threshold = 6
-        logging.warning("Invalid win_threshold, set to 6")
+        report_alarm_fail("Invalid algorithm.win_threshold config")
     except configparser.NoOptionError:
         win_threshold = 6
-        logging.warning("Unset win_threshold, use 6 as default")
+        logging.warning("Unset algorithm.win_threshold, use 6 as default")
 
     return win_size, win_threshold
 
 
-def read_config_lat_iodump(io_dic, config):
-    """read config file, get [latency] [iodump] section value"""
+def read_config_latency(config):
+    """read config file, get [latency_xxx] section value"""
     common_param = {}
-    lat_sec = None
-    if not config.has_section("latency"):
-        logging.warning("Cannot find latency section in config file")
-    else:
-        lat_sec = config["latency"]
+    for type_name in Disk_Type:
+        section_name = f"latency_{Disk_Type[type_name]}"
+        if not config.has_section(section_name):
+            report_alarm_fail(f"Cannot find {section_name} section in config file")
 
-    iodump_sec = None
-    if not config.has_section("iodump"):
-        logging.warning("Cannot find iodump section in config file")
-    else:
-        iodump_sec = config["iodump"]
-    
-    if not lat_sec and not iodump_sec:
-        return common_param
-
-    for io_type in io_dic["iotype_list"]:
-        common_param[io_type] = {}
-
-        latency_keys = {
-            "avg_lim": "{}_avg_lim".format(io_type),
-            "avg_time": "{}_avg_time".format(io_type),
-            "tot_lim": "{}_tot_lim".format(io_type),
-        }
-        iodump_key = "{}_iodump_lim".format(io_type)
-
-        if iodump_sec and iodump_key in iodump_sec and iodump_sec[iodump_key].isdecimal():
-            common_param[io_type][iodump_key] = int(iodump_sec[iodump_key])
-
-        if not lat_sec:
-            continue
-
-        for key_suffix, key_template in latency_keys.items():
-            if key_template in lat_sec and lat_sec[key_template].isdecimal():
-                common_param[io_type][key_template] = int(lat_sec[key_template])
-
+        common_param[Disk_Type[type_name]] = get_section_value(section_name, config)
     return common_param
 
 
-def read_config_stage(config, stage, iotype_list):
-    """read config file, get [STAGE_NAME] section value"""
+def read_config_iodump(config):
+    """read config file, get [iodump] section value"""
+    common_param = {}
+    section_name = "iodump"
+    if not config.has_section(section_name):
+        report_alarm_fail(f"Cannot find {section_name} section in config file")
+
+    return get_section_value(section_name, config) 
+
+
+def read_config_stage(config, stage, iotype_list, curr_disk_type):
+    """read config file, get [STAGE_NAME_diskType] section value"""
     res = {}
-    if not stage in config:
+    section_name = f"{stage}_{curr_disk_type}"
+    if not config.has_section(section_name):
         return res
 
-    for key in config[stage]:
+    for key in config[section_name]:
         if config[stage][key].isdecimal():
             res[key] = int(config[stage][key])
 
@@ -171,11 +148,12 @@ def init_io_win(io_dic, config, common_param):
     for disk_name in io_dic["disk_list"]:
         io_data[disk_name] = {}
         io_avg_value[disk_name] = {}
+        curr_disk_type = get_disk_type_by_name(disk_name)
         for stage_name in io_dic["stage_list"]:
             io_data[disk_name][stage_name] = {}
             io_avg_value[disk_name][stage_name] = {}
-            # step3. 解析stage配置
-            curr_stage_param = read_config_stage(config, stage_name, iotype_list)
+            # 解析stage配置
+            curr_stage_param = read_config_stage(config, stage_name, iotype_list, curr_disk_type)
             for rw in iotype_list:
                 io_data[disk_name][stage_name][rw] = {}
                 io_avg_value[disk_name][stage_name][rw] = [0, 0]
@@ -187,10 +165,10 @@ def init_io_win(io_dic, config, common_param):
                 iodump_lim_key = "{}_iodump_lim".format(rw)
 
                 # 获取值，优先从 curr_stage_param 获取，如果不存在，则从 common_param 获取
-                avg_lim_value = curr_stage_param.get(avg_lim_key, common_param.get(rw, {}).get(avg_lim_key))
-                avg_time_value = curr_stage_param.get(avg_time_key, common_param.get(rw, {}).get(avg_time_key))
-                tot_lim_value = curr_stage_param.get(tot_lim_key, common_param.get(rw, {}).get(tot_lim_key))
-                iodump_lim_value = curr_stage_param.get(iodump_lim_key, common_param.get(rw, {}).get(iodump_lim_key))
+                avg_lim_value = curr_stage_param.get(avg_lim_key, common_param.get(curr_disk_type, {}).get(avg_lim_key))
+                avg_time_value = curr_stage_param.get(avg_time_key, common_param.get(curr_disk_type, {}).get(avg_time_key))
+                tot_lim_value = curr_stage_param.get(tot_lim_key, common_param.get(curr_disk_type, {}).get(tot_lim_key))
+                iodump_lim_value = curr_stage_param.get(iodump_lim_key, common_param.get("iodump", {}).get(iodump_lim_key))
 
                 if avg_lim_value and avg_time_value and tot_lim_value:
                     io_data[disk_name][stage_name][rw]["latency"] = IoWindow(window_size=io_dic["win_size"], window_threshold=io_dic["win_threshold"], abnormal_multiple=avg_time_value, abnormal_multiple_lim=avg_lim_value, abnormal_time=tot_lim_value)
@@ -217,28 +195,21 @@ def get_valid_disk_stage_list(io_dic, config_disk, config_stage):
     stage_list = [key for key in all_stage_set if key in config_stage]
     not_in_stage_list = [key for key in config_stage if key not in all_stage_set]
 
-    if not config_disk:
+    if not_in_stage_list:
+        report_alarm_fail(f"Invalid common.stage_list config, cannot set {not_in_stage_list}")
+
+    if not config_disk and not not_in_disk_list:
         disk_list = [key for key in all_disk_set]
 
-    if not config_stage:
+    if not config_stage and not not_in_stage_list:
         stage_list = [key for key in all_stage_set]
 
     disk_list = disk_list[:10] if len(disk_list) > 10 else disk_list
-    stage_list = stage_list[:15] if len(stage_list) > 15 else stage_list
-
-    if config_disk and not disk_list:
-        logging.warning("Cannot get valid disk by disk={}, set to default".format(config_disk))
-        disk_list, stage_list = get_valid_disk_stage_list(io_dic, [], config_stage)
-
-    if config_stage and not stage_list:
-        logging.warning("Cannot get valid stage by stage={}, set to default".format(config_stage))
-        disk_list, stage_list = get_valid_disk_stage_list(io_dic, config_disk, [])
 
     if not stage_list or not disk_list:
         report_alarm_fail("Cannot get valid disk name or stage name.")
 
     log_invalid_keys(not_in_disk_list, 'disk', config_disk, disk_list)
-    log_invalid_keys(not_in_stage_list, 'stage', config_stage, stage_list)
 
     return disk_list, stage_list
 
@@ -310,8 +281,13 @@ def main():
     # step1. 解析公共配置 --- algorithm
     io_dic["win_size"], io_dic["win_threshold"] = read_config_algorithm(config)
 
-    # step2. 循环创建窗口
-    common_param = read_config_lat_iodump(io_dic, config)
+    # step2. 解析公共配置 --- latency_xxx
+    common_param = read_config_latency(config)
+
+    # step3. 解析公共配置 --- iodump
+    common_param['iodump'] = read_config_iodump(config)
+
+    # step4. 循环创建窗口
     io_data, io_avg_value = init_io_win(io_dic, config, common_param)
 
     main_loop(io_dic, io_data, io_avg_value)

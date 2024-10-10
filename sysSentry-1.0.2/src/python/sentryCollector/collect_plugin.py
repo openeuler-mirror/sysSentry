@@ -79,6 +79,12 @@ class DiskType():
     TYPE_SATA_SSD = 1
     TYPE_SATA_HDD = 2
 
+Disk_Type = {
+    DiskType.TYPE_NVME_SSD: "nvme_ssd",
+    DiskType.TYPE_SATA_SSD: "sata_ssd",
+    DiskType.TYPE_SATA_HDD: "sata_hdd"
+}
+
 def client_send_and_recv(request_data, data_str_len, protocol):
     """client socket send and recv message"""
     try:
