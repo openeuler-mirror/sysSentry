@@ -16,6 +16,7 @@ import json
 import socket
 import logging
 import re
+import os
 
 COLLECT_SOCKET_PATH = "/var/run/sysSentry/collector.sock"
 
@@ -58,6 +59,8 @@ class ResultMessage():
     RESULT_EXCEED_LIMIT = 4 # the parameter length exceeds the limit.
     RESULT_PARSE_FAILED = 5 # parse failed
     RESULT_INVALID_CHAR = 6 # invalid char
+    RESULT_DISK_NOEXIST = 7 # disk is not exist
+    RESULT_DISK_TYPE_MISMATCH= 8 # disk type mismatch
 
 Result_Messages = {
     ResultMessage.RESULT_SUCCEED: "Succeed",
@@ -66,9 +69,15 @@ Result_Messages = {
     ResultMessage.RESULT_INVALID_LENGTH: "Invalid parameter length",
     ResultMessage.RESULT_EXCEED_LIMIT: "The parameter length exceeds the limit",
     ResultMessage.RESULT_PARSE_FAILED: "Parse failed",
-    ResultMessage.RESULT_INVALID_CHAR: "Invalid char"
+    ResultMessage.RESULT_INVALID_CHAR: "Invalid char",
+    ResultMessage.RESULT_DISK_NOEXIST: "Disk is not exist",
+    ResultMessage.RESULT_DISK_TYPE_MISMATCH: "Disk type mismatch"
 }
 
+class DiskType():
+    TYPE_NVME_SSD = 0
+    TYPE_SATA_SSD = 1
+    TYPE_SATA_HDD = 2
 
 def client_send_and_recv(request_data, data_str_len, protocol):
     """client socket send and recv message"""
@@ -273,3 +282,60 @@ def inter_get_io_data(period, disk_list, stage, iotype):
     result['message'] = result_message
     return result
 
+def get_disk_type(disk):
+    result = {}
+    result['ret'] = ResultMessage.RESULT_UNKNOWN
+    result['message'] = ""
+    if not disk:
+        logging.error("param is invalid")
+        result['ret'] = ResultMessage.RESULT_NOT_PARAM
+        return result
+    if len(disk) <= 0 or len(disk) > LIMIT_DISK_CHAR_LEN:
+        logging.error("invalid disk length")
+        result['ret'] = ResultMessage.RESULT_INVALID_LENGTH
+        return result
+    pattern = r'^[a-zA-Z0-9_-]+$'
+    if not re.match(pattern, disk):
+        logging.error("%s is invalid char", disk)
+        result['ret'] =  ResultMessage.RESULT_INVALID_CHAR
+        return result
+
+    base_path = '/sys/block'
+    all_disk = []
+    for disk_name in os.listdir(base_path):
+        all_disk.append(disk_name)
+
+    if disk not in all_disk:
+        logging.error("disk %s is not exist", disk)
+        result['ret'] = ResultMessage.RESULT_DISK_NOEXIST
+        return result
+    
+    if disk[0:4] == "nvme":
+        result['message'] = str(DiskType.TYPE_NVME_SSD)
+    elif disk[0:2] == "sd":
+        disk_file = '/sys/block/{}/queue/rotational'.format(disk)
+        try:
+            with open(disk_file, 'r') as file:
+                num = int(file.read())
+                if num == 1:
+                    result['message'] = str(DiskType.TYPE_SATA_SSD)
+                elif num == 0:
+                    result['message'] = str(DiskType.TYPE_SATA_HDD)
+                else:
+                    logging.error("disk %s is not support, num = %d", disk, num)
+                    result['ret'] = ResultMessage.RESULT_DISK_TYPE_MISMATCH
+                    return result
+        except FileNotFoundError:
+            logging.error("The disk_file [%s] does not exist", disk_file)
+            result['ret'] = ResultMessage.RESULT_DISK_NOEXIST
+            return result
+        except Exception as e:
+            logging.error("open disk_file %s happen an error: %s", disk_file, e)
+            return result
+    else:
+        logging.error("disk %s is not support", disk)
+        result['ret'] = ResultMessage.RESULT_DISK_TYPE_MISMATCH
+        return result
+
+    result['ret'] = ResultMessage.RESULT_SUCCEED
+    return result
