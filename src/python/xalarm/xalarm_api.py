@@ -23,7 +23,7 @@ ALARM_LEVELS = (1, 2, 3, 4, 5)
 ALARM_SOCK_PATH = "/var/run/xalarm/report"
 MIN_ALARM_ID = 1001
 MAX_ALARM_ID = 1128
-MAX_MSG_LEN = 1024
+MAX_MSG_LEN = 8192
 
 
 @dataclasses.dataclass
@@ -120,6 +120,10 @@ def alarm_bin2stu(bin_data):
 
 
 def alarm_stu2bin(alarm_info: Xalarm):
+    alarm_msg = alarm_info.msg1
+    padding_length = MAX_MSG_LEN - len(alarm_msg)
+    if padding_length > 0:
+        alarm_msg = alarm_msg + ('\x00' * padding_length)
     return struct.pack(
         f'@HBBll{MAX_MSG_LEN}s',
         alarm_info.alarm_id,
@@ -127,4 +131,4 @@ def alarm_stu2bin(alarm_info: Xalarm):
         alarm_info.alarm_type,
         alarm_info.timetamp.tv_sec,
         alarm_info.timetamp.tv_usec,
-        alarm_info.msg1.encode('utf-8'))
+        alarm_msg.encode('utf-8'))

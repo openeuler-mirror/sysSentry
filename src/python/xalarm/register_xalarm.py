@@ -11,7 +11,7 @@ from struct import error as StructParseError
 from .xalarm_api import Xalarm, alarm_bin2stu
 
 
-ALARM_REPORT_LEN = 1048
+ALARM_REPORT_LEN = 8216
 MAX_NUM_OF_ALARM_ID=128
 MIN_ALARM_ID = 1001
 MAX_ALARM_ID = (MIN_ALARM_ID + MAX_NUM_OF_ALARM_ID - 1)

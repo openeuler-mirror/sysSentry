@@ -28,7 +28,7 @@ from .xalarm_transfer import check_filter, transmit_alarm, wait_for_connection
 ALARM_DIR = "/var/run/xalarm"
 USER_RECV_SOCK = "/var/run/xalarm/alarm"
 SOCK_FILE = "/var/run/xalarm/report"
-ALARM_REPORT_LEN = 1048
+ALARM_REPORT_LEN = 8216
 ALARM_DIR_PERMISSION = 0o750
 ALARM_LISTEN_QUEUE_LEN = 5
 
