@@ -11,7 +11,7 @@
 #include <sys/time.h>
 #include <stdbool.h>
  
-#define ALARM_INFO_MAX_PARAS_LEN 1024
+#define ALARM_INFO_MAX_PARAS_LEN 8192
 #define MAX_STRERROR_SIZE 1024
 #define MAX_ALARM_TYEPS 1024
 #define MIN_ALARM_ID 1001
