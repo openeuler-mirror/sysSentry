@@ -42,10 +42,11 @@ def check_collect_valid(period):
             data = json.loads(data_raw["message"])
         except Exception as e:
             logging.warning(f"get io data failed, {e}")
-            return []
+            return None
         return [k for k in data.keys()]
     else:
-        return []
+        logging.warning(f"get io data failed, return {data_raw}")
+        return None
 
 
 def _get_raw_data(period, disk_list):

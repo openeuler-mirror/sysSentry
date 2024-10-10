@@ -20,14 +20,14 @@ from .utils import get_data_queue_size_and_update_size
 from .config_parser import ConfigParser
 from .data_access import get_io_data_from_collect_plug, check_collect_valid
 from .io_data import MetricName
-from .alarm_report import AlarmReport
+from .alarm_report import Xalarm, Report
 
 CONFIG_FILE = "/etc/sysSentry/plugins/ai_block_io.ini"
 
 
 def sig_handler(signum, frame):
     logging.info("receive signal: %d", signum)
-    AlarmReport().report_fail(f"receive signal: {signum}")
+    Report.report_pass(f"receive signal: {signum}, exiting...")
     exit(signum)
 
 
@@ -44,6 +44,10 @@ class SlowIODetection:
 
     def __init_detector_name_list(self):
         self._disk_list = check_collect_valid(self._config_parser.get_slow_io_detect_frequency())
+        if self._disk_list is None:
+            Report.report_pass("get available disk error, please check if the collector plug is enable. exiting...")
+            exit(1)
+
         logging.info(f"ai_block_io plug has found disks: {self._disk_list}")
         disks_to_detection: list = self._config_parser.get_disks_to_detection()
         # 情况1：None，则启用所有磁盘检测
@@ -101,7 +105,8 @@ class SlowIODetection:
             )
             logging.debug(f'step1. Get io data: {str(io_data_dict_with_disk_name)}')
             if io_data_dict_with_disk_name is None:
-                continue
+                Report.report_pass("get io data error, please check if the collector plug is enable. exitting...")
+                exit(1)
 
             # Step2：慢IO检测
             logging.debug('step2. Start to detection slow io event.')
@@ -117,13 +122,16 @@ class SlowIODetection:
             for slow_io_event in slow_io_event_list:
                 metric_name: MetricName = slow_io_event[0]
                 result = slow_io_event[1]
-                alarm_content = (f"disk {metric_name.get_disk_name()} has slow io event. "
-                                 f"stage is: {metric_name.get_stage_name()}, "
-                                 f"io access type is: {metric_name.get_io_access_type_name()}, "
-                                 f"metric is: {metric_name.get_metric_name()}, "
-                                 f"current window is: {result[1]}, "
-                                 f"threshold is: {result[2]}")
-                AlarmReport.report_major_alm(alarm_content)
+                alarm_content = {
+                    "driver_name": f"{metric_name.get_disk_name()}",
+                    "reason": "disk_slow",
+                    "block_stack": f"{metric_name.get_stage_name()}",
+                    "io_type": f"{metric_name.get_io_access_type_name()}",
+                    "alarm_source": "ai_block_io",
+                    "alarm_type": "latency",
+                    "details": f"current window is: {result[1]}, threshold is: {result[2]}.",
+                }
+                Xalarm.major(alarm_content)
                 logging.warning(alarm_content)
 
             # Step4：等待检测时间

@@ -35,7 +35,7 @@ class Detector:
         self._count += 1
         if self._count % 15 == 0:
             self._count = 0
-            logging.info(f"({self._metric_name}) 's latest threshold is: {self._threshold.get_threshold()}.")
+            logging.debug(f"({self._metric_name}) 's latest threshold is: {self._threshold.get_threshold()}.")
         logging.debug(f'enter Detector: {self}')
         metric_value = get_metric_value_from_io_data_dict_by_metric_name(io_data_dict_with_disk_name, self._metric_name)
         if metric_value is None:
