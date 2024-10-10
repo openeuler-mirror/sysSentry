@@ -124,7 +124,7 @@ class CollectIo():
             return 0
         if finish <= 0 or lat_time <= 0:
             return 0
-        value = lat_time / finish / 1000 / 1000
+        value = lat_time / finish / 1000
         if value.is_integer():
             return int(value)
         else:
@@ -132,11 +132,17 @@ class CollectIo():
 
     def get_io_length(self, curr_stage_value, last_stage_value, category):
         try:
-            finish = int(curr_stage_value[category * 3 + IoStatus.FINISH]) - int(last_stage_value[category * 3 + IoStatus.FINISH])
+            lat_time = (int(curr_stage_value[category * 3 + IoStatus.LATENCY]) - int(last_stage_value[category * 3 + IoStatus.LATENCY]))
         except ValueError as e:
             logging.error("get_io_length convert to int failed, %s", e)
             return 0
-        value = finish / self.period_time / 1000 / 1000
+        if lat_time <= 0:
+            return 0
+        # ns convert us
+        lat_time = lat_time / 1000
+        # s convert us
+        period_time = self.period_time * 1000 * 1000
+        value = lat_time / period_time
         if value.is_integer():
             return int(value)
         else:
@@ -149,6 +155,8 @@ class CollectIo():
             with open(io_dump_file, 'r') as file:
                 for line in file:
                     count += line.count('.op=' + Io_Category[category])
+                if count > 0:
+                    logging.info(f"io_dump info : {disk_name}, {stage}, {category}, {count}")
         except FileNotFoundError:
             logging.error("The file %s does not exist.", io_dump_file)
             return count
@@ -362,7 +370,11 @@ class CollectIo():
         lat_time = curr_latency - prev_latency
         if lat_time <= 0:
             return 0
-        value = lat_time / self.period_time / 1000
+        # ns convert us
+        lat_time = lat_time / 1000
+        # s convert us
+        period_time = self.period_time * 1000 * 1000
+        value = lat_time / period_time
         if value.is_integer():
             return int(value)
         else:

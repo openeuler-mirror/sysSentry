@@ -75,8 +75,8 @@ Result_Messages = {
 }
 
 class DiskType():
-    TYPE_NVME_SSD = 0,
-    TYPE_SATA_SSD = 1,
+    TYPE_NVME_SSD = 0
+    TYPE_SATA_SSD = 1
     TYPE_SATA_HDD = 2
 
 def client_send_and_recv(request_data, data_str_len, protocol):
@@ -290,7 +290,7 @@ def get_disk_type(disk):
         logging.error("param is invalid")
         result['ret'] = ResultMessage.RESULT_NOT_PARAM
         return result
-    if len(disk) <= 0 or len(disk) > LIMIT_DISK_LIST_LEN:
+    if len(disk) <= 0 or len(disk) > LIMIT_DISK_CHAR_LEN:
         logging.error("invalid disk length")
         result['ret'] = ResultMessage.RESULT_INVALID_LENGTH
         return result
@@ -310,25 +310,30 @@ def get_disk_type(disk):
         result['ret'] = ResultMessage.RESULT_DISK_NOEXIST
         return result
     
-    if disk[0:5] == "nvme":
-        result['message'] = DiskType.TYPE_NVME_SSD
-    elif disk[0:3] == "sd":
+    if disk[0:4] == "nvme":
+        result['message'] = str(DiskType.TYPE_NVME_SSD)
+    elif disk[0:2] == "sd":
         disk_file = '/sys/block/{}/queue/rotational'.format(disk)
         try:
             with open(disk_file, 'r') as file:
-                num = file.read()
+                num = int(file.read())
                 if num == 1:
-                    result['message'] = DiskType.TYPE_SATA_SSD
+                    result['message'] = str(DiskType.TYPE_SATA_SSD)
                 elif num == 0:
-                    result['message'] = DiskType.TYPE_SATA_HDD
+                    result['message'] = str(DiskType.TYPE_SATA_HDD)
+                else:
+                    logging.error("disk %s is not support, num = %d", disk, num)
+                    result['ret'] = ResultMessage.RESULT_DISK_TYPE_MISMATCH
+                    return result
         except FileNotFoundError:
             logging.error("The disk_file [%s] does not exist", disk_file)
             result['ret'] = ResultMessage.RESULT_DISK_NOEXIST
             return result
         except Exception as e:
-            logging.error("open disk_file %s hanppen an error: %s", disk_file, e)
+            logging.error("open disk_file %s happen an error: %s", disk_file, e)
             return result
     else:
+        logging.error("disk %s is not support", disk)
         result['ret'] = ResultMessage.RESULT_DISK_TYPE_MISMATCH
         return result
 
