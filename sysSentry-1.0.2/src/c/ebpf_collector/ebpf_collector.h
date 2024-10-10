@@ -11,7 +11,7 @@ typedef long long unsigned int u64;
 typedef unsigned int u32;
 
 #define MAX_BUCKETS 1
-#define THRESHOLD 1000
+#define THRESHOLD 1000000000
 #define DURATION_THRESHOLD 500000000
 
 #define RWBS_LEN    8
