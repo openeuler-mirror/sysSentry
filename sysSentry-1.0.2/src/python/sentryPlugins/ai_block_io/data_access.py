@@ -41,11 +41,14 @@ def check_collect_valid(period):
         try:
             data = json.loads(data_raw["message"])
         except Exception as e:
-            logging.warning(f"get io data failed, {e}")
+            logging.warning(f"get valid devices failed, occur exception: {e}")
+            return None
+        if data.empty():
+            logging.warning(f"get valid devices failed, return {data_raw}")
             return None
         return [k for k in data.keys()]
     else:
-        logging.warning(f"get io data failed, return {data_raw}")
+        logging.warning(f"get valid devices failed, return {data_raw}")
         return None
 
 
@@ -60,7 +63,7 @@ def _get_raw_data(period, disk_list):
 
 def _get_io_stage_data(data):
     io_stage_data = IOStageData()
-    for data_type in ('read', 'write', 'flush', 'discard'):
+    for data_type in ("read", "write", "flush", "discard"):
         if data_type in data:
             getattr(io_stage_data, data_type).latency = data[data_type][0]
             getattr(io_stage_data, data_type).io_dump = data[data_type][1]
@@ -87,7 +90,7 @@ def get_io_data_from_collect_plug(period, disk_list):
                     getattr(disk_ret, k)
                     setattr(disk_ret, k, _get_io_stage_data(v))
                 except AttributeError:
-                    logging.debug(f'no attr {k}')
+                    logging.debug(f"no attr {k}")
                     continue
             ret[disk] = disk_ret
         return ret

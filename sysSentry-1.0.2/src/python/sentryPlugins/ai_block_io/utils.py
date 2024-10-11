@@ -25,8 +25,7 @@ def get_threshold_type_enum(algorithm_type: str):
         return ThresholdType.BoxplotThreshold
     if algorithm_type.lower() == 'n_sigma':
         return ThresholdType.NSigmaThreshold
-    logging.warning(f"the algorithm type: {algorithm_type} you set is invalid, use default value: boxplot")
-    return ThresholdType.BoxplotThreshold
+    return None
 
 
 def get_sliding_window_type_enum(sliding_window_type: str):
