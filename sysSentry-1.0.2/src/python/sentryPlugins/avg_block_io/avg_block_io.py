@@ -45,7 +45,7 @@ def read_config_common(config):
         stage = [] if stage_name == "default" else stage_name.split(",")
     except configparser.NoOptionError:
         stage = []
-        logging.warning("Unset common.stage, set to read,write")
+        logging.warning("Unset common.stage, set to default")
 
     if len(disk) > 10:
         logging.warning("Too many common.disks, record only max 10 disks")
@@ -61,7 +61,7 @@ def read_config_common(config):
 
     except configparser.NoOptionError:
         iotype_list = ["read", "write"]
-        logging.warning("Unset common.iotype, set to default")
+        logging.warning("Unset common.iotype, set to read,write")
     
     try:
         period_time = int(config.get("common", "period_time"))
