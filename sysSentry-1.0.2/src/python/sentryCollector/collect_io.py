@@ -317,6 +317,8 @@ class CollectIo():
                         curr_iops = self.get_ebpf_iops(curr_finish_count=curr_finish_count, prev_finish_count=prev_finish_count)
                         curr_io_length = self.get_ebpf_io_length(curr_latency=curr_latency, prev_latency=prev_latency)
                         curr_io_dump = self.get_ebpf_io_dump(curr_io_dump_count=curr_io_dump_count, prev_io_dump_count=prev_io_dump_count)
+                        if curr_io_dump > 0:
+                            logging.info(f"ebpf io_dump info : {disk_name}, {stage}, {category}, {curr_io_dump}")
                         IO_GLOBAL_DATA[disk_name][stage][io_type].insert(0, [curr_lat, curr_io_dump, curr_io_length, curr_iops])
                     logging.debug(f"ebpf collect data : {IO_GLOBAL_DATA}")
             elapsed_time = time.time() - start_time
@@ -429,6 +431,8 @@ class CollectIo():
                     if self.get_blk_io_hierarchy(disk_name, stage_list) < 0:
                         continue
                     self.append_period_lat(disk_name, stage_list)
+
+                logging.debug(f"no-lock collect data : {IO_GLOBAL_DATA}")
                     
                 elapsed_time = time.time() - start_time
                 sleep_time = self.period_time - elapsed_time
