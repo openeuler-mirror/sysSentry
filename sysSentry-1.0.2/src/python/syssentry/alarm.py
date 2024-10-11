@@ -18,6 +18,7 @@ from datetime import datetime
 import time
 import logging
 import json
+import sys
 
 from xalarm.register_xalarm import xalarm_register,xalarm_getid,xalarm_getlevel,xalarm_gettype,xalarm_gettime,xalarm_getdesc
 from xalarm.xalarm_api import Xalarm
@@ -41,9 +42,15 @@ id_base = 1001
 clientId = -1
 
 MILLISECONDS_UNIT_SECONDS = 1000
+MAX_NUM_OF_ALARM_ID = 128
+MIN_ALARM_ID = 1001
+MAX_ALARM_ID = (MIN_ALARM_ID + MAX_NUM_OF_ALARM_ID - 1)
 
 def update_alarm_list(alarm_info: Xalarm):
     alarm_id = xalarm_getid(alarm_info)
+    if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
+        logging.warnning(f"Invalid alarm_id {alarm_id}")
+        return
     timestamp = xalarm_gettime(alarm_info)
     if not timestamp:
         logging.error("Retrieve timestamp failed")
@@ -77,7 +84,19 @@ def alarm_register():
             logging.info(f"alarm_register: {task_name} is registered")
             task = TasksMap.tasks_dict[task_type][task_name]
             alarm_id = task.alarm_id
+            if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
+                logging.warnning(f"Invalid alarm_id {alarm_id}: ignore {task_name} alarm")
+                continue
             alarm_clear_time = task.alarm_clear_time
+            try:
+                alarm_clear_time = int(alarm_clear_time)
+                if alarm_clear_time <= 0:
+                    raise ValueError("Not a positive integer")
+                if alarm_clear_time > sys.maxsize:
+                    raise ValueError("Exceeds maximum value for int")
+            except (ValueError, OverflowError, TypeError) as e:
+                logging.warnning(f"Invalid alarm_clear_time {alarm_clear_time}: ignore {task_name} alarm")
+                continue
             alarm_list_dict[alarm_id] = []
             task_alarm_id_dict[task_name] = alarm_id
             if alarm_id not in alarm_id_clear_time_dict:
