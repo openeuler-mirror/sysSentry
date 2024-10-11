@@ -64,7 +64,7 @@ def get_section_value(section_name, config):
                 report_alarm_fail(f"Invalid {section_name}.{config_key} config.")
             common_param[config_key] = int(config_sec[config_key])
         else:
-            logging.warning(f"Unset  {section_name}.{config_key} in config file, use {DEFAULT_PARAM[section_name][config_key]} as default")
+            logging.warning(f"Unset {section_name}.{config_key} in config file, use {DEFAULT_PARAM[section_name][config_key]} as default")
             common_param[config_key] = DEFAULT_PARAM[section_name][config_key]
     return common_param
 
