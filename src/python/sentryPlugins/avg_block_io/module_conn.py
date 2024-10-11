@@ -14,7 +14,7 @@ import sys
 import time
 
 from .utils import is_abnormal, get_win_data, log_slow_win
-from sentryCollector.collect_plugin import is_iocollect_valid, get_io_data, Result_Messages
+from sentryCollector.collect_plugin import is_iocollect_valid, get_io_data, Result_Messages, get_disk_type, Disk_Type
 from syssentry.result import ResultLevel, report_result
 from xalarm.sentry_notify import xalarm_report, MINOR_ALM, ALARM_TYPE_OCCUR
 
@@ -51,7 +51,7 @@ def check_result_validation(res, reason):
     try:
         json_data = json.loads(res['message'])
     except json.JSONDecodeError:
-        err_msg = "Failed to {}: invalid return message".format(reason)
+        err_msg = f"Failed to {reason}: invalid return message"
         report_alarm_fail(err_msg)
 
     return json_data
@@ -60,7 +60,7 @@ def check_result_validation(res, reason):
 def report_alarm_fail(alarm_info):
     """report result to xalarmd"""
     report_result(TASK_NAME, ResultLevel.FAIL, json.dumps({"msg": alarm_info}))
-    logging.error(alarm_info)
+    logging.critical(alarm_info)
     sys.exit(1)
 
 
@@ -114,3 +114,16 @@ def process_report_data(disk_name, rw, io_data):
 
     log_slow_win(msg, "unknown")
     xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
+
+
+def get_disk_type_by_name(disk_name):
+    res = get_disk_type(disk_name)
+    disk_type_str = check_result_validation(get_disk_type(disk_name), f'Invalid disk type {disk_name}')
+    try:
+        curr_disk_type = int(disk_type_str)
+        if curr_disk_type not in Disk_Type:
+            raise ValueError
+    except ValueError:
+        report_alarm_fail(f"Failed to get disk type for {disk_name}")
+    
+    return Disk_Type[curr_disk_type]

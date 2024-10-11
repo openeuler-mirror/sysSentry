@@ -26,6 +26,49 @@ LogLevel = {
 }
 
 
+DEFAULT_PARAM = {
+    'latency_nvme_ssd': {
+        'read_avg_lim': 300,
+        'write_avg_lim': 300,
+        'read_avg_time': 3,
+        'write_avg_time': 3,
+        'read_tot_lim': 500,
+        'write_tot_lim': 500,
+    }, 'latency_sata_ssd' : {
+        'read_avg_lim': 10000,
+        'write_avg_lim': 10000,
+        'read_avg_time': 3,
+        'write_avg_time': 3,
+        'read_tot_lim': 50000,
+        'write_tot_lim': 50000,
+    }, 'latency_sata_hdd' : {
+        'read_avg_lim': 15000,
+        'write_avg_lim': 15000,
+        'read_avg_time': 3,
+        'write_avg_time': 3,
+        'read_tot_lim': 50000,
+        'write_tot_lim': 50000
+    }, 'iodump': {
+        'read_iodump_lim': 0,
+        'write_iodump_lim': 0
+    }
+}
+
+
+def get_section_value(section_name, config):
+    common_param = {}
+    config_sec = config[section_name]
+    for config_key in DEFAULT_PARAM[section_name]:
+        if config_key in config_sec:
+            if not config_sec[config_key].isdecimal():
+                report_alarm_fail(f"Invalid {section_name}.{config_key} config.")
+            common_param[config_key] = int(config_sec[config_key])
+        else:
+            logging.warning(f"Unset {section_name}.{config_key} in config file, use {DEFAULT_PARAM[section_name][config_key]} as default")
+            common_param[config_key] = DEFAULT_PARAM[section_name][config_key]
+    return common_param
+
+
 def get_log_level(filename):
     if not os.path.exists(filename):
         return logging.INFO
