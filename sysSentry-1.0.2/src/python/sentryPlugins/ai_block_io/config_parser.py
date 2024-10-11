@@ -12,13 +12,16 @@
 import os
 import configparser
 import logging
-from .alarm_report import Report
 
+from .alarm_report import Report
 from .threshold import ThresholdType
 from .utils import get_threshold_type_enum, get_sliding_window_type_enum, get_log_level
 
 
 LOG_FORMAT = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+
+ALL_STAGE_LIST = ['throtl', 'wbt', 'gettag', 'plug', 'deadline', 'hctx', 'requeue', 'rq_driver', 'bio']
+ALL_IOTPYE_LIST = ['read', 'write']
 
 
 def init_log_format(log_level: str):
@@ -33,6 +36,9 @@ class ConfigParser:
     DEFAULT_ABSOLUTE_THRESHOLD = 40
     DEFAULT_SLOW_IO_DETECTION_FREQUENCY = 1
     DEFAULT_LOG_LEVEL = "info"
+
+    DEFAULT_STAGE = 'throtl,wbt,gettag,plug,deadline,hctx,requeue,rq_driver,bio'
+    DEFAULT_IOTYPE = 'read,write'
 
     DEFAULT_ALGORITHM_TYPE = "boxplot"
     DEFAULT_TRAIN_DATA_DURATION = 24
@@ -51,6 +57,8 @@ class ConfigParser:
         )
         self.__log_level = ConfigParser.DEFAULT_LOG_LEVEL
         self.__disks_to_detection = None
+        self.__stage = ConfigParser.DEFAULT_STAGE
+        self.__iotype = ConfigParser.DEFAULT_IOTYPE
 
         self.__algorithm_type = get_threshold_type_enum(
             ConfigParser.DEFAULT_ALGORITHM_TYPE
@@ -243,6 +251,43 @@ class ConfigParser:
                 le=10,
             )
 
+    def __read__stage(self, items_algorithm: dict):
+        stage_str = items_algorithm.get('stage', ConfigParser.DEFAULT_STAGE)
+        stage_list = stage_str.split(',')
+        if len(stage_list) == 1 and stage_list[0] == '':
+            logging.critical('stage value not allow is empty, exiting...')
+            exit(1)
+        if len(stage_list) == 1 and stage_list[0] == 'default':
+            logging.warning(f'stage will enable default value: {ConfigParser.DEFAULT_STAGE}')
+            self.__stage = ALL_STAGE_LIST
+            return
+        for stage in stage_list:
+            if stage not in ALL_STAGE_LIST:
+                logging.critical(f'stage: {stage} is not valid stage, ai_block_io will exit...')
+                exit(1)
+        dup_stage_list = set(stage_list)
+        if 'bio' not in dup_stage_list:
+            logging.critical('stage must contains bio stage, exiting...')
+            exit(1)
+        self.__stage = dup_stage_list
+
+    def __read__iotype(self,  items_algorithm: dict):
+        iotype_str = items_algorithm.get('iotype', ConfigParser.DEFAULT_IOTYPE)
+        iotype_list = iotype_str.split(',')
+        if len(iotype_list) == 1 and iotype_list[0] == '':
+            logging.critical('iotype value not allow is empty, exiting...')
+            exit(1)
+        if len(iotype_list) == 1 and iotype_list[0] == 'default':
+            logging.warning(f'iotype will enable default value: {ConfigParser.DEFAULT_IOTYPE}')
+            self.__iotype = ALL_IOTPYE_LIST
+            return
+        for iotype in iotype_list:
+            if iotype not in ALL_IOTPYE_LIST:
+                logging.critical(f'iotype: {iotype} is not valid iotype, ai_block_io will exit...')
+                exit(1)
+        dup_iotype_list = set(iotype_list)
+        self.__iotype = dup_iotype_list
+
     def __read__window_size(self, items_sliding_window: dict):
         self.__window_size = self._get_config_value(
             items_sliding_window,
@@ -291,17 +336,25 @@ class ConfigParser:
             )
             exit(1)
 
+        if con.has_section('log'):
+            items_log = dict(con.items('log'))
+            # 情况一：没有log，则使用默认值
+            # 情况二：有log，值为空或异常，使用默认值
+            # 情况三：有log，值正常，则使用该值
+            self.__log_level = items_log.get('level', ConfigParser.DEFAULT_LOG_LEVEL)
+            init_log_format(self.__log_level)
+        else:
+            init_log_format(self.__log_level)
+            logging.warning(f"log section parameter not found, it will be set to default value.")
+
         if con.has_section("common"):
             items_common = dict(con.items("common"))
-            self.__log_level = items_common.get(
-                "log_level", ConfigParser.DEFAULT_LOG_LEVEL
-            )
-            init_log_format(self.__log_level)
             self.__read_absolute_threshold(items_common)
             self.__read__slow_io_detect_frequency(items_common)
             self.__read__disks_to_detect(items_common)
+            self.__read__stage(items_common)
+            self.__read__iotype(items_common)
         else:
-            init_log_format(self.__log_level)
             logging.warning(
                 "common section parameter not found, it will be set to default value."
             )
@@ -333,8 +386,27 @@ class ConfigParser:
 
         self.__print_all_config_value()
 
+    def __repr__(self):
+        config_str = {
+            'log.level': self.__log_level,
+            'common.absolute_threshold': self.__absolute_threshold,
+            'common.slow_io_detect_frequency': self.__slow_io_detect_frequency,
+            'common.disk': self.__disks_to_detection,
+            'common.stage': self.__stage,
+            'common.iotype': self.__iotype,
+            'algorithm.train_data_duration': self.__train_data_duration,
+            'algorithm.train_update_duration': self.__train_update_duration,
+            'algorithm.algorithm_type': self.__algorithm_type,
+            'algorithm.boxplot_parameter': self.__boxplot_parameter,
+            'algorithm.n_sigma_parameter': self.__n_sigma_parameter,
+            'sliding_window.sliding_window_type': self.__sliding_window_type,
+            'sliding_window.window_size': self.__window_size,
+            'sliding_window.window_minimum_threshold': self.__window_minimum_threshold
+        }
+        return str(config_str)
+
     def __print_all_config_value(self):
-        pass
+        logging.info(f"all config is follow:\n {self}")
 
     def get_train_data_duration_and_train_update_duration(self):
         return self.__train_data_duration, self.__train_update_duration
@@ -381,6 +453,14 @@ class ConfigParser:
     @property
     def disks_to_detection(self):
         return self.__disks_to_detection
+
+    @property
+    def stage(self):
+        return self.__stage
+
+    @property
+    def iotype(self):
+        return self.__iotype
 
     @property
     def boxplot_parameter(self):

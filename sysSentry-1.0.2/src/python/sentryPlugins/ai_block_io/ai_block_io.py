@@ -13,7 +13,7 @@ import time
 import signal
 import logging
 
-from .detector import Detector
+from .detector import Detector, DiskDetector
 from .threshold import ThresholdFactory, AbsoluteThreshold
 from .sliding_window import SlidingWindowFactory
 from .utils import get_data_queue_size_and_update_size
@@ -34,8 +34,8 @@ def sig_handler(signum, frame):
 class SlowIODetection:
     _config_parser = None
     _disk_list = None
-    _detector_name_list = []
-    _detectors = {}
+    _detector_name_list = {}
+    _disk_detectors = {}
 
     def __init__(self, config_parser: ConfigParser):
         self._config_parser = config_parser
@@ -43,61 +43,40 @@ class SlowIODetection:
         self.__init_detector()
 
     def __init_detector_name_list(self):
-        self._disk_list = check_collect_valid(
-            self._config_parser.slow_io_detect_frequency
-        )
+        self._disk_list = check_collect_valid(self._config_parser.slow_io_detect_frequency)
         if self._disk_list is None:
-            Report.report_pass(
-                "get available disk error, please check if the collector plug is enable. exiting..."
-            )
+            Report.report_pass("get available disk error, please check if the collector plug is enable. exiting...")
             exit(1)
 
         logging.info(f"ai_block_io plug has found disks: {self._disk_list}")
-        disks_to_detection = self._config_parser.disks_to_detection
+        disks: list = self._config_parser.disks_to_detection
+        stages: list = self._config_parser.stage
+        iotypes: list = self._config_parser.iotype
         # 情况1：None，则启用所有磁盘检测
         # 情况2：is not None and len = 0，则不启动任何磁盘检测
         # 情况3：len ！= 0，则取交集
-        if disks_to_detection is None:
-            logging.warning(
-                "you not specify any disk or use default, so ai_block_io will enable all available disk."
-            )
+        if disks is None:
+            logging.warning("you not specify any disk or use default, so ai_block_io will enable all available disk.")
             for disk in self._disk_list:
-                self._detector_name_list.append(
-                    MetricName(disk, "bio", "read", "latency")
-                )
-                self._detector_name_list.append(
-                    MetricName(disk, "bio", "write", "latency")
-                )
-                if len(self._detector_name_list) >= 30:
-                    logging.warning(
-                        "the number of disks to detection is large than 30, so it will be ignored."
-                    )
-                    break
+                for stage in stages:
+                    for iotype in iotypes:
+                        if disk not in self._detector_name_list:
+                            self._detector_name_list[disk] = []
+                        self._detector_name_list[disk].append(MetricName(disk, stage, iotype, "latency"))
         else:
-            for disk_to_detection in disks_to_detection:
-                if disk_to_detection in self._disk_list:
-                    self._detector_name_list.append(
-                        MetricName(disk_to_detection, "bio", "read", "latency")
-                    )
-                    self._detector_name_list.append(
-                        MetricName(disk_to_detection, "bio", "write", "latency")
-                    )
+            for disk in disks:
+                if disk in self._disk_list:
+                    for stage in stages:
+                        for iotype in iotypes:
+                            if disk not in self._detector_name_list:
+                                self._detector_name_list[disk] = []
+                            self._detector_name_list[disk].append(MetricName(disk, stage, iotype, "latency"))
                 else:
-                    logging.warning(
-                        "disk: [%s] not in available disk list, so it will be ignored.",
-                        disk_to_detection,
-                    )
+                    logging.warning("disk: [%s] not in available disk list, so it will be ignored.", disk)
             if len(self._detector_name_list) == 0:
-                logging.critical(
-                    "the disks to detection is empty, ai_block_io will exit."
-                )
-                Report.report_pass(
-                    "the disks to detection is empty, ai_block_io will exit."
-                )
+                logging.critical("the disks to detection is empty, ai_block_io will exit.")
+                Report.report_pass("the disks to detection is empty, ai_block_io will exit.")
                 exit(1)
-        logging.info(
-            f"start to detection follow disk and it's metric: {self._detector_name_list}"
-        )
 
     def __init_detector(self):
         train_data_duration, train_update_duration = (
@@ -109,11 +88,9 @@ class SlowIODetection:
             train_data_duration, train_update_duration, slow_io_detection_frequency
         )
         sliding_window_type = self._config_parser.sliding_window_type
-        window_size, window_threshold = (
-            self._config_parser.get_window_size_and_window_minimum_threshold()
-        )
+        window_size, window_threshold = (self._config_parser.get_window_size_and_window_minimum_threshold())
 
-        for detector_name in self._detector_name_list:
+        for disk, metric_name_list in self._detector_name_list.items():
             threshold = ThresholdFactory().get_threshold(
                 threshold_type,
                 boxplot_parameter=self._config_parser.boxplot_parameter,
@@ -126,12 +103,12 @@ class SlowIODetection:
                 queue_length=window_size,
                 threshold=window_threshold,
             )
-            detector = Detector(detector_name, threshold, sliding_window)
-            # 绝对阈值的阈值初始化
-            if isinstance(threshold, AbsoluteThreshold):
-                threshold.set_threshold(self._config_parser.absolute_threshold)
-            self._detectors[detector_name] = detector
-            logging.info(f"add detector: {detector}")
+            disk_detector = DiskDetector(disk)
+            for metric_name in metric_name_list:
+                detector = Detector(metric_name, threshold, sliding_window)
+                disk_detector.add_detector(detector)
+            logging.info(f'disk: [{disk}] add detector:\n [{disk_detector}]')
+            self._disk_detectors[disk] = disk_detector
 
     def launch(self):
         while True:
@@ -151,17 +128,16 @@ class SlowIODetection:
             # Step2：慢IO检测
             logging.debug("step2. Start to detection slow io event.")
             slow_io_event_list = []
-            for metric_name, detector in self._detectors.items():
-                result = detector.is_slow_io_event(io_data_dict_with_disk_name)
+            for disk, disk_detector in self._disk_detectors.items():
+                result = disk_detector.is_slow_io_event(io_data_dict_with_disk_name)
                 if result[0]:
-                    slow_io_event_list.append((detector.get_metric_name(), result))
+                    slow_io_event_list.append(result)
             logging.debug("step2. End to detection slow io event.")
 
             # Step3：慢IO事件上报
             logging.debug("step3. Report slow io event to sysSentry.")
             for slow_io_event in slow_io_event_list:
-                metric_name: MetricName = slow_io_event[0]
-                result = slow_io_event[1]
+                metric_name: MetricName = slow_io_event[1]
                 alarm_content = {
                     "driver_name": f"{metric_name.get_disk_name()}",
                     "reason": "disk_slow",
@@ -169,7 +145,7 @@ class SlowIODetection:
                     "io_type": f"{metric_name.get_io_access_type_name()}",
                     "alarm_source": "ai_block_io",
                     "alarm_type": "latency",
-                    "details": f"current window is: {result[1]}, threshold is: {result[2]}.",
+                    "details": f"current window is: {slow_io_event[2]}, threshold is: {slow_io_event[3]}.",
                 }
                 Xalarm.major(alarm_content)
                 logging.warning(alarm_content)

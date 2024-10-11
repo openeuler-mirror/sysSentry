@@ -53,3 +53,28 @@ class Detector:
                 f' io_type_name: {self._metric_name.get_io_access_type_name()},'
                 f' metric_name: {self._metric_name.get_metric_name()}, threshold_type: {self._threshold},'
                 f' sliding_window_type: {self._slidingWindow}')
+
+
+class DiskDetector:
+
+    def __init__(self, disk_name: str):
+        self._disk_name = disk_name
+        self._detector_list = []
+
+    def add_detector(self, detector: Detector):
+        self._detector_list.append(detector)
+
+    def is_slow_io_event(self, io_data_dict_with_disk_name: dict):
+        # 只有bio阶段发生异常，就认为发生了慢IO事件
+        # todo：根因诊断
+        for detector in self._detector_list:
+            result = detector.is_slow_io_event(io_data_dict_with_disk_name)
+            if result[0] and detector.get_metric_name().get_stage_name() == 'bio':
+                return result[0], detector.get_metric_name(), result[1], result[2]
+        return False, None, None, None
+
+    def __repr__(self):
+        msg = f'disk: {self._disk_name}, '
+        for detector in self._detector_list:
+            msg += f'\n detector: [{detector}]'
+        return msg
