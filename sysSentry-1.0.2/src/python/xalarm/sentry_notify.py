@@ -27,11 +27,11 @@ ALARM_SOCKET_PERMISSION = 0o700
 
 def check_params(alarm_id, alarm_level, alarm_type, puc_paras) -> bool:
     if not os.path.exists(DIR_XALARM):
-        sys.stderr.write(f"check_params: {DIR_XALARM} not exist, failed")
+        sys.stderr.write(f"check_params: {DIR_XALARM} not exist, failed\n")
         return False
     
     if not os.path.exists(PATH_REPORT_ALARM):
-        sys.stderr.write(f"check_params: {PATH_REPORT_ALARM} not exist, failed")
+        sys.stderr.write(f"check_params: {PATH_REPORT_ALARM} not exist, failed\n")
         return False
 
     if (alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID or

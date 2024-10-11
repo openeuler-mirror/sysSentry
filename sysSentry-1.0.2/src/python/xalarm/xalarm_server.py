@@ -22,7 +22,12 @@ import threading
 from struct import error as StructParseError
 
 from .xalarm_api import alarm_bin2stu
-from .xalarm_transfer import check_filter, transmit_alarm, wait_for_connection
+from .xalarm_transfer import (
+    check_filter,
+    transmit_alarm,
+    wait_for_connection,
+    peroid_task_to_cleanup_connections
+)
 
 
 ALARM_DIR = "/var/run/xalarm"
@@ -66,9 +71,13 @@ def server_loop(alarm_config):
     fd_to_socket = {alarm_sock.fileno(): alarm_sock,}
     thread_should_stop = False
 
-    thread = threading.Thread(target=wait_for_connection, args=(alarm_sock, epoll, fd_to_socket, thread_should_stop))
-    thread.daemon = True
-    thread.start()
+    conn_thread = threading.Thread(target=wait_for_connection, args=(alarm_sock, epoll, fd_to_socket, thread_should_stop))
+    conn_thread.daemon = True
+    conn_thread.start()
+
+    cleanup_thread = threading.Thread(target=peroid_task_to_cleanup_connections, args=(alarm_sock, epoll, fd_to_socket, thread_should_stop))
+    cleanup_thread.daemon = True
+    cleanup_thread.start()
 
     while True:
         try:
@@ -88,7 +97,8 @@ def server_loop(alarm_config):
             logging.error(f"Error server:{e}")
             
     thread_should_stop = True
-    thread.join()
+    conn_thread.join()
+    cleanup_thread.join()
 
     epoll.unregister(alarm_sock.fileno())
     epoll.close()

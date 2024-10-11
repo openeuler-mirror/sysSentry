@@ -45,7 +45,7 @@ class AlarmRegister:
             return False
         
         if self.socket is None:
-            sys.stderr.write("check_params: scoket create failed\n")
+            sys.stderr.write("check_params: socket create failed\n")
             return False
         return True
     
@@ -147,15 +147,19 @@ def xalarm_unregister(clientId: int) -> None:
     ALARM_REGISTER_INFO = None
 
 
-def xalarm_upgrade(clientId: int, id_filter: list) -> None:
+def xalarm_upgrade(clientId: int, id_filter: list) -> bool:
     global ALARM_REGISTER_INFO
     if clientId < 0:
-        sys.stderr.write("xalarm_unregister: invalid client\n")
-        return
+        sys.stderr.write("xalarm_upgrade: invalid client\n")
+        return False
     if ALARM_REGISTER_INFO is None:
-        sys.stderr.write("xalarm_unregister: alarm has not registered\n")
-        return
-    ALARM_REGISTER_INFO.id_filter = id_filter
+        sys.stderr.write("xalarm_upgrade: alarm has not registered\n")
+        return False
+    if ALARM_REGISTER_INFO.thread_should_stop:
+        sys.stderr.write("xalarm_upgrade: upgrade failed, alarm thread has stopped\n")
+        return False
+     ALARM_REGISTER_INFO.id_filter = id_filter
+    return True
 
 
 def xalarm_getid(alarm_info: Xalarm) -> int:
