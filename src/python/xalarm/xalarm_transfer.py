@@ -17,11 +17,13 @@ Create: 2023-11-02
 import socket
 import logging
 import select
+from time import sleep
 
 MIN_ID_NUMBER = 1001
 MAX_ID_NUMBER = 1128
 MAX_CONNECTION_NUM = 100 
 TEST_CONNECT_BUFFER_SIZE = 32
+PEROID_SCANN_TIME = 60
 
 
 def check_filter(alarm_info, alarm_filter):
@@ -64,6 +66,12 @@ def cleanup_closed_connections(server_sock, epoll, fd_to_socket):
         fd_to_socket[fileno].close()
         del fd_to_socket[fileno]
         logging.info(f"cleaned up connection {fileno} for client lost connection.")
+
+
+def peroid_task_to_cleanup_connections(server_sock, epoll, fd_to_socket, thread_should_stop):
+    while not thread_should_stop:
+        sleep(PEROID_SCANN_TIME)
+        cleanup_closed_connections(server_sock, epoll, fd_to_socket)
 
 
 def wait_for_connection(server_sock, epoll, fd_to_socket, thread_should_stop):
