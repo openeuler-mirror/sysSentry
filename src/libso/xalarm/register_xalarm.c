@@ -156,7 +156,11 @@ static void *alarm_recv(void *arg)
                 continue;
             }
             printf("recv error len:%d errno:%d\n", recvlen, errno);
-        }
+        } else if (recvlen == 0) {
+            printf("connection closed by xalarmd, maybe connections reach max num or service stopped.\n");
+	    g_register_info.thread_should_stop = 1;
+	    break;
+	}
     }
     return NULL;
 }
@@ -209,6 +213,11 @@ bool xalarm_Upgrade(struct alarm_subscription_info id_filter, int client_id)
 
     if (!alarm_subscription_verify(id_filter) || client_id != 0) {
         printf("%s: invalid args\n", __func__);
+        return false;
+    }
+
+    if (g_register_info.thread_should_stop) {
+        printf("%s: upgrade failed, alarm thread has stopped\n", __func__);
         return false;
     }
     set_alarm_id(id_filter);
