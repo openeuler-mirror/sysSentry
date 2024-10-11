@@ -43,7 +43,7 @@ def check_collect_valid(period):
         except Exception as e:
             logging.warning(f"get valid devices failed, occur exception: {e}")
             return None
-        if data.empty():
+        if not data:
             logging.warning(f"get valid devices failed, return {data_raw}")
             return None
         return [k for k in data.keys()]
