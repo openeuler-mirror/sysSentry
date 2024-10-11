@@ -136,7 +136,7 @@ if __name__ == '__main__':
     parser_get_result.add_argument('task_name')
     parser_get_alarm = subparsers.add_parser('get_alarm', help='get task alarm')
     parser_get_alarm.add_argument('task_name')
-    parser_get_alarm.add_argument('-s', '--time_range', type=str, default=DEFAULT_ALARM_TIME_RANGE, help='Specified time range')
+    parser_get_alarm.add_argument('-s', '--time_range', type=int, default=DEFAULT_ALARM_TIME_RANGE, help='Specified time range')
     parser_get_alarm.add_argument('-d', '--detailed', action='store_true', help='Print Detailed Information')
     parser_list = subparsers.add_parser('list', help='show all loaded task mod')
 
@@ -153,6 +153,8 @@ if __name__ == '__main__':
     elif client_args.cmd_type == 'get_result':
         req_msg_struct = {"type": "get_result", "data": client_args.task_name}
     elif client_args.cmd_type == 'get_alarm':
+        if not isinstance(client_args.time_range, int) or client_args.time_range <= 0:
+            print(f"time_range is not a positive integer: {client_args.time_range}")
         req_msg_struct = {
             "type": "get_alarm", 
             "data": {
