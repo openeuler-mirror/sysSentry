@@ -117,4 +117,5 @@ def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data):
         epoll.unregister(fileno)
         fd_to_socket[fileno].close()
         del fd_to_socket[fileno]
+        logging.info(f"cleaned up connection {fileno} for client lost connection.")
 
