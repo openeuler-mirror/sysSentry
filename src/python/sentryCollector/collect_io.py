@@ -154,7 +154,7 @@ class CollectIo():
         try:
             with open(io_dump_file, 'r') as file:
                 for line in file:
-                    count += line.count('.op=' + Io_Category[category])
+                    count += line.count('.op=' + Io_Category[category].upper())
                 if count > 0:
                     logging.info(f"io_dump info : {disk_name}, {stage}, {category}, {count}")
         except FileNotFoundError:
