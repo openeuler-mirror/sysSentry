@@ -127,9 +127,9 @@ class CollectConfig:
                 CONF_IO, CONF_IO_MAX_SAVE, CONF_IO_MAX_SAVE_DEFAULT)
             result_io_config[CONF_IO_MAX_SAVE] = CONF_IO_MAX_SAVE_DEFAULT
         # disk
-        disk = io_map_value.get(CONF_IO_DISK).lower()
+        disk = io_map_value.get(CONF_IO_DISK)
         if disk:
-            disk_str = disk.replace(" ", "")
+            disk_str = disk.lower().replace(" ", "")
             pattern = r'^[a-zA-Z0-9-_,]+$'
             if not re.match(pattern, disk_str):
                 logging.warning("module_name = %s section, field = %s is incorrect, use default %s", 
