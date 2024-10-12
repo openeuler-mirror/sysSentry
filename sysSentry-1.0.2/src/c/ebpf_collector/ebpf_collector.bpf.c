@@ -92,6 +92,35 @@ struct bpf_map_def SEC("maps") tag_args = {
    .max_entries = 1000, 
 };
 
+struct bpf_map_def SEC("maps") blk_res_2 = { 
+   .type = BPF_MAP_TYPE_HASH, 
+   .key_size = sizeof(u64), 
+   .value_size = sizeof(struct time_range_io_count), 
+   .max_entries = MAX_IO_TIME, 
+};
+
+struct bpf_map_def SEC("maps") bio_res_2 = { 
+   .type = BPF_MAP_TYPE_HASH, 
+   .key_size = sizeof(u64), 
+   .value_size = sizeof(struct time_range_io_count), 
+   .max_entries = MAX_IO_TIME, 
+};
+
+struct bpf_map_def SEC("maps") wbt_res_2 = { 
+   .type = BPF_MAP_TYPE_HASH, 
+   .key_size = sizeof(u64), 
+   .value_size = sizeof(struct time_range_io_count), 
+   .max_entries = MAX_IO_TIME, 
+};
+
+struct bpf_map_def SEC("maps") tag_res_2 = { 
+   .type = BPF_MAP_TYPE_HASH, 
+   .key_size = sizeof(u64), 
+   .value_size = sizeof(struct time_range_io_count), 
+   .max_entries = MAX_IO_TIME, 
+};
+
+
 struct blk_mq_alloc_data {
     /* input parameter */
     struct request_queue *q;
@@ -148,39 +177,12 @@ static __always_inline void blk_fill_rwbs(char *rwbs, unsigned int op)
     }
 }
 
-void update_new_data_in_start(struct stage_data *new_data, struct update_params *params) {
-    blk_fill_rwbs(new_data->io_type, params->cmd_flags);
-    if (new_data->bucket[params->update_bucket].start_range == params->curr_start_range){
-        new_data->bucket[params->update_bucket].io_count += 1;
-    } else {
-        new_data->bucket[MAX_BUCKETS].io_count += new_data->bucket[params->update_bucket].io_count;
-        new_data->bucket[params->update_bucket].io_count = 1;
-        new_data->bucket[params->update_bucket].start_range = params->curr_start_range;
-    }
-}
-
 void update_curr_data_in_start(struct stage_data *curr_data, struct update_params *params) {
     if (curr_data && params) {
         curr_data->start_count += 1;
         curr_data->major = params->major;
         curr_data->first_minor = params->first_minor;
         blk_fill_rwbs(curr_data->io_type, params->cmd_flags);
-        if (curr_data->bucket[params->update_bucket].start_range == params->curr_start_range) {
-            curr_data->bucket[params->update_bucket].io_count += 1;
-        } else {
-            curr_data->bucket[MAX_BUCKETS].io_count += curr_data->bucket[params->update_bucket].io_count;
-            curr_data->bucket[params->update_bucket].io_count = 1;
-        }
-        curr_data->bucket[params->update_bucket].start_range = params->curr_start_range;
-    }
-}
-
-void update_new_data_in_finish(struct stage_data *new_data, struct update_params *params) {
-    blk_fill_rwbs(new_data->io_type, params->cmd_flags);
-    if (new_data->bucket[params->update_bucket].start_range == params->curr_start_range){
-        new_data->bucket[params->update_bucket].io_count = (new_data->bucket[params->update_bucket].io_count > 1) ? new_data->bucket[params->update_bucket].io_count - 1 : 0;
-    } else {
-        new_data->bucket[MAX_BUCKETS].io_count = (new_data->bucket[MAX_BUCKETS].io_count > 1) ? new_data->bucket[MAX_BUCKETS].io_count - 1 : 0;
     }
 }
 
@@ -203,7 +205,6 @@ static void init_io_counter(struct io_counter *counterp, int major, int first_mi
         counterp->first_minor = first_minor;
     }
 }
-
 
 u32 find_matching_tag_1_keys(int major, int minor) {
     u32 key = 0;
@@ -705,6 +706,7 @@ u32 find_matching_wbt_5_keys(int major, int minor) {
     return MAP_SIZE + 1; 
 }
 
+// start rq_driver
 SEC("kprobe/blk_mq_start_request") 
 int kprobe_blk_mq_start_request(struct pt_regs *regs) 
 {
@@ -742,14 +744,12 @@ int kprobe_blk_mq_start_request(struct pt_regs *regs)
     if (err) 
         return 0;
 
-    u64 curr_start_range = zero.start_time / THRESHOLD / MAX_BUCKETS;
-    u64 update_bucket = curr_start_range % MAX_BUCKETS;
+    u64 curr_start_range = zero.start_time / THRESHOLD;
 
     struct update_params params = {
         .major = major,
         .first_minor = first_minor,
         .cmd_flags = cmd_flags,
-        .update_bucket = update_bucket,
         .curr_start_range = curr_start_range,
     };
 
@@ -764,20 +764,28 @@ int kprobe_blk_mq_start_request(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         }; 
-        update_new_data_in_start(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&blk_res, &key, &new_data, 0);
     } else {
         update_curr_data_in_start(curr_data, &params);
     }
 
+    struct time_range_io_count *curr_data_time_range;
+    curr_data_time_range = bpf_map_lookup_elem(&blk_res_2, &curr_start_range);
+    if (curr_data_time_range == NULL) {
+        struct time_range_io_count new_data = { .count = {0} };
+        bpf_map_update_elem(&blk_res_2, &curr_start_range, &new_data, 0); 
+    } else {
+        if (key < MAP_SIZE) {
+            __sync_fetch_and_add(&curr_data_time_range->count[key], 1);
+        }
+    }
+
     return 0; 
 }
 
+// finish rq_driver
 SEC("kprobe/blk_mq_free_request") 
 int kprobe_blk_mq_free_request(struct pt_regs *regs) 
 {
@@ -811,15 +819,13 @@ int kprobe_blk_mq_free_request(struct pt_regs *regs)
         return 0;
     }
 
-    u64 duration = bpf_ktime_get_ns() - counterp->start_time; 
-    u64 curr_start_range = counterp->start_time / THRESHOLD / MAX_BUCKETS;
-    u64 update_bucket = curr_start_range % MAX_BUCKETS;
+    u64 duration = bpf_ktime_get_ns() - counterp->start_time;
+    u64 curr_start_range = counterp->start_time / THRESHOLD;
 
     struct update_params params = {
         .major = major,
         .first_minor = first_minor,
         .cmd_flags = cmd_flags,
-        .update_bucket = update_bucket,
         .curr_start_range = curr_start_range,
     };
 
@@ -834,12 +840,8 @@ int kprobe_blk_mq_free_request(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_finish(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&blk_res, &key, &new_data, 0); 
     } else if (curr_data == NULL) { 
         struct stage_data new_data = {
@@ -850,28 +852,30 @@ int kprobe_blk_mq_free_request(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_finish(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&blk_res, &key, &new_data, 0); 
     } else {
-        if (curr_data->bucket[update_bucket].start_range == curr_start_range) {
-            curr_data->bucket[update_bucket].io_count = (curr_data->bucket[update_bucket].io_count > 1) ? curr_data->bucket[update_bucket].io_count - 1 : 0;
-        } else {
-            curr_data->bucket[MAX_BUCKETS].io_count = (curr_data->bucket[MAX_BUCKETS].io_count > 1) ? curr_data->bucket[MAX_BUCKETS].io_count - 1 : 0;
-
-        }
         curr_data->duration += duration; 
         update_curr_data_in_finish(curr_data, &params, &duration);
+    }
+
+    struct time_range_io_count *curr_data_time_range;
+    curr_data_time_range = bpf_map_lookup_elem(&blk_res_2, &curr_start_range);
+    if (curr_data_time_range == NULL) { 
+        struct time_range_io_count new_data = { .count = {0} };
+        bpf_map_update_elem(&blk_res_2, &curr_start_range, &new_data, 0);
+    } else {
+        if (key < MAP_SIZE && curr_data_time_range->count[key] > 0) {
+            __sync_fetch_and_add(&curr_data_time_range->count[key], -1);
+        }
     }
 
     bpf_map_delete_elem(&blk_map, &rq); 
     return 0;
 }
 
+// start bio
 SEC("kprobe/blk_mq_make_request") 
 int kprobe_blk_mq_make_request(struct pt_regs *regs)
 {
@@ -909,20 +913,18 @@ int kprobe_blk_mq_make_request(struct pt_regs *regs)
     if (err && err != -EEXIST) 
         return 0;
 
-    u64 curr_start_range = zero.start_time / THRESHOLD / MAX_BUCKETS;
-    u64 update_bucket = curr_start_range % MAX_BUCKETS;
+    u64 curr_start_range = zero.start_time / THRESHOLD;
 
     struct update_params params = {
         .major = major,
         .first_minor = first_minor,
         .cmd_flags = cmd_flags,
-        .update_bucket = update_bucket,
         .curr_start_range = curr_start_range,
     }; 
 
     struct stage_data *curr_data;
     curr_data = bpf_map_lookup_elem(&bio_res, &key);
-    if (curr_data == NULL) { 
+    if (curr_data == NULL) {
         struct stage_data new_data = {
             .start_count = 1,
             .finish_count = 0,
@@ -931,20 +933,28 @@ int kprobe_blk_mq_make_request(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_start(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&bio_res, &key, &new_data, 0);
-    } else { 
+    } else {
         update_curr_data_in_start(curr_data, &params);
+    }
+
+    struct time_range_io_count *curr_data_time_range;
+    curr_data_time_range = bpf_map_lookup_elem(&bio_res_2, &curr_start_range);
+    if (curr_data_time_range == NULL) {
+        struct time_range_io_count new_data = { .count = {0} };
+        bpf_map_update_elem(&bio_res_2, &curr_start_range, &new_data, 0); 
+    } else {
+        if (key < MAP_SIZE) {
+            __sync_fetch_and_add(&curr_data_time_range->count[key], 1);
+        }
     }
 
     return 0; 
 }
 
+// finish bio
 SEC("kprobe/bio_endio") 
 int kprobe_bio_endio(struct pt_regs *regs) 
 {
@@ -982,20 +992,18 @@ int kprobe_bio_endio(struct pt_regs *regs)
     delete_map = &bio_map; 
 
     u64 duration = bpf_ktime_get_ns() - counterp->start_time; 
-    u64 curr_start_range = counterp->start_time / THRESHOLD / MAX_BUCKETS;
-    u64 update_bucket = curr_start_range % MAX_BUCKETS;
+    u64 curr_start_range = counterp->start_time / THRESHOLD;
 
     struct update_params params = {
         .major = major,
         .first_minor = first_minor,
         .cmd_flags = cmd_flags,
-        .update_bucket = update_bucket,
         .curr_start_range = curr_start_range,
     };
 
     struct stage_data *curr_data;
     curr_data = bpf_map_lookup_elem(&bio_res, &key);
-    if (curr_data == NULL && duration > DURATION_THRESHOLD) { 
+    if (curr_data == NULL && duration > DURATION_THRESHOLD) {
         struct stage_data new_data = {
             .start_count = 1,
             .finish_count = 1,
@@ -1004,14 +1012,10 @@ int kprobe_bio_endio(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_finish(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&bio_res, &key, &new_data, 0); 
-    } else if (curr_data == NULL) { 
+    } else if (curr_data == NULL) {
         struct stage_data new_data = {
             .start_count = 1,
             .finish_count = 1,
@@ -1020,28 +1024,30 @@ int kprobe_bio_endio(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_finish(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&bio_res, &key, &new_data, 0); 
     } else {
-        if (curr_data->bucket[update_bucket].start_range == curr_start_range) {
-            curr_data->bucket[update_bucket].io_count = (curr_data->bucket[update_bucket].io_count > 1) ? curr_data->bucket[update_bucket].io_count - 1 : 0;
-        } else {
-            curr_data->bucket[MAX_BUCKETS].io_count = (curr_data->bucket[MAX_BUCKETS].io_count > 1) ? curr_data->bucket[MAX_BUCKETS].io_count - 1 : 0;
-
-        }
         curr_data->duration += duration; 
         update_curr_data_in_finish(curr_data, &params, &duration);
+    }
+
+    struct time_range_io_count *curr_data_time_range;
+    curr_data_time_range = bpf_map_lookup_elem(&bio_res_2, &curr_start_range);
+    if (curr_data_time_range == NULL) { 
+        struct time_range_io_count new_data = { .count = {0} };
+        bpf_map_update_elem(&bio_res_2, &curr_start_range, &new_data, 0);
+    } else {
+        if (key < MAP_SIZE && curr_data_time_range->count[key] > 0) {
+            __sync_fetch_and_add(&curr_data_time_range->count[key], -1);
+        }
     }
 
     bpf_map_delete_elem(delete_map, &bio); 
     return 0; 
 }
 
+// start wbt
 SEC("kprobe/wbt_wait") 
 int kprobe_wbt_wait(struct pt_regs *regs) 
 {
@@ -1082,14 +1088,12 @@ int kprobe_wbt_wait(struct pt_regs *regs)
     if (err) 
         return 0;
 
-    u64 curr_start_range = zero.start_time / THRESHOLD / MAX_BUCKETS;
-    u64 update_bucket = curr_start_range % MAX_BUCKETS;
+    u64 curr_start_range = zero.start_time / THRESHOLD;
 
     struct update_params params = {
         .major = major,
         .first_minor = first_minor,
         .cmd_flags = cmd_flags,
-        .update_bucket = update_bucket,
         .curr_start_range = curr_start_range,
     }; 
 
@@ -1104,20 +1108,28 @@ int kprobe_wbt_wait(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_start(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&wbt_res, &key, &new_data, 0);
     } else {
         update_curr_data_in_start(curr_data, &params);
     }
 
+    struct time_range_io_count *curr_data_time_range;
+    curr_data_time_range = bpf_map_lookup_elem(&wbt_res_2, &curr_start_range);
+    if (curr_data_time_range == NULL) {
+        struct time_range_io_count new_data = { .count = {0} };
+        bpf_map_update_elem(&wbt_res_2, &curr_start_range, &new_data, 0); 
+    } else {
+        if (key < MAP_SIZE) {
+            __sync_fetch_and_add(&curr_data_time_range->count[key], 1);
+        }
+    }
+
     return 0; 
 }
 
+// finish wbt
 SEC("kretprobe/wbt_wait") 
 int kretprobe_wbt_wait(struct pt_regs *regs) 
 {
@@ -1159,14 +1171,12 @@ int kretprobe_wbt_wait(struct pt_regs *regs)
         return 0;
 
     u64 duration = bpf_ktime_get_ns() - counterp->start_time; 
-    u64 curr_start_range = counterp->start_time / THRESHOLD / MAX_BUCKETS;
-    u64 update_bucket = curr_start_range % MAX_BUCKETS;
+    u64 curr_start_range = counterp->start_time / THRESHOLD;
 
     struct update_params params = {
         .major = major,
         .first_minor = first_minor,
         .cmd_flags = cmd_flags,
-        .update_bucket = update_bucket,
         .curr_start_range = curr_start_range,
     }; 
 
@@ -1181,12 +1191,8 @@ int kretprobe_wbt_wait(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_finish(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&wbt_res, &key, &new_data, 0); 
     } else if (curr_data == NULL) { 
         struct stage_data new_data = {
@@ -1197,22 +1203,23 @@ int kretprobe_wbt_wait(struct pt_regs *regs)
             .io_type = "",
             .major = major,
             .first_minor = first_minor,
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_finish(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&wbt_res, &key, &new_data, 0); 
     } else {
-        if (curr_data->bucket[update_bucket].start_range == curr_start_range) {
-            curr_data->bucket[update_bucket].io_count = (curr_data->bucket[update_bucket].io_count > 1) ? curr_data->bucket[update_bucket].io_count - 1 : 0;
-        } else {
-            curr_data->bucket[MAX_BUCKETS].io_count = (curr_data->bucket[MAX_BUCKETS].io_count > 1) ? curr_data->bucket[MAX_BUCKETS].io_count - 1 : 0;
-
-        }
         curr_data->duration += duration; 
         update_curr_data_in_finish(curr_data, &params, &duration);
+    }
+
+    struct time_range_io_count *curr_data_time_range;
+    curr_data_time_range = bpf_map_lookup_elem(&wbt_res_2, &curr_start_range);
+    if (curr_data_time_range == NULL) { 
+        struct time_range_io_count new_data = { .count = {0} };
+        bpf_map_update_elem(&wbt_res_2, &curr_start_range, &new_data, 0);
+    } else {
+        if (key < MAP_SIZE && curr_data_time_range->count[key] > 0) {
+            __sync_fetch_and_add(&curr_data_time_range->count[key], -1);
+        }
     }
 
     bpf_map_delete_elem(&wbt_map, &wbtkey);
@@ -1220,6 +1227,7 @@ int kretprobe_wbt_wait(struct pt_regs *regs)
     return 0; 
 }
 
+// start get_tag 
 SEC("kprobe/blk_mq_get_tag") 
 int kprobe_blk_mq_get_tag(struct pt_regs *regs) 
 { 
@@ -1262,14 +1270,12 @@ int kprobe_blk_mq_get_tag(struct pt_regs *regs)
     if (err) 
         return 0;
     
-    u64 curr_start_range = zero.start_time / THRESHOLD / MAX_BUCKETS;
-    u64 update_bucket = curr_start_range % MAX_BUCKETS;
+    u64 curr_start_range = zero.start_time / THRESHOLD;
 
     struct update_params params = {
         .major = major,
         .first_minor = first_minor,
         .cmd_flags = cmd_flags,
-        .update_bucket = update_bucket,
         .curr_start_range = curr_start_range,
     };
 
@@ -1284,20 +1290,28 @@ int kprobe_blk_mq_get_tag(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_start(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&tag_res, &key, &new_data, 0);
     } else { 
         update_curr_data_in_start(curr_data, &params);
     }
 
+    struct time_range_io_count *curr_data_time_range;
+    curr_data_time_range = bpf_map_lookup_elem(&tag_res_2, &curr_start_range);
+    if (curr_data_time_range == NULL) {
+        struct time_range_io_count new_data = { .count = {0} };
+        bpf_map_update_elem(&tag_res_2, &curr_start_range, &new_data, 0); 
+    } else {
+        if (key < MAP_SIZE) {
+            __sync_fetch_and_add(&curr_data_time_range->count[key], 1);
+        }
+    }
+
     return 0; 
 }
 
+// finish get_tag 
 SEC("kretprobe/blk_mq_get_tag") 
 int kretprobe_blk_mq_get_tag(struct pt_regs *regs) 
 {
@@ -1343,14 +1357,12 @@ int kretprobe_blk_mq_get_tag(struct pt_regs *regs)
         return 0;
 
     u64 duration = bpf_ktime_get_ns() - counterp->start_time; 
-    u64 curr_start_range = counterp->start_time / THRESHOLD / MAX_BUCKETS;
-    u64 update_bucket = curr_start_range % MAX_BUCKETS;
+    u64 curr_start_range = counterp->start_time / THRESHOLD;
 
     struct update_params params = {
         .major = major,
         .first_minor = first_minor,
         .cmd_flags = cmd_flags,
-        .update_bucket = update_bucket,
         .curr_start_range = curr_start_range,
     };
 
@@ -1365,12 +1377,8 @@ int kretprobe_blk_mq_get_tag(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_finish(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&tag_res, &key, &new_data, 0); 
     } else if (curr_data == NULL) { 
         struct stage_data new_data = {
@@ -1381,23 +1389,25 @@ int kretprobe_blk_mq_get_tag(struct pt_regs *regs)
             .major = major,
             .first_minor = first_minor,
             .io_type = "",
-            .bucket = {
-                [0] = {.start_range = 0, .io_count = 0},
-                [1] = {.start_range = 0, .io_count = 0},
-            },
         };
-        update_new_data_in_finish(&new_data, &params);
+        blk_fill_rwbs(new_data.io_type, cmd_flags);
         bpf_map_update_elem(&tag_res, &key, &new_data, 0); 
     } else {
-        if (curr_data->bucket[update_bucket].start_range == curr_start_range) {
-            curr_data->bucket[update_bucket].io_count = (curr_data->bucket[update_bucket].io_count > 1) ? curr_data->bucket[update_bucket].io_count - 1 : 0;
-        } else {
-            curr_data->bucket[MAX_BUCKETS].io_count = (curr_data->bucket[MAX_BUCKETS].io_count > 1) ? curr_data->bucket[MAX_BUCKETS].io_count - 1 : 0;
-
-        }
         curr_data->duration += duration; 
         update_curr_data_in_finish(curr_data, &params, &duration);
     }
+
+    struct time_range_io_count *curr_data_time_range;
+    curr_data_time_range = bpf_map_lookup_elem(&tag_res_2, &curr_start_range);
+    if (curr_data_time_range == NULL) { 
+        struct time_range_io_count new_data = { .count = {0} };
+        bpf_map_update_elem(&tag_res_2, &curr_start_range, &new_data, 0);
+    } else {
+        if (key < MAP_SIZE && curr_data_time_range->count[key] > 0) {
+            __sync_fetch_and_add(&curr_data_time_range->count[key], -1);
+        }
+    }
+
     bpf_map_delete_elem(&tag_map, &tagkey); 
     bpf_map_delete_elem(&tag_args, &tagkey);
     return 0; 

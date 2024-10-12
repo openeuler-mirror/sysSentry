@@ -10,7 +10,8 @@
 typedef long long unsigned int u64;
 typedef unsigned int u32;
 
-#define MAX_BUCKETS 1
+#define MAX_IO_TIME 130
+#define IO_DUMP_THRESHOLD 120
 #define THRESHOLD 1000000000
 #define DURATION_THRESHOLD 500000000
 
@@ -29,7 +30,7 @@ typedef unsigned int u32;
 #define REQ_OP_DISCARD 3
 #define REQ_OP_SECURE_ERASE 5
 #define REQ_OP_WRITE_SAME 7
-#define MAP_SIZE   128
+#define MAP_SIZE   15
 
 enum stage_type {
     BIO=0,
@@ -42,11 +43,6 @@ enum stage_type {
     MAX_STAGE_TYPE,
 };
 
-struct time_bucket {
-    u64 start_range;		
-    u32 io_count;			
-};
-
 struct stage_data {
     u64 start_count;		
     u64 finish_count;		
@@ -55,7 +51,6 @@ struct stage_data {
     int major;
     int first_minor;
     char io_type[RWBS_LEN];
-    struct time_bucket bucket[MAX_BUCKETS+1]; 	
 };
 
 struct io_counter { 
@@ -70,8 +65,12 @@ struct update_params {
     int major;
     int first_minor;
     unsigned int cmd_flags;
-    u64 update_bucket;
     u64 curr_start_range;
+};
+
+struct time_range_io_count
+{
+    u32 count[MAP_SIZE];
 };
 
 #endif /* __EBPFCOLLECTOR_H */
