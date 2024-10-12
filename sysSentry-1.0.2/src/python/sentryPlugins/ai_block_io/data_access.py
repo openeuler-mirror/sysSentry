@@ -16,6 +16,7 @@ from sentryCollector.collect_plugin import (
     Result_Messages,
     get_io_data,
     is_iocollect_valid,
+    get_disk_type
 )
 
 

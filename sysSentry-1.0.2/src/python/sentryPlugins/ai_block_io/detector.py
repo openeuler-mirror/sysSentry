@@ -40,7 +40,7 @@ class Detector:
         metric_value = get_metric_value_from_io_data_dict_by_metric_name(io_data_dict_with_disk_name, self._metric_name)
         if metric_value is None:
             logging.debug('not found metric value, so return None.')
-            return False, None, None
+            return False, None, None, None
         logging.debug(f'input metric value: {str(metric_value)}')
         self._threshold.push_latest_data_to_queue(metric_value)
         detection_result = self._slidingWindow.is_slow_io_event(metric_value)
@@ -49,9 +49,9 @@ class Detector:
         return detection_result
 
     def __repr__(self):
-        return (f'disk_name: {self._metric_name.get_disk_name()}, stage_name: {self._metric_name.get_stage_name()},'
-                f' io_type_name: {self._metric_name.get_io_access_type_name()},'
-                f' metric_name: {self._metric_name.get_metric_name()}, threshold_type: {self._threshold},'
+        return (f'disk_name: {self._metric_name.disk_name}, stage_name: {self._metric_name.stage_name},'
+                f' io_type_name: {self._metric_name.io_access_type_name},'
+                f' metric_name: {self._metric_name.metric_name}, threshold_type: {self._threshold},'
                 f' sliding_window_type: {self._slidingWindow}')
 
 
@@ -69,9 +69,9 @@ class DiskDetector:
         # todo：根因诊断
         for detector in self._detector_list:
             result = detector.is_slow_io_event(io_data_dict_with_disk_name)
-            if result[0] and detector.get_metric_name().get_stage_name() == 'bio':
-                return result[0], detector.get_metric_name(), result[1], result[2]
-        return False, None, None, None
+            if result[0] and detector.get_metric_name().stage_name == 'bio':
+                return result[0], detector.get_metric_name(), result[1], result[2], result[3]
+        return False, None, None, None, None
 
     def __repr__(self):
         msg = f'disk: {self._disk_name}, '

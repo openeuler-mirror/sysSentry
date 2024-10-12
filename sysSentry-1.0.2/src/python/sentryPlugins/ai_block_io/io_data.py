@@ -45,30 +45,10 @@ class IOData:
     time_stamp: float = field(default_factory=lambda: datetime.now().timestamp())
 
 
+@dataclass(frozen=True)
 class MetricName:
-    _disk_name: str = None
-    _stage_name: str = None
-    _io_access_type_name: str = None
-    _metric_name: str = None
-
-    def __init__(self, disk_name: str, stage_name: str, io_access_type_name: str, metric_name: str):
-        self._disk_name = disk_name
-        self._stage_name = stage_name
-        self._io_access_type_name = io_access_type_name
-        self._metric_name = metric_name
-
-    def get_disk_name(self):
-        return self._disk_name
-
-    def get_stage_name(self):
-        return self._stage_name
-
-    def get_io_access_type_name(self):
-        return self._io_access_type_name
-
-    def get_metric_name(self):
-        return self._metric_name
-
-    def __repr__(self):
-        return (f'disk: {self._disk_name}, stage: {self._stage_name}, io_access_type: {self._io_access_type_name},'
-                f'metric: {self._metric_name}')
+    disk_name: str
+    disk_type: str
+    stage_name: str
+    io_access_type_name: str
+    metric_name: str
