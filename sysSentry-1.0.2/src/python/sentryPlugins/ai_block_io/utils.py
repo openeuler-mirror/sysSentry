@@ -19,53 +19,57 @@ from .io_data import MetricName, IOData
 
 
 def get_threshold_type_enum(algorithm_type: str):
-    if algorithm_type.lower() == 'absolute':
+    if algorithm_type.lower() == "absolute":
         return ThresholdType.AbsoluteThreshold
-    if algorithm_type.lower() == 'boxplot':
+    if algorithm_type.lower() == "boxplot":
         return ThresholdType.BoxplotThreshold
-    if algorithm_type.lower() == 'n_sigma':
+    if algorithm_type.lower() == "n_sigma":
         return ThresholdType.NSigmaThreshold
     return None
 
 
 def get_sliding_window_type_enum(sliding_window_type: str):
-    if sliding_window_type.lower() == 'not_continuous':
+    if sliding_window_type.lower() == "not_continuous":
         return SlidingWindowType.NotContinuousSlidingWindow
-    if sliding_window_type.lower() == 'continuous':
+    if sliding_window_type.lower() == "continuous":
         return SlidingWindowType.ContinuousSlidingWindow
-    if sliding_window_type.lower() == 'median':
+    if sliding_window_type.lower() == "median":
         return SlidingWindowType.MedianSlidingWindow
-    logging.warning(f"the sliding window type: {sliding_window_type} you set is invalid, use default value: not_continuous")
-    return SlidingWindowType.NotContinuousSlidingWindow
+    return None
 
 
-def get_metric_value_from_io_data_dict_by_metric_name(io_data_dict: dict, metric_name: MetricName):
+def get_metric_value_from_io_data_dict_by_metric_name(
+    io_data_dict: dict, metric_name: MetricName
+):
     try:
-        io_data: IOData = io_data_dict[metric_name.get_disk_name()]
-        io_stage_data = asdict(io_data)[metric_name.get_stage_name()]
-        base_data = io_stage_data[metric_name.get_io_access_type_name()]
-        metric_value = base_data[metric_name.get_metric_name()]
+        io_data: IOData = io_data_dict[metric_name.disk_name]
+        io_stage_data = asdict(io_data)[metric_name.stage_name]
+        base_data = io_stage_data[metric_name.io_access_type_name]
+        metric_value = base_data[metric_name.metric_name]
         return metric_value
     except KeyError:
         return None
 
 
-def get_data_queue_size_and_update_size(training_data_duration: float, train_update_duration: float,
-                                        slow_io_detect_frequency: int):
+def get_data_queue_size_and_update_size(
+    training_data_duration: float,
+    train_update_duration: float,
+    slow_io_detect_frequency: int,
+):
     data_queue_size = int(training_data_duration * 60 * 60 / slow_io_detect_frequency)
     update_size = int(train_update_duration * 60 * 60 / slow_io_detect_frequency)
     return data_queue_size, update_size
 
 
 def get_log_level(log_level: str):
-    if log_level.lower() == 'debug':
+    if log_level.lower() == "debug":
         return logging.DEBUG
-    elif log_level.lower() == 'info':
+    elif log_level.lower() == "info":
         return logging.INFO
-    elif log_level.lower() == 'warning':
+    elif log_level.lower() == "warning":
         return logging.WARNING
-    elif log_level.lower() == 'error':
+    elif log_level.lower() == "error":
         return logging.ERROR
-    elif log_level.lower() == 'critical':
+    elif log_level.lower() == "critical":
         return logging.CRITICAL
     return logging.INFO
