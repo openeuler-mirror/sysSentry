@@ -76,6 +76,18 @@ def update_alarm_list(alarm_info: Xalarm):
     finally:
         alarm_list_lock.release()
 
+def check_alarm_id_if_number(alarm_id):
+    if isinstance(alarm_id, int):
+        return True
+    else:
+        return False
+
+def check_alarm_clear_time_if_positive_integer(alarm_clear_time):
+    if isinstance(alarm_clear_time, int) and alarm_clear_time > 0:
+        return True
+    else:
+        return False
+
 def alarm_register():
     logging.debug(f"alarm_register: enter")
     # 初始化告警ID映射字典、告警老化时间字典
@@ -84,10 +96,16 @@ def alarm_register():
             logging.info(f"alarm_register: {task_name} is registered")
             task = TasksMap.tasks_dict[task_type][task_name]
             alarm_id = task.alarm_id
+            if not check_alarm_id_if_number(alarm_id):
+                logging.warnning(f"Invalid alarm_id {alarm_id}: ignore {task_name} alarm")
+                continue
             if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
                 logging.warnning(f"Invalid alarm_id {alarm_id}: ignore {task_name} alarm")
                 continue
             alarm_clear_time = task.alarm_clear_time
+            if not check_alarm_clear_time_if_positive_integer(alarm_clear_time):
+                logging.warnning(f"Invalid alarm_clear_time {alarm_clear_time}: ignore {task_name} alarm")
+                continue
             try:
                 alarm_clear_time = int(alarm_clear_time)
                 if alarm_clear_time <= 0:
@@ -119,6 +137,9 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Di
             logging.debug("task_name does not exist")
             return []
         alarm_id = task_alarm_id_dict[task_name]
+        clear_time = alarm_id_clear_time_dict[alarm_id]
+        if clear_time < int(time_range):
+            return []
         if alarm_id not in alarm_list_dict:
             logging.debug("alarm_id does not exist")
             return []
@@ -126,10 +147,10 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Di
         logging.debug(f"get_alarm_result: alarm_list of {alarm_id} has {len(alarm_list)} elements")
         # clear alarm_info older than clear time threshold
         stop_index = -1
-        timestamp = int(datetime.now().timestamp())
+        timestamp = datetime.now().timestamp()
         for i in range(len(alarm_list)):
             logging.debug(f"timestamp, alarm_list[{i}].timestamp: {timestamp}, {xalarm_gettime(alarm_list[i])}")
-            if timestamp - (xalarm_gettime(alarm_list[i])) / MILLISECONDS_UNIT_SECONDS > int(time_range):
+            if timestamp - (xalarm_gettime(alarm_list[i])) / MILLISECONDS_UNIT_SECONDS > time_range:
                 stop_index = i
                 break
         if stop_index >= 0:
