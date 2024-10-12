@@ -17,9 +17,6 @@ from .utils import get_metric_value_from_io_data_dict_by_metric_name
 
 
 class Detector:
-    _metric_name: MetricName = None
-    _threshold: Threshold = None
-    _slidingWindow: SlidingWindow = None
 
     def __init__(self, metric_name: MetricName, threshold: Threshold, sliding_window: SlidingWindow):
         self._metric_name = metric_name
@@ -40,18 +37,24 @@ class Detector:
         metric_value = get_metric_value_from_io_data_dict_by_metric_name(io_data_dict_with_disk_name, self._metric_name)
         if metric_value is None:
             logging.debug('not found metric value, so return None.')
-            return False, None, None
+            return (False, False), None, None, None
         logging.debug(f'input metric value: {str(metric_value)}')
         self._threshold.push_latest_data_to_queue(metric_value)
         detection_result = self._slidingWindow.is_slow_io_event(metric_value)
-        logging.debug(f'Detection result: {str(detection_result)}')
+        # 检测到慢周期，由Detector负责打印info级别日志
+        if detection_result[0][1]:
+            logging.info(f'[abnormal period happen]: disk info: {self._metric_name}, window: {detection_result[1]}, '
+                         f'current value: {metric_value}, ai threshold: {detection_result[2]}, '
+                         f'absolute threshold: {detection_result[3]}')
+        else:
+            logging.debug(f'Detection result: {str(detection_result)}')
         logging.debug(f'exit Detector: {self}')
         return detection_result
 
     def __repr__(self):
-        return (f'disk_name: {self._metric_name.get_disk_name()}, stage_name: {self._metric_name.get_stage_name()},'
-                f' io_type_name: {self._metric_name.get_io_access_type_name()},'
-                f' metric_name: {self._metric_name.get_metric_name()}, threshold_type: {self._threshold},'
+        return (f'disk_name: {self._metric_name.disk_name}, stage_name: {self._metric_name.stage_name},'
+                f' io_type_name: {self._metric_name.io_access_type_name},'
+                f' metric_name: {self._metric_name.metric_name}, threshold_type: {self._threshold},'
                 f' sliding_window_type: {self._slidingWindow}')
 
 
@@ -65,13 +68,38 @@ class DiskDetector:
         self._detector_list.append(detector)
 
     def is_slow_io_event(self, io_data_dict_with_disk_name: dict):
-        # 只有bio阶段发生异常，就认为发生了慢IO事件
-        # todo：根因诊断
+        """
+        根因诊断逻辑：只有bio阶段发生异常，才认为发生了慢IO事件，即bio阶段异常是慢IO事件的必要条件
+        情况一：bio异常，rq_driver也异常，则慢盘
+        情况二：bio异常，rq_driver无异常，且有内核IO栈任意阶段异常，则IO栈异常
+        情况三：bio异常，rq_driver无异常，且无内核IO栈任意阶段异常，则IO压力大
+        情况四：bio异常，则UNKNOWN
+        """
+        diagnosis_info = {"bio": [], "rq_driver": [], "io_stage": []}
         for detector in self._detector_list:
+            # result返回内容：(是否检测到慢IO，是否检测到慢周期)、窗口、ai阈值、绝对阈值
+            # 示例： (False, False), self._io_data_queue, self._ai_threshold, self._abs_threshold
             result = detector.is_slow_io_event(io_data_dict_with_disk_name)
-            if result[0] and detector.get_metric_name().get_stage_name() == 'bio':
-                return result[0], detector.get_metric_name(), result[1], result[2]
-        return False, None, None, None
+            if result[0][0]:
+                if detector.get_metric_name().stage_name == "bio":
+                    diagnosis_info["bio"].append((detector.get_metric_name(), result))
+                elif detector.get_metric_name().stage_name == "rq_driver":
+                    diagnosis_info["rq_driver"].append((detector.get_metric_name(), result))
+                else:
+                    diagnosis_info["io_stage"].append((detector.get_metric_name(), result))
+
+        # 返回内容：（1）是否检测到慢IO事件、（2）MetricName、（3）滑动窗口及阈值、（4）慢IO事件根因
+        root_cause = None
+        if len(diagnosis_info["bio"]) == 0:
+            return False, None, None, None
+        elif len(diagnosis_info["rq_driver"]) != 0:
+            root_cause = "[Root Cause：disk slow]"
+        elif len(diagnosis_info["io_stage"]) != 0:
+            stage = diagnosis_info["io_stage"][0][1].get_stage_name()
+            root_cause = f"[Root Cause：io stage slow, stage: {stage}]"
+        if root_cause is None:
+            root_cause = "[Root Cause：high io pressure]"
+        return True, diagnosis_info["bio"][0][0], diagnosis_info["bio"][0][1], root_cause
 
     def __repr__(self):
         msg = f'disk: {self._disk_name}, '

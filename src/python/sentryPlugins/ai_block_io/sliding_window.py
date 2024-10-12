@@ -21,15 +21,11 @@ class SlidingWindowType(Enum):
 
 
 class SlidingWindow:
-    _ai_threshold = None
-    _queue_length = None
-    _queue_threshold = None
-    _io_data_queue: list = None
-    _io_data_queue_abnormal_tag: list = None
-
-    def __init__(self, queue_length: int, threshold: int):
+    def __init__(self, queue_length: int, threshold: int, abs_threshold: int = None):
         self._queue_length = queue_length
         self._queue_threshold = threshold
+        self._ai_threshold = None
+        self._abs_threshold = abs_threshold
         self._io_data_queue = []
         self._io_data_queue_abnormal_tag = []
 
@@ -38,7 +34,12 @@ class SlidingWindow:
             self._io_data_queue.pop(0)
             self._io_data_queue_abnormal_tag.pop(0)
         self._io_data_queue.append(data)
-        self._io_data_queue_abnormal_tag.append(data >= self._ai_threshold if self._ai_threshold is not None else False)
+        tag = False
+        if ((self._ai_threshold is not None and data >= self._ai_threshold) or
+                (self._abs_threshold is not None and data >= self._abs_threshold)):
+            tag = True
+        self._io_data_queue_abnormal_tag.append(tag)
+        return tag
 
     def update(self, threshold):
         if self._ai_threshold == threshold:
@@ -49,7 +50,7 @@ class SlidingWindow:
             self._io_data_queue_abnormal_tag.append(data >= self._ai_threshold)
 
     def is_slow_io_event(self, data):
-        return False, None, None
+        return False, None, None, None
 
     def __repr__(self):
         return "[SlidingWindow]"
@@ -57,12 +58,13 @@ class SlidingWindow:
 
 class NotContinuousSlidingWindow(SlidingWindow):
     def is_slow_io_event(self, data):
-        super().push(data)
-        if len(self._io_data_queue) < self._queue_length or self._ai_threshold is None:
-            return False, self._io_data_queue, self._ai_threshold
+        is_abnormal_period = super().push(data)
+        is_slow_io_event = False
+        if len(self._io_data_queue) < self._queue_length or (self._ai_threshold is None and self._abs_threshold is None):
+            is_slow_io_event = False
         if self._io_data_queue_abnormal_tag.count(True) >= self._queue_threshold:
-            return True, self._io_data_queue, self._ai_threshold
-        return False, self._io_data_queue, self._ai_threshold
+            is_slow_io_event = True
+        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold
 
     def __repr__(self):
         return f"[NotContinuousSlidingWindow, window size: {self._queue_length}, threshold: {self._queue_threshold}]"
@@ -70,18 +72,20 @@ class NotContinuousSlidingWindow(SlidingWindow):
 
 class ContinuousSlidingWindow(SlidingWindow):
     def is_slow_io_event(self, data):
-        super().push(data)
-        if len(self._io_data_queue) < self._queue_length or self._ai_threshold is None:
-            return False, self._io_data_queue, self._ai_threshold
+        is_abnormal_period = super().push(data)
+        is_slow_io_event = False
+        if len(self._io_data_queue) < self._queue_length or (self._ai_threshold is None and self._abs_threshold is None):
+            is_slow_io_event = False
         consecutive_count = 0
         for tag in self._io_data_queue_abnormal_tag:
             if tag:
                 consecutive_count += 1
                 if consecutive_count >= self._queue_threshold:
-                    return True, self._io_data_queue, self._ai_threshold
+                    is_slow_io_event = True
+                    break
             else:
                 consecutive_count = 0
-        return False, self._io_data_queue, self._ai_threshold
+        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold
 
     def __repr__(self):
         return f"[ContinuousSlidingWindow, window size: {self._queue_length}, threshold: {self._queue_threshold}]"
@@ -89,20 +93,23 @@ class ContinuousSlidingWindow(SlidingWindow):
 
 class MedianSlidingWindow(SlidingWindow):
     def is_slow_io_event(self, data):
-        super().push(data)
-        if len(self._io_data_queue) < self._queue_length or self._ai_threshold is None:
-            return False, self._io_data_queue, self._ai_threshold
+        is_abnormal_period = super().push(data)
+        is_slow_io_event = False
+        if len(self._io_data_queue) < self._queue_length or (self._ai_threshold is None and self._abs_threshold is None):
+            is_slow_io_event = False
         median = np.median(self._io_data_queue)
         if median >= self._ai_threshold:
-            return True, self._io_data_queue, self._ai_threshold
-        return False, self._io_data_queue, self._ai_threshold
+            is_slow_io_event = True
+        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold
 
     def __repr__(self):
         return f"[MedianSlidingWindow, window size: {self._queue_length}]"
 
 
 class SlidingWindowFactory:
-    def get_sliding_window(self, sliding_window_type: SlidingWindowType, *args, **kwargs):
+    def get_sliding_window(
+        self, sliding_window_type: SlidingWindowType, *args, **kwargs
+    ):
         if sliding_window_type == SlidingWindowType.NotContinuousSlidingWindow:
             return NotContinuousSlidingWindow(*args, **kwargs)
         elif sliding_window_type == SlidingWindowType.ContinuousSlidingWindow:

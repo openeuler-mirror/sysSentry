@@ -12,13 +12,18 @@
 import time
 import signal
 import logging
+from collections import defaultdict
 
 from .detector import Detector, DiskDetector
-from .threshold import ThresholdFactory, AbsoluteThreshold
+from .threshold import ThresholdFactory
 from .sliding_window import SlidingWindowFactory
 from .utils import get_data_queue_size_and_update_size
 from .config_parser import ConfigParser
-from .data_access import get_io_data_from_collect_plug, check_collect_valid
+from .data_access import (
+    get_io_data_from_collect_plug,
+    check_collect_valid,
+    get_disk_type,
+)
 from .io_data import MetricName
 from .alarm_report import Xalarm, Report
 
@@ -34,7 +39,7 @@ def sig_handler(signum, frame):
 class SlowIODetection:
     _config_parser = None
     _disk_list = None
-    _detector_name_list = {}
+    _detector_name_list = defaultdict(list)
     _disk_detectors = {}
 
     def __init__(self, config_parser: ConfigParser):
@@ -43,9 +48,13 @@ class SlowIODetection:
         self.__init_detector()
 
     def __init_detector_name_list(self):
-        self._disk_list = check_collect_valid(self._config_parser.slow_io_detect_frequency)
+        self._disk_list = check_collect_valid(
+            self._config_parser.slow_io_detect_frequency
+        )
         if self._disk_list is None:
-            Report.report_pass("get available disk error, please check if the collector plug is enable. exiting...")
+            Report.report_pass(
+                "get available disk error, please check if the collector plug is enable. exiting..."
+            )
             exit(1)
 
         logging.info(f"ai_block_io plug has found disks: {self._disk_list}")
@@ -56,27 +65,45 @@ class SlowIODetection:
         # 情况2：is not None and len = 0，则不启动任何磁盘检测
         # 情况3：len ！= 0，则取交集
         if disks is None:
-            logging.warning("you not specify any disk or use default, so ai_block_io will enable all available disk.")
-            for disk in self._disk_list:
-                for stage in stages:
-                    for iotype in iotypes:
-                        if disk not in self._detector_name_list:
-                            self._detector_name_list[disk] = []
-                        self._detector_name_list[disk].append(MetricName(disk, stage, iotype, "latency"))
-        else:
-            for disk in disks:
-                if disk in self._disk_list:
-                    for stage in stages:
-                        for iotype in iotypes:
-                            if disk not in self._detector_name_list:
-                                self._detector_name_list[disk] = []
-                            self._detector_name_list[disk].append(MetricName(disk, stage, iotype, "latency"))
-                else:
-                    logging.warning("disk: [%s] not in available disk list, so it will be ignored.", disk)
-            if len(self._detector_name_list) == 0:
-                logging.critical("the disks to detection is empty, ai_block_io will exit.")
-                Report.report_pass("the disks to detection is empty, ai_block_io will exit.")
-                exit(1)
+            logging.warning(
+                "you not specify any disk or use default, so ai_block_io will enable all available disk."
+            )
+        for disk in self._disk_list:
+            if disks is not None:
+                if disk not in disks:
+                    continue
+                disks.remove(disk)
+
+            disk_type_result = get_disk_type(disk)
+            if disk_type_result["ret"] == 0 and disk_type_result["message"] in (
+                '0',
+                '1',
+                '2',
+            ):
+                disk_type = int(disk_type_result["message"])
+            else:
+                logging.warning(
+                    "%s get disk type error, return %s, so it will be ignored.",
+                    disk,
+                    disk_type_result,
+                )
+                continue
+            for stage in stages:
+                for iotype in iotypes:
+                    self._detector_name_list[disk].append(
+                        MetricName(disk, disk_type, stage, iotype, "latency")
+                    )
+        if disks:
+            logging.warning(
+                "disks: %s not in available disk list, so they will be ignored.",
+                disks,
+            )
+        if not self._detector_name_list:
+            logging.critical("the disks to detection is empty, ai_block_io will exit.")
+            Report.report_pass(
+                "the disks to detection is empty, ai_block_io will exit."
+            )
+            exit(1)
 
     def __init_detector(self):
         train_data_duration, train_update_duration = (
@@ -88,26 +115,39 @@ class SlowIODetection:
             train_data_duration, train_update_duration, slow_io_detection_frequency
         )
         sliding_window_type = self._config_parser.sliding_window_type
-        window_size, window_threshold = (self._config_parser.get_window_size_and_window_minimum_threshold())
+        window_size, window_threshold = (
+            self._config_parser.get_window_size_and_window_minimum_threshold()
+        )
 
         for disk, metric_name_list in self._detector_name_list.items():
-            threshold = ThresholdFactory().get_threshold(
-                threshold_type,
-                boxplot_parameter=self._config_parser.boxplot_parameter,
-                n_sigma_paramter=self._config_parser.n_sigma_parameter,
-                data_queue_size=data_queue_size,
-                data_queue_update_size=update_size,
-            )
-            sliding_window = SlidingWindowFactory().get_sliding_window(
-                sliding_window_type,
-                queue_length=window_size,
-                threshold=window_threshold,
-            )
             disk_detector = DiskDetector(disk)
             for metric_name in metric_name_list:
+                threshold = ThresholdFactory().get_threshold(
+                    threshold_type,
+                    boxplot_parameter=self._config_parser.boxplot_parameter,
+                    n_sigma_paramter=self._config_parser.n_sigma_parameter,
+                    data_queue_size=data_queue_size,
+                    data_queue_update_size=update_size,
+                )
+                abs_threshold = self._config_parser.get_tot_lim(
+                    metric_name.disk_type, metric_name.io_access_type_name
+                )
+                if abs_threshold is None:
+                    logging.warning(
+                        "disk %s, disk type %s, io type %s, get tot lim error, so it will be ignored.",
+                        disk,
+                        metric_name.disk_type,
+                        metric_name.io_access_type_name,
+                    )
+                sliding_window = SlidingWindowFactory().get_sliding_window(
+                    sliding_window_type,
+                    queue_length=window_size,
+                    threshold=window_threshold,
+                    abs_threshold=abs_threshold,
+                )
                 detector = Detector(metric_name, threshold, sliding_window)
                 disk_detector.add_detector(detector)
-            logging.info(f'disk: [{disk}] add detector:\n [{disk_detector}]')
+            logging.info(f"disk: [{disk}] add detector:\n [{disk_detector}]")
             self._disk_detectors[disk] = disk_detector
 
     def launch(self):
@@ -138,14 +178,17 @@ class SlowIODetection:
             logging.debug("step3. Report slow io event to sysSentry.")
             for slow_io_event in slow_io_event_list:
                 metric_name: MetricName = slow_io_event[1]
+                window_info = slow_io_event[2]
+                root_cause = slow_io_event[3]
                 alarm_content = {
-                    "driver_name": f"{metric_name.get_disk_name()}",
-                    "reason": "disk_slow",
-                    "block_stack": f"{metric_name.get_stage_name()}",
-                    "io_type": f"{metric_name.get_io_access_type_name()}",
+                    "driver_name": f"{metric_name.disk_name}",
+                    "reason": root_cause,
+                    "block_stack": f"{metric_name.stage_name}",
+                    "io_type": f"{metric_name.io_access_type_name}",
                     "alarm_source": "ai_block_io",
                     "alarm_type": "latency",
-                    "details": f"current window is: {slow_io_event[2]}, threshold is: {slow_io_event[3]}.",
+                    "details": f"disk type: {metric_name.disk_type}, current window: {window_info[1]}, "
+                               f"ai threshold: {window_info[2]}, abs threshold: {window_info[3]}.",
                 }
                 Xalarm.major(alarm_content)
                 logging.warning(alarm_content)
