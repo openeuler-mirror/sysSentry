@@ -15,7 +15,7 @@ import logging
 from collections import defaultdict
 
 from .detector import Detector, DiskDetector
-from .threshold import ThresholdFactory, AbsoluteThreshold
+from .threshold import ThresholdFactory
 from .sliding_window import SlidingWindowFactory
 from .utils import get_data_queue_size_and_update_size
 from .config_parser import ConfigParser
@@ -178,14 +178,17 @@ class SlowIODetection:
             logging.debug("step3. Report slow io event to sysSentry.")
             for slow_io_event in slow_io_event_list:
                 metric_name: MetricName = slow_io_event[1]
+                window_info = slow_io_event[2]
+                root_cause = slow_io_event[3]
                 alarm_content = {
                     "driver_name": f"{metric_name.disk_name}",
-                    "reason": "disk_slow",
+                    "reason": root_cause,
                     "block_stack": f"{metric_name.stage_name}",
                     "io_type": f"{metric_name.io_access_type_name}",
                     "alarm_source": "ai_block_io",
                     "alarm_type": "latency",
-                    "details": f"disk type: {metric_name.disk_type}, ai threshold: {slow_io_event[3]}, abs threshold: {slow_io_event[4]},current window: {slow_io_event[2]}.",
+                    "details": f"disk type: {metric_name.disk_type}, current window: {window_info[1]}, "
+                               f"ai threshold: {window_info[2]}, abs threshold: {window_info[3]}.",
                 }
                 Xalarm.major(alarm_content)
                 logging.warning(alarm_content)
