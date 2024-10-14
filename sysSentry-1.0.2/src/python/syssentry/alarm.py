@@ -96,15 +96,15 @@ def alarm_register():
             logging.info(f"alarm_register: {task_name} is registered")
             task = TasksMap.tasks_dict[task_type][task_name]
             alarm_id = task.alarm_id
+            alarm_clear_time = task.alarm_clear_time
+            if not check_alarm_clear_time_if_positive_integer(alarm_clear_time):
+                logging.warning(f"Invalid alarm_clear_time {alarm_clear_time}: ignore {task_name} alarm")
+                continue
             if not check_alarm_id_if_number(alarm_id):
                 logging.warning(f"Invalid alarm_id {alarm_id}: ignore {task_name} alarm")
                 continue
             if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
-                logging.warning(f"Invalid alarm_id {alarm_id}: ignore {task_name} alarm")
-                continue
-            alarm_clear_time = task.alarm_clear_time
-            if not check_alarm_clear_time_if_positive_integer(alarm_clear_time):
-                logging.warning(f"Invalid alarm_clear_time {alarm_clear_time}: ignore {task_name} alarm")
+                logging.warning(f"Invalid alarm_id, ignore {task_name} alarm")
                 continue
             try:
                 alarm_clear_time = int(alarm_clear_time)
