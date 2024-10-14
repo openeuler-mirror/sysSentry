@@ -117,41 +117,46 @@ char* find_device_name(dev_t dev) {
     return device_name;
 }
 
-static int print_map_res(struct bpf_map *map_res, struct bpf_map *map_res_2, char *stage, int *map_size)
-{
-    int err;
-    struct stage_data counter; 
+static void update_io_dump(struct bpf_map *map_res, int *io_dump, int *map_size, char *stage) {
     struct time_range_io_count time_count;
-    int key = 0;
-    int io_dump[MAP_SIZE] = {0}; 
     u32 io_dump_key = 0, io_dump_next_key = 0;
-
     struct sysinfo info; 
     sysinfo(&info);
 
-    while (bpf_map_get_next_key(map_res_2, &io_dump_key, &io_dump_next_key) == 0) {
-        err = bpf_map_lookup_elem(map_res_2, &io_dump_next_key, &time_count);
+    while (bpf_map_get_next_key(map_res, &io_dump_key, &io_dump_next_key) == 0) {
+        int err = bpf_map_lookup_elem(map_res, &io_dump_next_key, &time_count);
         if (err < 0) { 
             fprintf(stderr, "failed to lookup %s io dump: %d\n", stage, err); 
-            continue;; 
+            break; 
         }
+        if (io_dump_key == io_dump_next_key) {
+            break;
+        }
+
         io_dump_key = io_dump_next_key;
-        if ((info.uptime - io_dump_key) > 2) {
+
+        if ((info.uptime - io_dump_key) >= 2) {
             int isempty = 1;
-            for (key = 0; key < map_size; key++){
+            for (int key = 0; key < map_size; key++) {
                 if (time_count.count[key] > 0) {
                     io_dump[key] += time_count.count[key];
                     isempty = 0;
                 }
             }
             if (isempty || (info.uptime - io_dump_key) > IO_DUMP_THRESHOLD) {
-                bpf_map_delete_elem(map_res_2, &io_dump_key);
+                bpf_map_delete_elem(map_res, &io_dump_key);
             } 
         }
     }
+}
+
+static int print_map_res(struct bpf_map *map_res, char *stage, int *map_size, int *io_dump)
+{
+    struct stage_data counter; 
+    int key = 0;
 
     for (key = 0; key < map_size; key++) {
-        err = bpf_map_lookup_elem(map_res, &key, &counter); 
+        int err = bpf_map_lookup_elem(map_res, &key, &counter); 
         if (err < 0) { 
             fprintf(stderr, "failed to lookup %s map_res: %d\n", stage, err); 
             return -1; 
@@ -274,19 +279,27 @@ int main(int argc, char **argv) {
        
         sleep(1); 
 
-        err = print_map_res(BLK_RES, BLK_RES_2, "rq_driver", device_count); 
+        int io_dump_blk[MAP_SIZE] = {0}; 
+        update_io_dump(BLK_RES_2, io_dump_blk, device_count,"rq_driver"); 
+        err = print_map_res(BLK_RES, "rq_driver", device_count, io_dump_blk); 
         if (err) 
             break; 
 
-        err = print_map_res(BIO_RES, BIO_RES_2, "bio", device_count); 
+        int io_dump_bio[MAP_SIZE] = {0}; 
+        update_io_dump(BIO_RES_2, io_dump_bio, device_count,"bio");
+        err = print_map_res(BIO_RES, "bio", device_count, io_dump_bio); 
         if (err) 
             break; 
-        
-        err = print_map_res(TAG_RES, TAG_RES_2, "gettag", device_count); 
+
+        int io_dump_tag[MAP_SIZE] = {0}; 
+        update_io_dump(TAG_RES_2, io_dump_tag, device_count,"gettag");        
+        err = print_map_res(TAG_RES, "gettag", device_count, io_dump_tag); 
         if (err)	
             break; 
-        
-        err = print_map_res(WBT_RES, WBT_RES_2, "wbt", device_count); 
+
+        int io_dump_wbt[MAP_SIZE] = {0}; 
+        update_io_dump(WBT_RES_2, io_dump_wbt, device_count,"wbt");        
+        err = print_map_res(WBT_RES, "wbt", device_count, io_dump_wbt); 
         if (err) 
             break; 
 
