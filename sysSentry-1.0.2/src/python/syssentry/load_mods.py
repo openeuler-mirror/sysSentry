@@ -203,7 +203,8 @@ def parse_mod_conf(mod_name, mod_conf):
         if not (MIN_ALARM_ID <= task.alarm_id <= MAX_ALARM_ID):
             raise ValueError("Invalid alarm_id")
     except ValueError:
-        logging.warning("Invalid alarm_id")
+        task.alarm_id = mod_conf.get(CONF_TASK, CONF_ALARM_ID)
+        task.alarm_clear_time = mod_conf.get(CONF_TASK, CONF_ALARM_CLEAR_TIME)
     except configparser.NoOptionError:
         logging.warning("Unset alarm_clear_time, use 15s as default")
 
