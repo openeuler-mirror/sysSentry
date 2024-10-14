@@ -156,7 +156,7 @@ class CollectIo():
                 for line in file:
                     count += line.count('.op=' + Io_Category[category].upper())
                 if count > 0:
-                    logging.info(f"io_dump info : {disk_name}, {stage}, {category}, {count}")
+                    logging.info(f"io_dump info : {disk_name}, {stage}, {Io_Category[category]}, {count}")
         except FileNotFoundError:
             logging.error("The file %s does not exist.", io_dump_file)
             return count
@@ -318,7 +318,7 @@ class CollectIo():
                         curr_io_length = self.get_ebpf_io_length(curr_latency=curr_latency, prev_latency=prev_latency)
                         curr_io_dump = self.get_ebpf_io_dump(curr_io_dump_count=curr_io_dump_count, prev_io_dump_count=prev_io_dump_count)
                         if curr_io_dump > 0:
-                            logging.info(f"ebpf io_dump info : {disk_name}, {stage}, {category}, {curr_io_dump}")
+                            logging.info(f"ebpf io_dump info : {disk_name}, {stage}, {io_type}, {curr_io_dump}")
                         IO_GLOBAL_DATA[disk_name][stage][io_type].insert(0, [curr_lat, curr_io_dump, curr_io_length, curr_iops])
                     logging.debug(f"ebpf collect data : {IO_GLOBAL_DATA}")
             elapsed_time = time.time() - start_time
