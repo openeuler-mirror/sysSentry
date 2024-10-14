@@ -190,7 +190,7 @@ class ConfigParser:
         self._conf["common"]["disk"] = disk_list
 
     def _read_train_data_duration(self, items_algorithm: dict):
-        self._conf["common"]["train_data_duration"] = self._get_config_value(
+        self._conf["algorithm"]["train_data_duration"] = self._get_config_value(
             items_algorithm,
             "train_data_duration",
             float,
@@ -203,17 +203,17 @@ class ConfigParser:
         default_train_update_duration = self.DEFAULT_CONF["algorithm"][
             "train_update_duration"
         ]
-        if default_train_update_duration > self._conf["common"]["train_data_duration"]:
+        if default_train_update_duration > self._conf["algorithm"]["train_data_duration"]:
             default_train_update_duration = (
-                self._conf["common"]["train_data_duration"] / 2
+                self._conf["algorithm"]["train_data_duration"] / 2
             )
-        self._conf["common"]["train_update_duration"] = self._get_config_value(
+        self._conf["algorithm"]["train_update_duration"] = self._get_config_value(
             items_algorithm,
             "train_update_duration",
             float,
             default_train_update_duration,
             gt=0,
-            le=self._conf["common"]["train_data_duration"],
+            le=self._conf["algorithm"]["train_data_duration"],
         )
 
     def _read_algorithm_type_and_parameter(self, items_algorithm: dict):
@@ -401,6 +401,8 @@ class ConfigParser:
             self._read_stage(items_common)
             self._read_iotype(items_common)
         else:
+            self._conf["common"]["stage"] = ALL_STAGE_LIST
+            self._conf["common"]["iotype"] = ALL_IOTPYE_LIST
             logging.warning(
                 "common section parameter not found, it will be set to default value."
             )
@@ -511,8 +513,8 @@ class ConfigParser:
 
     def get_train_data_duration_and_train_update_duration(self):
         return (
-            self._conf["common"]["train_data_duration"],
-            self._conf["common"]["train_update_duration"],
+            self._conf["algorithm"]["train_data_duration"],
+            self._conf["algorithm"]["train_update_duration"],
         )
 
     def get_window_size_and_window_minimum_threshold(self):
@@ -535,11 +537,11 @@ class ConfigParser:
 
     @property
     def train_data_duration(self):
-        return self._conf["common"]["train_data_duration"]
+        return self._conf["algorithm"]["train_data_duration"]
 
     @property
     def train_update_duration(self):
-        return self._conf["common"]["train_update_duration"]
+        return self._conf["algorithm"]["train_update_duration"]
 
     @property
     def window_size(self):
