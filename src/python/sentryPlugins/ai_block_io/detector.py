@@ -9,6 +9,7 @@
 # PURPOSE.
 # See the Mulan PSL v2 for more details.
 import logging
+from datetime import datetime
 
 from .io_data import MetricName
 from .threshold import Threshold
@@ -21,18 +22,25 @@ class Detector:
     def __init__(self, metric_name: MetricName, threshold: Threshold, sliding_window: SlidingWindow):
         self._metric_name = metric_name
         self._threshold = threshold
+        # for when threshold update, it can print latest threshold with metric name
+        self._threshold.set_metric_name(self._metric_name)
         self._slidingWindow = sliding_window
         self._threshold.attach_observer(self._slidingWindow)
-        self._count = 0
+        self._count = None
 
     def get_metric_name(self):
         return self._metric_name
 
     def is_slow_io_event(self, io_data_dict_with_disk_name: dict):
-        self._count += 1
-        if self._count % 15 == 0:
-            self._count = 0
-            logging.debug(f"({self._metric_name}) 's latest threshold is: {self._threshold.get_threshold()}.")
+        if self._count is None:
+            self._count = datetime.now()
+        else:
+            now_time = datetime.now()
+            time_diff = (now_time - self._count).total_seconds()
+            if time_diff >= 60:
+                logging.info(f"({self._metric_name}) 's latest threshold is: {self._threshold.get_threshold()}.")
+                self._count = None
+
         logging.debug(f'enter Detector: {self}')
         metric_value = get_metric_value_from_io_data_dict_by_metric_name(io_data_dict_with_disk_name, self._metric_name)
         if metric_value is None:

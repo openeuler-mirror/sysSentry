@@ -23,11 +23,6 @@ class ThresholdState(Enum):
 
 
 class Threshold:
-    threshold = None
-    data_queue: queue.Queue = None
-    data_queue_update_size: int = None
-    new_data_size: int = None
-    threshold_state: ThresholdState = None
 
     def __init__(self, data_queue_size: int = 10000, data_queue_update_size: int = 1000):
         self._observer = None
@@ -36,11 +31,15 @@ class Threshold:
         self.new_data_size = 0
         self.threshold_state = ThresholdState.INIT
         self.threshold = math.inf
+        self.metric_name = None
 
     def set_threshold(self, threshold):
         self.threshold = threshold
         self.threshold_state = ThresholdState.START
         self.notify_observer()
+
+    def set_metric_name(self, metric_name):
+        self.metric_name = metric_name
 
     def get_threshold(self):
         if self.threshold_state == ThresholdState.INIT:
@@ -84,6 +83,7 @@ class BoxplotThreshold(Threshold):
         self.parameter = boxplot_parameter
 
     def _update_threshold(self):
+        old_threshold = self.threshold
         data = list(self.data_queue.queue)
         q1 = np.percentile(data, 25)
         q3 = np.percentile(data, 75)
@@ -91,6 +91,7 @@ class BoxplotThreshold(Threshold):
         self.threshold = q3 + self.parameter * iqr
         if self.threshold_state == ThresholdState.INIT:
             self.threshold_state = ThresholdState.START
+        logging.info(f"MetricName: [{self.metric_name}]'s threshold update, old is: {old_threshold} -> new is: {self.threshold}")
         self.notify_observer()
 
     def push_latest_data_to_queue(self, data):
@@ -109,7 +110,7 @@ class BoxplotThreshold(Threshold):
             self.new_data_size = 0
 
     def __repr__(self):
-        return f"[BoxplotThreshold, param is: {self.parameter}]"
+        return f"[BoxplotThreshold, param is: {self.parameter}, train_size: {self.data_queue.maxsize}, update_size: {self.data_queue_update_size}]"
 
 
 class NSigmaThreshold(Threshold):
@@ -118,12 +119,14 @@ class NSigmaThreshold(Threshold):
         self.parameter = n_sigma_parameter
 
     def _update_threshold(self):
+        old_threshold = self.threshold
         data = list(self.data_queue.queue)
         mean = np.mean(data)
         std = np.std(data)
         self.threshold = mean + self.parameter * std
         if self.threshold_state == ThresholdState.INIT:
             self.threshold_state = ThresholdState.START
+        logging.info(f"MetricName: [{self.metric_name}]'s threshold update, old is: {old_threshold} -> new is: {self.threshold}")
         self.notify_observer()
 
     def push_latest_data_to_queue(self, data):
@@ -142,7 +145,7 @@ class NSigmaThreshold(Threshold):
             self.new_data_size = 0
 
     def __repr__(self):
-        return f"[NSigmaThreshold, param is: {self.parameter}]"
+        return f"[NSigmaThreshold, param is: {self.parameter}, train_size: {self.data_queue.maxsize}, update_size: {self.data_queue_update_size}]"
 
 
 class ThresholdType(Enum):

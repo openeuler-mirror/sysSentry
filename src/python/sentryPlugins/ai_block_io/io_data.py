@@ -48,7 +48,7 @@ class IOData:
 @dataclass(frozen=True)
 class MetricName:
     disk_name: str
-    disk_type: str
+    disk_type: int
     stage_name: str
     io_access_type_name: str
     metric_name: str
