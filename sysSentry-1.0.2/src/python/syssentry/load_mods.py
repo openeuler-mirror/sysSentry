@@ -198,15 +198,16 @@ def parse_mod_conf(mod_name, mod_conf):
     task.load_enabled = is_enabled
 
     try:
-        task.alarm_id = int(mod_conf.get(CONF_TASK, CONF_ALARM_ID))
-        task.alarm_clear_time = int(mod_conf.get(CONF_TASK, CONF_ALARM_CLEAR_TIME))
-        if not (MIN_ALARM_ID <= task.alarm_id <= MAX_ALARM_ID):
-            raise ValueError("Invalid alarm_id")
-    except ValueError:
         task.alarm_id = mod_conf.get(CONF_TASK, CONF_ALARM_ID)
-        task.alarm_clear_time = mod_conf.get(CONF_TASK, CONF_ALARM_CLEAR_TIME)
     except configparser.NoOptionError:
-        logging.warning("Unset alarm_clear_time, use 15s as default")
+        task.alarm_id = None
+        logging.warning(f"{mod_name} alarm_id not set, alarm_id is None")
+
+    if task.alarm_id is not None:
+        try:
+            task.alarm_clear_time = mod_conf.get(CONF_TASK, CONF_ALARM_CLEAR_TIME)
+        except configparser.NoOptionError:
+            logging.warning(f"{mod_name} not set alarm_clear_time, use 15s as default")
 
     if CONF_ONSTART in mod_conf.options(CONF_TASK):
         is_onstart = (mod_conf.get(CONF_TASK, CONF_ONSTART) == 'yes')
