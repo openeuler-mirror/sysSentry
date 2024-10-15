@@ -15,7 +15,7 @@ import time
 
 from .config import read_config_log, read_config_common, read_config_algorithm, read_config_latency, read_config_iodump, read_config_stage
 from .stage_window import IoWindow, IoDumpWindow
-from .module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data, sig_handler, get_disk_type_by_name
+from .module_conn import avg_is_iocollect_valid, avg_get_io_data, report_alarm_fail, process_report_data, sig_handler, get_disk_type_by_name, check_disk_list_validation
 from .utils import update_avg_and_check_abnormal
 
 CONFIG_FILE = "/etc/sysSentry/plugins/avg_block_io.ini"
@@ -79,6 +79,8 @@ def get_valid_disk_stage_list(io_dic, config_disk, config_stage):
     if not disk_list:
         report_alarm_fail("Cannot get valid disk name")
 
+    disk_list = check_disk_list_validation(disk_list)
+
     disk_list = disk_list[:10] if len(disk_list) > 10 else disk_list
 
     if not config_disk:
@@ -117,7 +119,10 @@ def main_loop(io_dic, io_data, io_avg_value):
         time.sleep(period_time)
 
         # 采集模块对接，获取周期数据
-        curr_period_data = avg_get_io_data(io_dic)
+        is_success, curr_period_data = avg_get_io_data(io_dic)
+        if not is_success:
+            logging.error(f"{curr_period_data['msg']}")
+            continue
 
         # 处理周期数据
         reach_size = False
