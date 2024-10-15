@@ -55,6 +55,7 @@ class SlowIODetection:
             Report.report_pass(
                 "get available disk error, please check if the collector plug is enable. exiting..."
             )
+            logging.critical("get available disk error, please check if the collector plug is enable. exiting...")
             exit(1)
 
         logging.info(f"ai_block_io plug has found disks: {self._disk_list}")
