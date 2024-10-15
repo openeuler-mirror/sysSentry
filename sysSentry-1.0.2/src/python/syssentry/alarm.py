@@ -76,16 +76,26 @@ def update_alarm_list(alarm_info: Xalarm):
     finally:
         alarm_list_lock.release()
 
-def check_alarm_id_if_number(alarm_id):
-    if isinstance(alarm_id, int):
-        return True
-    else:
+def validate_alarm_id(alarm_id):
+    if alarm_id is None:
+        return False
+    try:
+        alarm_id = int(alarm_id)
+        if MIN_ALARM_ID <= alarm_id <= MAX_ALARM_ID:
+            return True
+        else:
+            return False
+    except ValueError:
         return False
 
-def check_alarm_clear_time_if_positive_integer(alarm_clear_time):
-    if isinstance(alarm_clear_time, int) and alarm_clear_time > 0:
-        return True
-    else:
+def validate_alarm_clear_time(alarm_clear_time):
+    try:
+        alarm_clear_time = int(alarm_clear_time)
+        if alarm_clear_time > 0 and alarm_clear_time <= sys.maxsize:
+            return True
+        else:
+            return False
+    except ValueError:
         return False
 
 def alarm_register():
@@ -93,34 +103,25 @@ def alarm_register():
     # 初始化告警ID映射字典、告警老化时间字典
     for task_type in TasksMap.tasks_dict:
         for task_name in TasksMap.tasks_dict[task_type]:
-            logging.info(f"alarm_register: {task_name} is registered")
             task = TasksMap.tasks_dict[task_type][task_name]
+            if not validate_alarm_id(task.alarm_id):
+                logging.warning(f"Invalid alarm_id {task.alarm_id}: ignore {task_name} alarm")
+                continue
+            if not validate_alarm_clear_time(task.alarm_clear_time):
+                logging.warning(f"Invalid alarm_clear_time {task.alarm_clear_time}: ignore {task_name} alarm")
+                continue
+            task.alarm_id = int(task.alarm_id)
+            task.alarm_clear_time = int(task.alarm_clear_time)
             alarm_id = task.alarm_id
             alarm_clear_time = task.alarm_clear_time
-            if not check_alarm_clear_time_if_positive_integer(alarm_clear_time):
-                logging.warning(f"Invalid alarm_clear_time {alarm_clear_time}: ignore {task_name} alarm")
-                continue
-            if not check_alarm_id_if_number(alarm_id):
-                logging.warning(f"Invalid alarm_id {alarm_id}: ignore {task_name} alarm")
-                continue
-            if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
-                logging.warning(f"Invalid alarm_id, ignore {task_name} alarm")
-                continue
-            try:
-                alarm_clear_time = int(alarm_clear_time)
-                if alarm_clear_time <= 0:
-                    raise ValueError("Not a positive integer")
-                if alarm_clear_time > sys.maxsize:
-                    raise ValueError("Exceeds maximum value for int")
-            except (ValueError, OverflowError, TypeError) as e:
-                logging.warning(f"Invalid alarm_clear_time {alarm_clear_time}: ignore {task_name} alarm")
-                continue
+            
             alarm_list_dict[alarm_id] = []
             task_alarm_id_dict[task_name] = alarm_id
             if alarm_id not in alarm_id_clear_time_dict:
                 alarm_id_clear_time_dict[alarm_id] = alarm_clear_time
             else:
                 alarm_id_clear_time_dict[alarm_id] = max(alarm_clear_time, alarm_id_clear_time_dict[alarm_id])
+            logging.info(f"alarm_register: {task_name} is registered")
     # 注册告警回调
     id_filter = [True] * 128
     clientId = xalarm_register(update_alarm_list, id_filter)
