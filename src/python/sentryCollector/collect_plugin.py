@@ -90,14 +90,14 @@ def client_send_and_recv(request_data, data_str_len, protocol):
     try:
         client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     except socket.error:
-        logging.error("collect_plugin: client create socket error")
+        logging.debug("collect_plugin: client create socket error")
         return None
 
     try:
         client_socket.connect(COLLECT_SOCKET_PATH)
     except OSError:
         client_socket.close()
-        logging.error("collect_plugin: client connect error")
+        logging.debug("collect_plugin: client connect error")
         return None
 
     req_data_len = len(request_data)
@@ -109,23 +109,23 @@ def client_send_and_recv(request_data, data_str_len, protocol):
         res_data = res_data.decode()
     except (OSError, UnicodeError):
         client_socket.close()
-        logging.error("collect_plugin: client communicate error")
+        logging.debug("collect_plugin: client communicate error")
         return None
 
     res_magic = res_data[:CLT_MSG_MAGIC_LEN]
     if res_magic != "RES":
-        logging.error("res msg format error")
+        logging.debug("res msg format error")
         return None
 
     protocol_str = res_data[CLT_MSG_MAGIC_LEN:CLT_MSG_MAGIC_LEN+CLT_MSG_PRO_LEN]
     try:
         protocol_id = int(protocol_str)
     except ValueError:
-        logging.error("recv msg protocol id is invalid %s", protocol_str)
+        logging.debug("recv msg protocol id is invalid %s", protocol_str)
         return None
 
     if protocol_id >= ClientProtocol.PRO_END:
-        logging.error("protocol id is invalid")
+        logging.debug("protocol id is invalid")
         return None
 
     try:
@@ -134,7 +134,7 @@ def client_send_and_recv(request_data, data_str_len, protocol):
         res_msg_data = res_msg_data.decode()
         return res_msg_data
     except (OSError, ValueError, UnicodeError):
-        logging.error("collect_plugin: client recv res msg error")
+        logging.debug("collect_plugin: client recv res msg error")
     finally:
         client_socket.close()
 

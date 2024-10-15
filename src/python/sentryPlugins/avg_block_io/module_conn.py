@@ -40,25 +40,25 @@ def avg_is_iocollect_valid(io_dic, config_disk, config_stage):
     logging.debug(f"send to sentryCollector is_iocollect_valid: period={io_dic['period_time']}, "
                 f"disk={config_disk}, stage={config_stage}")
     res = is_iocollect_valid(io_dic["period_time"], config_disk, config_stage)
-    return check_result_validation(res, 'check config validation')
+    is_success, data = check_result_validation(res, 'check config validation')
+    if not is_success:
+        report_alarm_fail(f"{data['msg']}")
+    return data
 
 
 def check_result_validation(res, reason):
     """check validation of result from sentryCollector"""
     if not 'ret' in res or not 'message' in res:
-        err_msg = "Failed to {}: Cannot connect to sentryCollector.".format(reason)
-        report_alarm_fail(err_msg)
+        return False, {'msg': f"Failed to {reason}: Cannot connect to sentryCollector"}
     if res['ret'] != 0:
-        err_msg = "Failed to {}: {}".format(reason, Result_Messages[res['ret']])
-        report_alarm_fail(err_msg)
+        return False, {'msg': f"Failed to {reason}: {Result_Messages[res['ret']]}"}
 
     try:
         json_data = json.loads(res['message'])
     except json.JSONDecodeError:
-        err_msg = f"Failed to {reason}: invalid return message"
-        report_alarm_fail(err_msg)
+        return False, {'msg': f"Failed to {reason}: invalid return message"}
 
-    return json_data
+    return True, json_data
 
 
 def report_alarm_fail(alarm_info):
@@ -120,10 +120,21 @@ def process_report_data(disk_name, rw, io_data):
     xalarm_report(1002, MINOR_ALM, ALARM_TYPE_OCCUR, json.dumps(msg))
 
 
+def check_disk_list_validation(disk_list):
+    valid_disk_list = []
+    for disk_name in disk_list:
+        is_success, _ = check_result_validation(get_disk_type(disk_name), "")
+        if not is_success:
+            continue
+        valid_disk_list.append(disk_name)
+    return valid_disk_list
+
+
 def get_disk_type_by_name(disk_name):
     logging.debug(f"send to sentryCollector get_disk_type: disk_name={disk_name}")
-    res = get_disk_type(disk_name)
-    disk_type_str = check_result_validation(get_disk_type(disk_name), f'Invalid disk type {disk_name}')
+    is_success, disk_type_str = check_result_validation(get_disk_type(disk_name), f'Invalid disk type {disk_name}')
+    if not is_success:
+        report_alarm_fail(f"{disk_type_str['msg']}")
     try:
         curr_disk_type = int(disk_type_str)
         if curr_disk_type not in Disk_Type:
