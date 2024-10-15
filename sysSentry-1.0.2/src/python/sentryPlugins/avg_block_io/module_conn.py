@@ -29,12 +29,16 @@ def sig_handler(signum, _f):
 
 def avg_get_io_data(io_dic):
     """get_io_data from sentryCollector"""
+    logging.debug(f"send to sentryCollector get_io_data: period={io_dic['period_time']}, "
+                f"disk={io_dic['disk_list']}, stage={io_dic['stage_list']}, iotype={io_dic['iotype_list']}")
     res = get_io_data(io_dic["period_time"], io_dic["disk_list"], io_dic["stage_list"], io_dic["iotype_list"])
     return check_result_validation(res, 'get io data')
 
 
 def avg_is_iocollect_valid(io_dic, config_disk, config_stage):
     """is_iocollect_valid from sentryCollector"""
+    logging.debug(f"send to sentryCollector is_iocollect_valid: period={io_dic['period_time']}, "
+                f"disk={config_disk}, stage={config_stage}")
     res = is_iocollect_valid(io_dic["period_time"], config_disk, config_stage)
     return check_result_validation(res, 'check config validation')
 
@@ -79,7 +83,7 @@ def process_report_data(disk_name, rw, io_data):
     # io press
     ctrl_stage = ['throtl', 'wbt', 'iocost', 'bfq']
     for stage_name in ctrl_stage:
-        abnormal, abnormal_list = is_abnormal((disk_name, 'bio', rw), io_data)
+        abnormal, abnormal_list = is_abnormal((disk_name, stage_name, rw), io_data)
         if not abnormal:
             continue
         msg["reason"] = "IO press"
@@ -117,6 +121,7 @@ def process_report_data(disk_name, rw, io_data):
 
 
 def get_disk_type_by_name(disk_name):
+    logging.debug(f"send to sentryCollector get_disk_type: disk_name={disk_name}")
     res = get_disk_type(disk_name)
     disk_type_str = check_result_validation(get_disk_type(disk_name), f'Invalid disk type {disk_name}')
     try:
