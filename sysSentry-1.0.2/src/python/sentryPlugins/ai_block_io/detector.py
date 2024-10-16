@@ -103,8 +103,10 @@ class DiskDetector:
         elif len(diagnosis_info["rq_driver"]) != 0:
             root_cause = "[Root Cause: disk slow]"
         elif len(diagnosis_info["io_stage"]) != 0:
-            stage = diagnosis_info["io_stage"][0][1].stage_name
-            root_cause = f"[Root Cause: io stage slow, stage: {stage}]"
+            stage_list = []
+            for io_stage in diagnosis_info["io_stage"]:
+                stage_list.append(io_stage[0].stage_name)
+            root_cause = f"[Root Cause: io stage slow, stage: {stage_list}]"
         if root_cause is None:
             root_cause = "[Root Cause: high io pressure]"
         return True, diagnosis_info["bio"][0][0], diagnosis_info["bio"][0][1], root_cause
