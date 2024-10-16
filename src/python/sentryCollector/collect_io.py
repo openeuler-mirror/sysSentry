@@ -320,7 +320,7 @@ class CollectIo():
                         if curr_io_dump > 0:
                             logging.info(f"ebpf io_dump info : {disk_name}, {stage}, {io_type}, {curr_io_dump}")
                         IO_GLOBAL_DATA[disk_name][stage][io_type].insert(0, [curr_lat, curr_io_dump, curr_io_length, curr_iops])
-                    logging.debug(f"ebpf collect data : {IO_GLOBAL_DATA}")
+
             elapsed_time = time.time() - start_time
             sleep_time = self.period_time - elapsed_time
             if sleep_time < 0:
@@ -432,8 +432,6 @@ class CollectIo():
                         continue
                     self.append_period_lat(disk_name, stage_list)
 
-                logging.debug(f"no-lock collect data : {IO_GLOBAL_DATA}")
-                    
                 elapsed_time = time.time() - start_time
                 sleep_time = self.period_time - elapsed_time
                 if sleep_time < 0:
