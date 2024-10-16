@@ -120,7 +120,6 @@ struct bpf_map_def SEC("maps") tag_res_2 = {
    .max_entries = MAX_IO_TIME, 
 };
 
-
 struct blk_mq_alloc_data {
     /* input parameter */
     struct request_queue *q;
@@ -130,6 +129,133 @@ struct blk_mq_alloc_data {
     /* input & output parameter */
     struct blk_mq_ctx *ctx;
     struct blk_mq_hw_ctx *hctx;
+};
+
+struct request_kylin {
+    struct request_queue *q;
+    struct blk_mq_ctx *mq_ctx;
+
+    int cpu;
+    unsigned int cmd_flags;        /* op and common flags */
+    req_flags_t rq_flags;
+
+    int internal_tag;
+
+    /* the following two fields are internal, NEVER access directly */
+    unsigned int __data_len;    /* total data len */
+    int tag;
+    sector_t __sector;        /* sector cursor */
+
+    struct bio *bio;
+    struct bio *biotail;
+
+    struct list_head queuelist;
+
+    /*
+     * The hash is used inside the scheduler, and killed once the
+     * request reaches the dispatch list. The ipi_list is only used
+     * to queue the request for softirq completion, which is long
+     * after the request has been unhashed (and even removed from
+     * the dispatch list).
+     */
+    union {
+        struct hlist_node hash;    /* merge hash */
+        struct list_head ipi_list;
+    };
+
+    struct hlist_node front_hash; /* front merge hash */
+
+    /*
+     * The rb_node is only used inside the io scheduler, requests
+     * are pruned when moved to the dispatch queue. So let the
+     * completion_data share space with the rb_node.
+     */
+    union {
+        struct rb_node rb_node;    /* sort/lookup */
+        struct bio_vec special_vec;
+        void *completion_data;
+        int error_count; /* for legacy drivers, don't use */
+    };
+
+    /*
+     * Three pointers are available for the IO schedulers, if they need
+     * more they have to dynamically allocate it.  Flush requests are
+     * never put on the IO scheduler. So let the flush fields share
+     * space with the elevator data.
+     */
+    union {
+        struct {
+            struct io_cq        *icq;
+            void            *priv[2];
+        } elv;
+
+        struct {
+            unsigned int        seq;
+            struct list_head    list;
+            rq_end_io_fn        *saved_end_io;
+        } flush;
+    };
+
+    struct gendisk *rq_disk;
+    struct hd_struct *part;
+    /* Time that I/O was submitted to the kernel. */
+    u64 start_time_ns;
+    /* Time that I/O was submitted to the device. */
+    u64 io_start_time_ns;
+
+#ifdef CONFIG_BLK_WBT
+    unsigned short wbt_flags;
+#endif
+#ifdef CONFIG_BLK_DEV_THROTTLING_LOW
+    unsigned short throtl_size;
+#endif
+
+    /*
+     * Number of scatter-gather DMA addr+len pairs after
+     * physical address coalescing is performed.
+     */
+    unsigned short nr_phys_segments;
+
+#if defined(CONFIG_BLK_DEV_INTEGRITY)
+    unsigned short nr_integrity_segments;
+#endif
+
+    unsigned short write_hint;
+    unsigned short ioprio;
+
+    void *special;        /* opaque pointer available for LLD use */
+
+    unsigned int extra_len;    /* length of alignment and padding */
+
+    enum mq_rq_state state;
+    refcount_t ref;
+
+    unsigned int timeout;
+
+    /* access through blk_rq_set_deadline, blk_rq_deadline */
+    unsigned long __deadline;
+
+    struct list_head timeout_list;
+
+    union {
+        struct __call_single_data csd;
+        u64 fifo_time;
+    };
+
+    /*
+     * completion callback.
+     */
+    rq_end_io_fn *end_io;
+    void *end_io_data;
+
+    /* for bidi */
+    struct request_kylin *next_rq;
+
+#ifdef CONFIG_BLK_CGROUP
+    struct request_list *rl;        /* rl this rq is alloced from */
+#endif
+    KABI_RESERVE(1);
+    KABI_RESERVE(2);
 };
 
 static __always_inline void blk_fill_rwbs(char *rwbs, unsigned int op)
@@ -710,7 +836,7 @@ u32 find_matching_wbt_5_keys(int major, int minor) {
 SEC("kprobe/blk_mq_start_request") 
 int kprobe_blk_mq_start_request(struct pt_regs *regs) 
 {
-    struct request *rq = (struct request *)PT_REGS_PARM1(regs); 
+    struct request_kylin *rq = (struct request_kylin *)PT_REGS_PARM1(regs); 
     struct gendisk *curr_rq_disk = _(rq->rq_disk);
     int major = _(curr_rq_disk->major);
     int first_minor = _(curr_rq_disk->first_minor);
@@ -734,15 +860,16 @@ int kprobe_blk_mq_start_request(struct pt_regs *regs)
             }
         }
     } 
-    
     init_io_counter(&zero, major, first_minor);
 
     counterp = bpf_map_lookup_elem(&blk_map, &rq); 
-    if (counterp || major == 0) 
+    if (counterp || major == 0) {
         return 0;
+    }
     long err = bpf_map_update_elem(&blk_map, &rq, &zero, BPF_NOEXIST); 
-    if (err) 
+    if (err) {
         return 0;
+    }
 
     u64 curr_start_range = zero.start_time / THRESHOLD;
 
@@ -789,7 +916,7 @@ int kprobe_blk_mq_start_request(struct pt_regs *regs)
 SEC("kprobe/blk_mq_free_request") 
 int kprobe_blk_mq_free_request(struct pt_regs *regs) 
 {
-    struct request *rq = (struct request *)PT_REGS_PARM1(regs);
+    struct request_kylin *rq = (struct request_kylin *)PT_REGS_PARM1(regs);
     struct gendisk *curr_rq_disk = _(rq->rq_disk);
     int major = _(curr_rq_disk->major);
     int first_minor = _(curr_rq_disk->first_minor);
@@ -1236,7 +1363,7 @@ int kprobe_blk_mq_get_tag(struct pt_regs *regs)
     (void)bpf_map_update_elem(&tag_args, &tagkey, &value, BPF_ANY);
     struct blk_mq_alloc_data *bd= (struct blk_mq_alloc_data *)value;
     struct request_queue *q = _(bd->q);
-    struct backing_dev_info	*backing_dev_info = _(q->backing_dev_info);
+    struct backing_dev_info    *backing_dev_info = _(q->backing_dev_info);
     struct device *owner = _(backing_dev_info->owner);
     dev_t devt = _(owner->devt);
     int major = MAJOR(devt);
@@ -1322,11 +1449,11 @@ int kretprobe_blk_mq_get_tag(struct pt_regs *regs)
     tagargs = (u64 *)bpf_map_lookup_elem(&tag_args, &tagkey);
     if (tagargs == NULL) {
         bpf_map_delete_elem(&tag_args, &tagkey);
-    	return 0;
+        return 0;
     }
     bd = (struct blk_mq_alloc_data *)(*tagargs);
     struct request_queue *q = _(bd->q);
-    struct backing_dev_info	*backing_dev_info = _(q->backing_dev_info);
+    struct backing_dev_info    *backing_dev_info = _(q->backing_dev_info);
     struct device *owner = _(backing_dev_info->owner);
     dev_t devt = _(owner->devt);
     int major = MAJOR(devt);
