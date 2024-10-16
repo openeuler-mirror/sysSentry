@@ -119,23 +119,19 @@ char* find_device_name(dev_t dev) {
 
 static void update_io_dump(struct bpf_map *map_res, int *io_dump, int *map_size, char *stage) {
     struct time_range_io_count time_count;
-    u32 io_dump_key = 0, io_dump_next_key = 0;
+    u32 io_dump_key = 0;
     struct sysinfo info; 
     sysinfo(&info);
-
-    while (bpf_map_get_next_key(map_res, &io_dump_key, &io_dump_next_key) == 0) {
-        int err = bpf_map_lookup_elem(map_res, &io_dump_next_key, &time_count);
-        if (err < 0) { 
-            fprintf(stderr, "failed to lookup %s io dump: %d\n", stage, err); 
-            break; 
+    int count_time = 150;
+    u32 curr_time = info.uptime;
+    while (count_time >= 0) {
+        io_dump_key = curr_time - count_time;
+        int err = bpf_map_lookup_elem(map_res, &io_dump_key, &time_count);
+        if (err < 0) {
+            count_time -= 1; 
+            continue; 
         }
-        if (io_dump_key == io_dump_next_key) {
-            break;
-        }
-
-        io_dump_key = io_dump_next_key;
-
-        if ((info.uptime - io_dump_key) >= 2) {
+        if ((curr_time - io_dump_key) >= 2) {
             int isempty = 1;
             for (int key = 0; key < map_size; key++) {
                 if (time_count.count[key] > 0) {
@@ -143,10 +139,11 @@ static void update_io_dump(struct bpf_map *map_res, int *io_dump, int *map_size,
                     isempty = 0;
                 }
             }
-            if (isempty || (info.uptime - io_dump_key) > IO_DUMP_THRESHOLD) {
+            if (isempty || (curr_time - io_dump_key) > IO_DUMP_THRESHOLD) {
                 bpf_map_delete_elem(map_res, &io_dump_key);
             } 
         }
+        count_time -= 1;
     }
 }
 
