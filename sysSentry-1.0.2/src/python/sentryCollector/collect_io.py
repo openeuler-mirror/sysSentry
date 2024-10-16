@@ -387,7 +387,7 @@ class CollectIo():
         curr_io_dump_count: int,
         prev_io_dump_count: int
     ) -> Union[int, float]:
-        io_dump_count = curr_io_dump_count - prev_io_dump_count
+        io_dump_count = curr_io_dump_count
         if io_dump_count <= 0:
             return 0
         value = io_dump_count
