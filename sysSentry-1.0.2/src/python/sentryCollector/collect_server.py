@@ -64,7 +64,7 @@ class CollectServer():
         self.io_global_data = IO_GLOBAL_DATA
 
         if len(IO_CONFIG_DATA) == 0:
-            logging.error("the collect thread is not started, the data is invalid. ")
+            logging.error("the collect thread is not started, the data is invalid.")
             return json.dumps(result_rev)
 
         period_time = IO_CONFIG_DATA[0]
@@ -75,7 +75,7 @@ class CollectServer():
         stage_list = json.loads(data_struct['stage'])
 
         if (period < period_time) or (period > period_time * max_save) or (period % period_time):
-            logging.error("is_iocollect_valid: period time: %d is invalid", period)
+            logging.error("is_iocollect_valid: period time is invalid, user period: %d, config period_time: %d", period, period_time)
             return json.dumps(result_rev)
 
         for disk_name, stage_info in self.io_global_data.items():
@@ -96,7 +96,7 @@ class CollectServer():
         self.io_global_data = IO_GLOBAL_DATA
 
         if len(IO_CONFIG_DATA) == 0:
-            logging.error("the collect thread is not started, the data is invalid. ")
+            logging.error("the collect thread is not started, the data is invalid.")
             return json.dumps(result_rev)
         period_time = IO_CONFIG_DATA[0]
         max_save = IO_CONFIG_DATA[1]
@@ -107,11 +107,11 @@ class CollectServer():
         iotype_list = json.loads(data_struct['iotype'])
 
         if (period < period_time) or (period > period_time * max_save) or (period % period_time):
-            logging.error("get_io_data: period time: %d is invalid", period)
+            logging.error("get_io_data: period time is invalid, user period: %d, config period_time: %d", period, period_time)
             return json.dumps(result_rev)
 
         collect_index = period // period_time - 1
-        logging.debug("period: %d, collect_index: %d", period, collect_index)
+        logging.debug("user period: %d, config period_time: %d,  collect_index: %d", period, period_time, collect_index)
 
         for disk_name, stage_info in self.io_global_data.items():
             if disk_name not in disk_list:
@@ -124,7 +124,7 @@ class CollectServer():
                 for iotype_name, iotype_info in iotype_info.items():
                     if iotype_name not in iotype_list:
                         continue
-                    if len(iotype_info) < collect_index:
+                    if len(iotype_info) - 1 < collect_index:
                         continue
                     result_rev[disk_name][stage_name][iotype_name] = iotype_info[collect_index]
 
@@ -250,9 +250,7 @@ class CollectServer():
         except socket.error:
             logging.error("server fd create failed")
             server_fd = None
-
         return server_fd
-
 
     def server_loop(self):
         """main loop"""
@@ -277,8 +275,8 @@ class CollectServer():
                         self.server_recv(server_fd)
                     else:
                         continue
-            except socket.error:
-                pass
+            except Exception:
+                logging.error('collect listen exception : %s', traceback.format_exc())
 
     def stop_thread(self):
         self.stop_event.set() 
