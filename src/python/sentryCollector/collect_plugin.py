@@ -45,6 +45,9 @@ LIMIT_IOTYPE_LIST_LEN = 4
 LIMIT_PERIOD_MIN_LEN = 1
 LIMIT_PERIOD_MAX_LEN = 300
 
+# max_save
+LIMIT_MAX_SAVE_LEN = 300
+
 # interface protocol
 class ClientProtocol():
     IS_IOCOLLECT_VALID = 0
@@ -189,7 +192,7 @@ def inter_is_iocollect_valid(period, disk_list=None, stage=None):
     if not period or not isinstance(period, int):
         result['ret'] = ResultMessage.RESULT_NOT_PARAM
         return result
-    if period < LIMIT_PERIOD_MIN_LEN or period > LIMIT_PERIOD_MAX_LEN:
+    if period < LIMIT_PERIOD_MIN_LEN or period > LIMIT_PERIOD_MAX_LEN * LIMIT_MAX_SAVE_LEN:
         result['ret'] = ResultMessage.RESULT_INVALID_LENGTH
         return result
 
@@ -246,7 +249,7 @@ def inter_get_io_data(period, disk_list, stage, iotype):
     if not isinstance(period, int):
         result['ret'] = ResultMessage.RESULT_NOT_PARAM
         return result
-    if period < LIMIT_PERIOD_MIN_LEN or period > LIMIT_PERIOD_MAX_LEN:
+    if period < LIMIT_PERIOD_MIN_LEN or period > LIMIT_PERIOD_MAX_LEN * LIMIT_MAX_SAVE_LEN:
         result['ret'] = ResultMessage.RESULT_INVALID_LENGTH
         return result
 
