@@ -401,11 +401,9 @@ class ConfigParser:
             self._read_stage(items_common)
             self._read_iotype(items_common)
         else:
-            self._conf["common"]["stage"] = ALL_STAGE_LIST
-            self._conf["common"]["iotype"] = ALL_IOTPYE_LIST
-            logging.warning(
-                "common section parameter not found, it will be set to default value."
-            )
+            Report.report_pass("not found common section. exiting...")
+            logging.critical("not found common section. exiting...")
+            exit(1)
 
         if con.has_section("algorithm"):
             items_algorithm = dict(con.items("algorithm"))
@@ -413,9 +411,9 @@ class ConfigParser:
             self._read_train_update_duration(items_algorithm)
             self._read_algorithm_type_and_parameter(items_algorithm)
         else:
-            logging.warning(
-                "algorithm section parameter not found, it will be set to default value."
-            )
+            Report.report_pass("not found algorithm section. exiting...")
+            logging.critical("not found algorithm section. exiting...")
+            exit(1)
 
         if con.has_section("sliding_window"):
             items_sliding_window = dict(con.items("sliding_window"))
@@ -423,9 +421,9 @@ class ConfigParser:
             self._read_window_size(items_sliding_window)
             self._read_window_minimum_threshold(items_sliding_window)
         else:
-            logging.warning(
-                "sliding_window section parameter not found, it will be set to default value."
-            )
+            Report.report_pass("not found sliding_window section. exiting...")
+            logging.critical("not found sliding_window section. exiting...")
+            exit(1)
 
         if con.has_section("latency_sata_ssd"):
             items_latency_sata_ssd = dict(con.items("latency_sata_ssd"))
@@ -444,9 +442,10 @@ class ConfigParser:
                 gt=0,
             )
         else:
-            logging.warning(
-                "latency_sata_ssd section parameter not found, it will be set to default value."
-            )
+            Report.report_pass("not found latency_sata_ssd section. exiting...")
+            logging.critical("not found latency_sata_ssd section. exiting...")
+            exit(1)
+
         if con.has_section("latency_nvme_ssd"):
             items_latency_nvme_ssd = dict(con.items("latency_nvme_ssd"))
             self._conf["latency_nvme_ssd"]["read_tot_lim"] = self._get_config_value(
@@ -464,9 +463,10 @@ class ConfigParser:
                 gt=0,
             )
         else:
-            logging.warning(
-                "latency_nvme_ssd section parameter not found, it will be set to default value."
-            )
+            Report.report_pass("not found latency_nvme_ssd section. exiting...")
+            logging.critical("not found latency_nvme_ssd section. exiting...")
+            exit(1)
+
         if con.has_section("latency_sata_hdd"):
             items_latency_sata_hdd = dict(con.items("latency_sata_hdd"))
             self._conf["latency_sata_hdd"]["read_tot_lim"] = self._get_config_value(
@@ -484,9 +484,9 @@ class ConfigParser:
                 gt=0,
             )
         else:
-            logging.warning(
-                "latency_sata_hdd section parameter not found, it will be set to default value."
-            )
+            Report.report_pass("not found latency_sata_hdd section. exiting...")
+            logging.critical("not found latency_sata_hdd section. exiting...")
+            exit(1)
 
         self.__print_all_config_value()
 
