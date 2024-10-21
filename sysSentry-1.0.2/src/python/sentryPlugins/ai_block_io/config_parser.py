@@ -16,6 +16,7 @@ import logging
 from .alarm_report import Report
 from .threshold import ThresholdType
 from .utils import get_threshold_type_enum, get_sliding_window_type_enum, get_log_level
+from .data_access import check_detect_frequency_is_valid
 
 
 LOG_FORMAT = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
@@ -165,9 +166,17 @@ class ConfigParser:
             "slow_io_detect_frequency",
             int,
             self.DEFAULT_CONF["common"]["slow_io_detect_frequency"],
-            gt=0,
-            le=300,
+            gt=0
         )
+        frequency = self._conf["common"]["slow_io_detect_frequency"]
+        ret = check_detect_frequency_is_valid(frequency)
+        if ret is None:
+            log = f"slow io detect frequency: {frequency} is valid, "\
+                  f"Check whether the value range is too large or is not an "\
+                  f"integer multiple of period_time.. exiting..."
+            Report.report_pass(log)
+            logging.critical(log)
+            exit(1)
 
     def _read_disks_to_detect(self, items_common: dict):
         disks_to_detection = items_common.get("disk")

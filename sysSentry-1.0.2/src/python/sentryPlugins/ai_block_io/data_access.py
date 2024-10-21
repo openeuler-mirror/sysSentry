@@ -53,6 +53,20 @@ def check_collect_valid(period):
         return None
 
 
+def check_detect_frequency_is_valid(period):
+    data_raw = is_iocollect_valid(period)
+    if data_raw["ret"] == 0:
+        try:
+            data = json.loads(data_raw["message"])
+        except Exception as e:
+            return None
+        if not data:
+            return None
+        return [k for k in data.keys()]
+    else:
+        return None
+
+
 def _get_raw_data(period, disk_list):
     return get_io_data(
         period,
