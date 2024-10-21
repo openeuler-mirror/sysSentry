@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import socket
+import logging
 from struct import error as StructParseError
 
 from .xalarm_api import alarm_stu2bin, Xalarm
@@ -27,21 +28,21 @@ ALARM_SOCKET_PERMISSION = 0o700
 
 def check_params(alarm_id, alarm_level, alarm_type, puc_paras) -> bool:
     if not os.path.exists(DIR_XALARM):
-        sys.stderr.write(f"check_params: {DIR_XALARM} not exist, failed\n")
+        logging.error(f"check_params: {DIR_XALARM} not exist, failed")
         return False
     
     if not os.path.exists(PATH_REPORT_ALARM):
-        sys.stderr.write(f"check_params: {PATH_REPORT_ALARM} not exist, failed\n")
+        logging.error(f"check_params: {PATH_REPORT_ALARM} not exist, failed")
         return False
 
     if (alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID or
         alarm_level < MINOR_ALM or alarm_level > CRITICAL_ALM or
         alarm_type < ALARM_TYPE_OCCUR or alarm_type > ALARM_TYPE_RECOVER):
-        sys.stderr.write("check_params: alarm info invalid\n")
+        logging.error("check_params: alarm info invalid")
         return False
     
     if len(puc_paras) >= MAX_PUC_PARAS_LEN:
-        sys.stderr.write(f"check_params: alarm msg should be less than {MAX_PUC_PARAS_LEN}\n")
+        logging.error(f"check_params: alarm msg should be less than {MAX_PUC_PARAS_LEN}")
         return False
 
     return True
@@ -61,7 +62,7 @@ def xalarm_report(alarm_id, alarm_level, alarm_type, puc_paras) -> bool:
 
         sock.sendto(alarm_stu2bin(alarm_info), PATH_REPORT_ALARM)
     except (FileNotFoundError, StructParseError, socket.error, OSError, UnicodeError) as e:
-        sys.stderr.write(f"check_params: error occurs when sending msg.{e}\n")
+        logging.error(f"error occurs when sending msg.")
         return False
     finally:
         sock.close()
