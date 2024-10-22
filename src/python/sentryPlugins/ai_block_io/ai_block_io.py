@@ -15,7 +15,7 @@ import logging
 from collections import defaultdict
 
 from .detector import Detector, DiskDetector
-from .threshold import ThresholdFactory
+from .threshold import ThresholdFactory, ThresholdType
 from .sliding_window import SlidingWindowFactory
 from .utils import get_data_queue_size_and_update_size
 from .config_parser import ConfigParser
@@ -91,9 +91,8 @@ class SlowIODetection:
                 continue
             for stage in stages:
                 for iotype in iotypes:
-                    self._detector_name_list[disk].append(
-                        MetricName(disk, disk_type, stage, iotype, "latency")
-                    )
+                    self._detector_name_list[disk].append(MetricName(disk, disk_type, stage, iotype, "latency"))
+                    self._detector_name_list[disk].append(MetricName(disk, disk_type, stage, iotype, "io_dump"))
         if disks:
             logging.warning(
                 "disks: %s not in available disk list, so they will be ignored.",
@@ -123,31 +122,51 @@ class SlowIODetection:
         for disk, metric_name_list in self._detector_name_list.items():
             disk_detector = DiskDetector(disk)
             for metric_name in metric_name_list:
-                threshold = ThresholdFactory().get_threshold(
-                    threshold_type,
-                    boxplot_parameter=self._config_parser.boxplot_parameter,
-                    n_sigma_paramter=self._config_parser.n_sigma_parameter,
-                    data_queue_size=data_queue_size,
-                    data_queue_update_size=update_size,
-                )
-                abs_threshold = self._config_parser.get_tot_lim(
-                    metric_name.disk_type, metric_name.io_access_type_name
-                )
-                if abs_threshold is None:
-                    logging.warning(
-                        "disk %s, disk type %s, io type %s, get tot lim error, so it will be ignored.",
-                        disk,
-                        metric_name.disk_type,
-                        metric_name.io_access_type_name,
+
+                if metric_name.metric_name == 'latency':
+                    threshold = ThresholdFactory().get_threshold(
+                        threshold_type,
+                        boxplot_parameter=self._config_parser.boxplot_parameter,
+                        n_sigma_paramter=self._config_parser.n_sigma_parameter,
+                        data_queue_size=data_queue_size,
+                        data_queue_update_size=update_size,
                     )
-                sliding_window = SlidingWindowFactory().get_sliding_window(
-                    sliding_window_type,
-                    queue_length=window_size,
-                    threshold=window_threshold,
-                    abs_threshold=abs_threshold,
-                )
-                detector = Detector(metric_name, threshold, sliding_window)
-                disk_detector.add_detector(detector)
+                    abs_threshold = self._config_parser.get_tot_lim(
+                        metric_name.disk_type, metric_name.io_access_type_name
+                    )
+                    if abs_threshold is None:
+                        logging.warning(
+                            "disk %s, disk type %s, io type %s, get tot lim error, so it will be ignored.",
+                            disk,
+                            metric_name.disk_type,
+                            metric_name.io_access_type_name,
+                        )
+                    sliding_window = SlidingWindowFactory().get_sliding_window(
+                        sliding_window_type,
+                        queue_length=window_size,
+                        threshold=window_threshold,
+                        abs_threshold=abs_threshold,
+                    )
+                    detector = Detector(metric_name, threshold, sliding_window)
+                    disk_detector.add_detector(detector)
+                    continue
+
+                elif metric_name.metric_name == 'io_dump':
+                    threshold = ThresholdFactory().get_threshold(ThresholdType.AbsoluteThreshold)
+                    abs_threshold = None
+                    if metric_name.io_access_type_name == 'read':
+                        abs_threshold = self._config_parser.read_iodump_lim
+                    elif metric_name.io_access_type_name == 'write':
+                        abs_threshold = self._config_parser.write_iodump_lim
+                    sliding_window = SlidingWindowFactory().get_sliding_window(
+                        sliding_window_type,
+                        queue_length=window_size,
+                        threshold=window_threshold
+                    )
+                    detector = Detector(metric_name, threshold, sliding_window)
+                    threshold.set_threshold(abs_threshold)
+                    disk_detector.add_detector(detector)
+
             logging.info(f"disk: [{disk}] add detector:\n [{disk_detector}]")
             self._disk_detectors[disk] = disk_detector
 

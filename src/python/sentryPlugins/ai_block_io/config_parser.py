@@ -72,6 +72,7 @@ class ConfigParser:
         "latency_sata_ssd": {"read_tot_lim": 50000, "write_tot_lim": 50000},
         "latency_nvme_ssd": {"read_tot_lim": 500, "write_tot_lim": 500},
         "latency_sata_hdd": {"read_tot_lim": 50000, "write_tot_lim": 50000},
+        "iodump": {"read_iodump_lim": 0, "write_iodump_lim": 0}
     }
 
     def __init__(self, config_file_name):
@@ -497,6 +498,27 @@ class ConfigParser:
             logging.critical("not found latency_sata_hdd section. exiting...")
             exit(1)
 
+        if con.has_section("iodump"):
+            items_iodump = dict(con.items("iodump"))
+            self._conf["iodump"]["read_iodump_lim"] = self._get_config_value(
+                items_iodump,
+                "read_iodump_lim",
+                int,
+                self.DEFAULT_CONF["iodump"]["read_iodump_lim"],
+                ge=0
+            )
+            self._conf["iodump"]["write_iodump_lim"] = self._get_config_value(
+                items_iodump,
+                "write_iodump_lim",
+                int,
+                self.DEFAULT_CONF["iodump"]["write_iodump_lim"],
+                ge=0
+            )
+        else:
+            Report.report_pass("not found iodump section. exiting...")
+            logging.critical("not found iodump section. exiting...")
+            exit(1)
+
         self.__print_all_config_value()
 
     def __repr__(self) -> str:
@@ -587,3 +609,11 @@ class ConfigParser:
     @property
     def n_sigma_parameter(self):
         return self._conf["algorithm"]["n_sigma_parameter"]
+
+    @property
+    def read_iodump_lim(self):
+        return self._conf["iodump"]["read_iodump_lim"]
+
+    @property
+    def write_iodump_lim(self):
+        return self._conf["iodump"]["write_iodump_lim"]
