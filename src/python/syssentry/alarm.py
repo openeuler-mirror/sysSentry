@@ -139,8 +139,6 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Di
             return []
         alarm_id = task_alarm_id_dict[task_name]
         clear_time = alarm_id_clear_time_dict[alarm_id]
-        if clear_time < int(time_range):
-            return []
         if alarm_id not in alarm_list_dict:
             logging.debug("alarm_id does not exist")
             return []
@@ -152,6 +150,9 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Di
         for i in range(len(alarm_list)):
             logging.debug(f"timestamp, alarm_list[{i}].timestamp: {timestamp}, {xalarm_gettime(alarm_list[i])}")
             if timestamp - (xalarm_gettime(alarm_list[i])) / MILLISECONDS_UNIT_SECONDS > time_range:
+                stop_index = i
+                break
+            if timestamp - (xalarm_gettime(alarm_list[i])) / MILLISECONDS_UNIT_SECONDS > clear_time:
                 stop_index = i
                 break
         if stop_index >= 0:
