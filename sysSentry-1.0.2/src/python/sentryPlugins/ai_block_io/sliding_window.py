@@ -35,8 +35,8 @@ class SlidingWindow:
             self._io_data_queue_abnormal_tag.pop(0)
         self._io_data_queue.append(data)
         tag = False
-        if ((self._ai_threshold is not None and data >= self._ai_threshold) or
-                (self._abs_threshold is not None and data >= self._abs_threshold)):
+        if ((self._ai_threshold is not None and data > self._ai_threshold) or
+                (self._abs_threshold is not None and data > self._abs_threshold)):
             tag = True
         self._io_data_queue_abnormal_tag.append(tag)
         return tag
