@@ -21,11 +21,12 @@ class SlidingWindowType(Enum):
 
 
 class SlidingWindow:
-    def __init__(self, queue_length: int, threshold: int, abs_threshold: int = None):
+    def __init__(self, queue_length: int, threshold: int, abs_threshold: int = None, avg_lim: int = None):
         self._queue_length = queue_length
         self._queue_threshold = threshold
         self._ai_threshold = None
         self._abs_threshold = abs_threshold
+        self._avg_lim = avg_lim
         self._io_data_queue = []
         self._io_data_queue_abnormal_tag = []
 
@@ -35,8 +36,13 @@ class SlidingWindow:
             self._io_data_queue_abnormal_tag.pop(0)
         self._io_data_queue.append(data)
         tag = False
-        if ((self._ai_threshold is not None and data > self._ai_threshold) or
-                (self._abs_threshold is not None and data > self._abs_threshold)):
+        if self._avg_lim is not None and data < self._avg_lim:
+            tag = False
+            self._io_data_queue_abnormal_tag.append(tag)
+            return tag
+        if self._ai_threshold is not None and data > self._ai_threshold:
+            tag = True
+        if self._abs_threshold is not None and data > self._abs_threshold:
             tag = True
         self._io_data_queue_abnormal_tag.append(tag)
         return tag
@@ -52,6 +58,9 @@ class SlidingWindow:
     def is_slow_io_event(self, data):
         return False, None, None, None
 
+    def get_data(self):
+        return self._io_data_queue
+
     def __repr__(self):
         return "[SlidingWindow]"
 
@@ -64,7 +73,7 @@ class NotContinuousSlidingWindow(SlidingWindow):
             is_slow_io_event = False
         if self._io_data_queue_abnormal_tag.count(True) >= self._queue_threshold:
             is_slow_io_event = True
-        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold
+        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold, self._avg_lim
 
     def __repr__(self):
         return f"[NotContinuousSlidingWindow, window size: {self._queue_length}, threshold: {self._queue_threshold}]"
@@ -85,7 +94,7 @@ class ContinuousSlidingWindow(SlidingWindow):
                     break
             else:
                 consecutive_count = 0
-        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold
+        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold, self._avg_lim
 
     def __repr__(self):
         return f"[ContinuousSlidingWindow, window size: {self._queue_length}, threshold: {self._queue_threshold}]"
@@ -100,7 +109,7 @@ class MedianSlidingWindow(SlidingWindow):
         median = np.median(self._io_data_queue)
         if median >= self._ai_threshold:
             is_slow_io_event = True
-        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold
+        return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold, self._avg_lim
 
     def __repr__(self):
         return f"[MedianSlidingWindow, window size: {self._queue_length}]"
