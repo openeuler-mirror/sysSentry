@@ -48,6 +48,12 @@ try:
 except ImportError:
     CPU_EXIST = False
 
+BMC_EXIST = True
+try:
+    from .bmc_alarm import bmc_recv
+except ImportError:
+    BMC_EXIST = False
+
 
 INSPECTOR = None
 
@@ -89,6 +95,9 @@ RESULT_SOCKET_PATH = "/var/run/sysSentry/result.sock"
 
 CPU_ALARM_SOCKET_PATH = "/var/run/sysSentry/report.sock"
 
+BMC_SOCKET_PATH = "/var/run/sysSentry/bmc.sock"
+
+fd_list = []
 
 def msg_data_process(msg_data):
     """message data process"""
@@ -334,6 +343,41 @@ def cpu_alarm_fd_create():
 
     return cpu_alarm_fd
 
+def bmc_fd_create():
+    """create bmc fd"""
+    if not os.path.exists(SENTRY_RUN_DIR):
+        logging.debug("%s not exist", SENTRY_RUN_DIR)
+        return None
+
+    try:
+        bmc_fd = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    except socket.error:
+        logging.error("bmc fd create failed")
+        return None
+
+    bmc_fd.setblocking(False)
+    if os.path.exists(BMC_SOCKET_PATH):
+        os.remove(BMC_SOCKET_PATH)
+
+    try:
+        bmc_fd.bind(BMC_SOCKET_PATH)
+    except OSError:
+        logging.error("bmc fd bind failed")
+        bmc_fd.close()
+        return None
+
+    os.chmod(BMC_SOCKET_PATH, 0o600)
+    try:
+        bmc_fd.listen(5)
+    except OSError:
+        logging.error("bmc fd listen failed")
+        bmc_fd.close()
+        return None
+
+    logging.debug("%s bind and listen", BMC_SOCKET_PATH)
+
+    return bmc_fd
+
 
 def server_result_recv(server_socket: socket.socket):
     """server result receive"""
@@ -407,35 +451,47 @@ def server_result_fd_create():
     return server_result_fd
 
 
+def close_all_fd():
+    for fd in fd_list:
+        fd.close()
+
+
 def main_loop():
     """main loop"""
+
     server_fd = server_fd_create()
     if not server_fd:
+        close_all_fd()
         return
+    fd_list.append(server_fd)
 
     server_result_fd = server_result_fd_create()
     if not server_result_fd:
-        server_fd.close()
+        close_all_fd()
         return
+    fd_list.append(server_result_fd)
 
     heartbeat_fd = heartbeat_fd_create()
     if not heartbeat_fd:
-        server_fd.close()
-        server_result_fd.close()
+        close_all_fd()
         return
+    fd_list.append(heartbeat_fd)
 
     cpu_alarm_fd = cpu_alarm_fd_create()
     if not cpu_alarm_fd:
-        server_fd.close()
-        heartbeat_fd.close()
-        server_result_fd.close()
+        close_all_fd()
         return
+    fd_list.append(cpu_alarm_fd)
+
+    bmc_fd = bmc_fd_create()
+    if not bmc_fd:
+        close_all_fd()
+        return
+    fd_list.append(bmc_fd)
 
     epoll_fd = select.epoll()
-    epoll_fd.register(server_fd.fileno(), select.EPOLLIN)
-    epoll_fd.register(server_result_fd.fileno(), select.EPOLLIN)
-    epoll_fd.register(heartbeat_fd.fileno(), select.EPOLLIN)
-    epoll_fd.register(cpu_alarm_fd.fileno(), select.EPOLLIN)
+    for fd in fd_list:
+        epoll_fd.register(fd.fileno(), select.EPOLLIN)
 
     logging.debug("start main loop")
     # onstart_tasks_handle()
@@ -458,6 +514,8 @@ def main_loop():
                     heartbeat_recv(heartbeat_fd)
                 elif CPU_EXIST and event_fd == cpu_alarm_fd.fileno():
                     cpu_alarm_recv(cpu_alarm_fd)
+                elif BMC_EXIST and event_fd == bmc_fd.fileno():
+                    bmc_recv(bmc_fd)
                 else:
                     continue
 
@@ -602,4 +660,3 @@ def main():
         if clientId != -1:
             xalarm_unregister(clientId)
         release_pidfile()
-
