@@ -49,7 +49,7 @@ class SlowIODetection:
 
     def __init_detector_name_list(self):
         self._disk_list = check_collect_valid(
-            self._config_parser.slow_io_detect_frequency
+            self._config_parser.period_time
         )
         if self._disk_list is None:
             Report.report_pass(
@@ -109,7 +109,7 @@ class SlowIODetection:
         train_data_duration, train_update_duration = (
             self._config_parser.get_train_data_duration_and_train_update_duration()
         )
-        slow_io_detection_frequency = self._config_parser.slow_io_detect_frequency
+        slow_io_detection_frequency = self._config_parser.period_time
         threshold_type = self._config_parser.algorithm_type
         data_queue_size, update_size = get_data_queue_size_and_update_size(
             train_data_duration, train_update_duration, slow_io_detection_frequency
@@ -131,10 +131,13 @@ class SlowIODetection:
                         data_queue_size=data_queue_size,
                         data_queue_update_size=update_size,
                     )
-                    abs_threshold = self._config_parser.get_tot_lim(
+                    tot_lim = self._config_parser.get_tot_lim(
                         metric_name.disk_type, metric_name.io_access_type_name
                     )
-                    if abs_threshold is None:
+                    avg_lim = self._config_parser.get_avg_lim(
+                        metric_name.disk_type, metric_name.io_access_type_name
+                    )
+                    if tot_lim is None:
                         logging.warning(
                             "disk %s, disk type %s, io type %s, get tot lim error, so it will be ignored.",
                             disk,
@@ -145,7 +148,8 @@ class SlowIODetection:
                         sliding_window_type,
                         queue_length=window_size,
                         threshold=window_threshold,
-                        abs_threshold=abs_threshold,
+                        abs_threshold=tot_lim,
+                        avg_lim=avg_lim
                     )
                     detector = Detector(metric_name, threshold, sliding_window)
                     disk_detector.add_detector(detector)
@@ -176,7 +180,7 @@ class SlowIODetection:
 
             # Step1：获取IO数据
             io_data_dict_with_disk_name = get_io_data_from_collect_plug(
-                self._config_parser.slow_io_detect_frequency, self._disk_list
+                self._config_parser.period_time, self._disk_list
             )
             logging.debug(f"step1. Get io data: {str(io_data_dict_with_disk_name)}")
             if io_data_dict_with_disk_name is None:
@@ -197,25 +201,21 @@ class SlowIODetection:
             # Step3：慢IO事件上报
             logging.debug("step3. Report slow io event to sysSentry.")
             for slow_io_event in slow_io_event_list:
-                metric_name: MetricName = slow_io_event[1]
-                window_info = slow_io_event[2]
-                root_cause = slow_io_event[3]
                 alarm_content = {
-                    "driver_name": f"{metric_name.disk_name}",
-                    "reason": root_cause,
-                    "block_stack": f"{metric_name.stage_name}",
-                    "io_type": f"{metric_name.io_access_type_name}",
+                    "driver_name": slow_io_event[1],
+                    "reason": slow_io_event[2],
+                    "block_stack": slow_io_event[3],
+                    "io_type": slow_io_event[4],
                     "alarm_source": "ai_block_io",
-                    "alarm_type": "latency",
-                    "details": f"disk type: {metric_name.disk_type}, current window: {window_info[1]}, "
-                               f"ai threshold: {window_info[2]}, abs threshold: {window_info[3]}.",
+                    "alarm_type": slow_io_event[5],
+                    "details": slow_io_event[6],
                 }
                 Xalarm.major(alarm_content)
-                logging.warning(alarm_content)
+                logging.warning("[SLOW IO] " + str(alarm_content))
 
             # Step4：等待检测时间
             logging.debug("step4. Wait to start next slow io event detection loop.")
-            time.sleep(self._config_parser.slow_io_detect_frequency)
+            time.sleep(self._config_parser.period_time)
 
 
 def main():
