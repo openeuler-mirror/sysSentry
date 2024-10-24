@@ -28,8 +28,12 @@ class Detector:
         self._threshold.attach_observer(self._slidingWindow)
         self._count = None
 
-    def get_metric_name(self):
+    @property
+    def metric_name(self):
         return self._metric_name
+
+    def get_sliding_window_data(self):
+        return self._slidingWindow.get_data()
 
     def is_slow_io_event(self, io_data_dict_with_disk_name: dict):
         if self._count is None:
@@ -38,22 +42,27 @@ class Detector:
             now_time = datetime.now()
             time_diff = (now_time - self._count).total_seconds()
             if time_diff >= 60:
-                logging.info(f"({self._metric_name}) 's latest threshold is: {self._threshold.get_threshold()}.")
+                logging.info(f"({self._metric_name}) 's latest ai threshold is: {self._threshold.get_threshold()}.")
                 self._count = None
 
         logging.debug(f'enter Detector: {self}')
         metric_value = get_metric_value_from_io_data_dict_by_metric_name(io_data_dict_with_disk_name, self._metric_name)
         if metric_value is None:
             logging.debug('not found metric value, so return None.')
-            return (False, False), None, None, None
+            return (False, False), None, None, None, None
         logging.debug(f'input metric value: {str(metric_value)}')
         self._threshold.push_latest_data_to_queue(metric_value)
         detection_result = self._slidingWindow.is_slow_io_event(metric_value)
         # 检测到慢周期，由Detector负责打印info级别日志
         if detection_result[0][1]:
-            logging.info(f'[abnormal period happen]: disk info: {self._metric_name}, window: {detection_result[1]}, '
-                         f'current value: {metric_value}, ai threshold: {detection_result[2]}, '
-                         f'absolute threshold: {detection_result[3]}')
+            logging.info(f'[abnormal_period]: disk: {self._metric_name.disk_name}, '
+                         f'stage: {self._metric_name.stage_name}, '
+                         f'iotype: {self._metric_name.io_access_type_name}, '
+                         f'metric: {self._metric_name.metric_name}, '
+                         f'current value: {metric_value}, '
+                         f'ai threshold: {detection_result[2]}, '
+                         f'absolute threshold upper limit: {detection_result[3]}, '
+                         f'lower limit: {detection_result[4]}')
         else:
             logging.debug(f'Detection result: {str(detection_result)}')
         logging.debug(f'exit Detector: {self}')
@@ -75,41 +84,60 @@ class DiskDetector:
     def add_detector(self, detector: Detector):
         self._detector_list.append(detector)
 
+    def get_detector_list_window(self):
+        latency_wins = {"read": {}, "write": {}}
+        iodump_wins = {"read": {}, "write": {}}
+        for detector in self._detector_list:
+            if detector.metric_name.metric_name == 'latency':
+                latency_wins[detector.metric_name.io_access_type_name][detector.metric_name.stage_name] = detector.get_sliding_window_data()
+            elif detector.metric_name.metric_name == 'io_dump':
+                iodump_wins[detector.metric_name.io_access_type_name][detector.metric_name.stage_name] = detector.get_sliding_window_data()
+        return latency_wins, iodump_wins
+
     def is_slow_io_event(self, io_data_dict_with_disk_name: dict):
-        """
-        根因诊断逻辑：只有bio阶段发生异常，才认为发生了慢IO事件，即bio阶段异常是慢IO事件的必要条件
-        情况一：bio异常，rq_driver也异常，则慢盘
-        情况二：bio异常，rq_driver无异常，且有内核IO栈任意阶段异常，则IO栈异常
-        情况三：bio异常，rq_driver无异常，且无内核IO栈任意阶段异常，则IO压力大
-        情况四：bio异常，则UNKNOWN
-        """
-        diagnosis_info = {"bio": [], "rq_driver": [], "io_stage": []}
+        diagnosis_info = {"bio": [], "rq_driver": [], "kernel_stack": []}
         for detector in self._detector_list:
             # result返回内容：(是否检测到慢IO，是否检测到慢周期)、窗口、ai阈值、绝对阈值
             # 示例： (False, False), self._io_data_queue, self._ai_threshold, self._abs_threshold
             result = detector.is_slow_io_event(io_data_dict_with_disk_name)
             if result[0][0]:
-                if detector.get_metric_name().stage_name == "bio":
-                    diagnosis_info["bio"].append((detector.get_metric_name(), result))
-                elif detector.get_metric_name().stage_name == "rq_driver":
-                    diagnosis_info["rq_driver"].append((detector.get_metric_name(), result))
+                if detector.metric_name.stage_name == "bio":
+                    diagnosis_info["bio"].append(detector.metric_name)
+                elif detector.metric_name.stage_name == "rq_driver":
+                    diagnosis_info["rq_driver"].append(detector.metric_name)
                 else:
-                    diagnosis_info["io_stage"].append((detector.get_metric_name(), result))
+                    diagnosis_info["kernel_stack"].append(detector.metric_name)
 
-        # 返回内容：（1）是否检测到慢IO事件、（2）MetricName、（3）滑动窗口及阈值、（4）慢IO事件根因
-        root_cause = None
         if len(diagnosis_info["bio"]) == 0:
-            return False, None, None, None
-        elif len(diagnosis_info["rq_driver"]) != 0:
-            root_cause = "[Root Cause: disk slow]"
-        elif len(diagnosis_info["io_stage"]) != 0:
-            stage_list = []
-            for io_stage in diagnosis_info["io_stage"]:
-                stage_list.append(io_stage[0].stage_name)
-            root_cause = f"[Root Cause: io stage slow, stage: {stage_list}]"
-        if root_cause is None:
-            root_cause = "[Root Cause: high io pressure]"
-        return True, diagnosis_info["bio"][0][0], diagnosis_info["bio"][0][1], root_cause
+            return False, None, None, None, None, None, None
+
+        driver_name = self._disk_name
+        reason = "unknown"
+        block_stack = set()
+        io_type = set()
+        alarm_type = set()
+
+        for key, value in diagnosis_info.items():
+            for metric_name in value:
+                block_stack.add(metric_name.stage_name)
+                io_type.add(metric_name.io_access_type_name)
+                alarm_type.add(metric_name.metric_name)
+
+        latency_wins, iodump_wins = self.get_detector_list_window()
+        details = f"latency: {latency_wins}, iodump: {iodump_wins}"
+
+        io_press = {"throtl", "wbt", "iocost", "bfq"}
+        driver_slow = {"rq_driver"}
+        kernel_slow = {"gettag", "plug", "deadline", "hctx", "requeue"}
+
+        if not io_press.isdisjoint(block_stack):
+            reason = "io_press"
+        elif not driver_slow.isdisjoint(block_stack):
+            reason = "driver_slow"
+        elif not kernel_slow.isdisjoint(block_stack):
+            reason = "kernel_slow"
+
+        return True, driver_name, reason, str(block_stack), str(io_type), str(alarm_type), details
 
     def __repr__(self):
         msg = f'disk: {self._disk_name}, '

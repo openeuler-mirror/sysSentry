@@ -52,7 +52,7 @@ class ConfigParser:
     DEFAULT_CONF = {
         "log": {"level": "info"},
         "common": {
-            "slow_io_detect_frequency": 1,
+            "period_time": 1,
             "disk": None,
             "stage": "throtl,wbt,gettag,plug,deadline,hctx,requeue,rq_driver,bio",
             "iotype": "read,write",
@@ -63,16 +63,32 @@ class ConfigParser:
             "algorithm_type": get_threshold_type_enum("boxplot"),
             "boxplot_parameter": 1.5,
             "n_sigma_parameter": 3.0,
+            "win_type": get_sliding_window_type_enum("not_continuous"),
+            "win_size": 30,
+            "win_threshold": 6,
         },
-        "sliding_window": {
-            "sliding_window_type": get_sliding_window_type_enum("not_continuous"),
-            "window_size": 30,
-            "window_minimum_threshold": 6,
+        "latency_sata_ssd": {
+            "read_avg_lim": 10000,
+            "write_avg_lim": 10000,
+            "read_tot_lim": 50000,
+            "write_tot_lim": 50000
         },
-        "latency_sata_ssd": {"read_tot_lim": 50000, "write_tot_lim": 50000},
-        "latency_nvme_ssd": {"read_tot_lim": 500, "write_tot_lim": 500},
-        "latency_sata_hdd": {"read_tot_lim": 50000, "write_tot_lim": 50000},
-        "iodump": {"read_iodump_lim": 0, "write_iodump_lim": 0}
+        "latency_nvme_ssd": {
+            "read_avg_lim": 300,
+            "write_avg_lim": 300,
+            "read_tot_lim": 500,
+            "write_tot_lim": 500
+        },
+        "latency_sata_hdd": {
+            "read_avg_lim": 15000,
+            "write_avg_lim": 15000,
+            "read_tot_lim": 50000,
+            "write_tot_lim": 50000
+        },
+        "iodump": {
+            "read_iodump_lim": 0,
+            "write_iodump_lim": 0
+        }
     }
 
     def __init__(self, config_file_name):
@@ -161,18 +177,18 @@ class ConfigParser:
 
         return value
 
-    def _read_slow_io_detect_frequency(self, items_common: dict):
-        self._conf["common"]["slow_io_detect_frequency"] = self._get_config_value(
+    def _read_period_time(self, items_common: dict):
+        self._conf["common"]["period_time"] = self._get_config_value(
             items_common,
-            "slow_io_detect_frequency",
+            "period_time",
             int,
-            self.DEFAULT_CONF["common"]["slow_io_detect_frequency"],
+            self.DEFAULT_CONF["common"]["period_time"],
             gt=0
         )
-        frequency = self._conf["common"]["slow_io_detect_frequency"]
+        frequency = self._conf["common"]["period_time"]
         ret = check_detect_frequency_is_valid(frequency)
         if ret is None:
-            log = f"slow io detect frequency: {frequency} is valid, "\
+            log = f"period_time: {frequency} is valid, "\
                   f"Check whether the value range is too large or is not an "\
                   f"integer multiple of period_time.. exiting..."
             Report.report_pass(log)
@@ -316,50 +332,41 @@ class ConfigParser:
         self._conf["common"]["iotype"] = dup_iotype_list
 
     def _read_sliding_window_type(self, items_sliding_window: dict):
-        sliding_window_type = items_sliding_window.get("sliding_window_type")
+        sliding_window_type = items_sliding_window.get("win_type")
         if sliding_window_type is not None:
-            self._conf["sliding_window"]["sliding_window_type"] = (
+            self._conf["algorithm"]["win_type"] = (
                 get_sliding_window_type_enum(sliding_window_type)
             )
-        if self._conf["sliding_window"]["sliding_window_type"] is None:
+        if self._conf["algorithm"]["win_type"] is None:
             logging.critical(
-                "the sliding_window_type: %s you set is invalid. ai_block_io plug will exit.",
+                "the win_type: %s you set is invalid. ai_block_io plug will exit.",
                 sliding_window_type,
             )
             Report.report_pass(
-                f"the sliding_window_type: {sliding_window_type} you set is invalid. ai_block_io plug will exit."
+                f"the win_type: {sliding_window_type} you set is invalid. ai_block_io plug will exit."
             )
             exit(1)
 
     def _read_window_size(self, items_sliding_window: dict):
-        self._conf["sliding_window"]["window_size"] = self._get_config_value(
+        self._conf["algorithm"]["win_size"] = self._get_config_value(
             items_sliding_window,
-            "window_size",
+            "win_size",
             int,
-            self.DEFAULT_CONF["sliding_window"]["window_size"],
+            self.DEFAULT_CONF["algorithm"]["win_size"],
             gt=0,
-            le=3600,
+            le=300,
         )
 
     def _read_window_minimum_threshold(self, items_sliding_window: dict):
-        default_window_minimum_threshold = self.DEFAULT_CONF["sliding_window"][
-            "window_minimum_threshold"
-        ]
-        if (
-            default_window_minimum_threshold
-            > self._conf["sliding_window"]["window_size"]
-        ):
-            default_window_minimum_threshold = (
-                self._conf["sliding_window"]["window_size"] / 2
-            )
-        self._conf["sliding_window"]["window_minimum_threshold"] = (
+        default_window_minimum_threshold = self.DEFAULT_CONF["algorithm"]["win_threshold"]
+        self._conf["algorithm"]["win_threshold"] = (
             self._get_config_value(
                 items_sliding_window,
-                "window_minimum_threshold",
+                "win_threshold",
                 int,
                 default_window_minimum_threshold,
                 gt=0,
-                le=self._conf["sliding_window"]["window_size"],
+                le=self._conf["algorithm"]["win_size"],
             )
         )
 
@@ -406,7 +413,7 @@ class ConfigParser:
         if con.has_section("common"):
             items_common = dict(con.items("common"))
 
-            self._read_slow_io_detect_frequency(items_common)
+            self._read_period_time(items_common)
             self._read_disks_to_detect(items_common)
             self._read_stage(items_common)
             self._read_iotype(items_common)
@@ -420,20 +427,9 @@ class ConfigParser:
             self._read_train_data_duration(items_algorithm)
             self._read_train_update_duration(items_algorithm)
             self._read_algorithm_type_and_parameter(items_algorithm)
-        else:
-            Report.report_pass("not found algorithm section. exiting...")
-            logging.critical("not found algorithm section. exiting...")
-            exit(1)
-
-        if con.has_section("sliding_window"):
-            items_sliding_window = dict(con.items("sliding_window"))
-
-            self._read_window_size(items_sliding_window)
-            self._read_window_minimum_threshold(items_sliding_window)
-        else:
-            Report.report_pass("not found sliding_window section. exiting...")
-            logging.critical("not found sliding_window section. exiting...")
-            exit(1)
+            self._read_sliding_window_type(items_algorithm)
+            self._read_window_size(items_algorithm)
+            self._read_window_minimum_threshold(items_algorithm)
 
         if con.has_section("latency_sata_ssd"):
             items_latency_sata_ssd = dict(con.items("latency_sata_ssd"))
@@ -450,6 +446,20 @@ class ConfigParser:
                 int,
                 self.DEFAULT_CONF["latency_sata_ssd"]["write_tot_lim"],
                 gt=0,
+            )
+            self._conf["latency_sata_ssd"]["read_avg_lim"] = self._get_config_value(
+                items_latency_sata_ssd,
+                "read_avg_lim",
+                int,
+                self.DEFAULT_CONF["latency_sata_ssd"]["read_avg_lim"],
+                gt=0
+            )
+            self._conf["latency_sata_ssd"]["write_avg_lim"] = self._get_config_value(
+                items_latency_sata_ssd,
+                "write_avg_lim",
+                int,
+                self.DEFAULT_CONF["latency_sata_ssd"]["write_avg_lim"],
+                gt=0
             )
         else:
             Report.report_pass("not found latency_sata_ssd section. exiting...")
@@ -472,6 +482,20 @@ class ConfigParser:
                 self.DEFAULT_CONF["latency_nvme_ssd"]["write_tot_lim"],
                 gt=0,
             )
+            self._conf["latency_nvme_ssd"]["read_avg_lim"] = self._get_config_value(
+                items_latency_nvme_ssd,
+                "read_avg_lim",
+                int,
+                self.DEFAULT_CONF["latency_nvme_ssd"]["read_avg_lim"],
+                gt=0
+            )
+            self._conf["latency_nvme_ssd"]["write_avg_lim"] = self._get_config_value(
+                items_latency_nvme_ssd,
+                "write_avg_lim",
+                int,
+                self.DEFAULT_CONF["latency_nvme_ssd"]["write_avg_lim"],
+                gt=0
+            )
         else:
             Report.report_pass("not found latency_nvme_ssd section. exiting...")
             logging.critical("not found latency_nvme_ssd section. exiting...")
@@ -492,6 +516,20 @@ class ConfigParser:
                 int,
                 self.DEFAULT_CONF["latency_sata_hdd"]["write_tot_lim"],
                 gt=0,
+            )
+            self._conf["latency_sata_hdd"]["read_avg_lim"] = self._get_config_value(
+                items_latency_sata_hdd,
+                "read_avg_lim",
+                int,
+                self.DEFAULT_CONF["latency_sata_hdd"]["read_avg_lim"],
+                gt=0
+            )
+            self._conf["latency_sata_hdd"]["write_avg_lim"] = self._get_config_value(
+                items_latency_sata_hdd,
+                "write_avg_lim",
+                int,
+                self.DEFAULT_CONF["latency_sata_hdd"]["write_avg_lim"],
+                gt=0
             )
         else:
             Report.report_pass("not found latency_sata_hdd section. exiting...")
@@ -542,6 +580,18 @@ class ConfigParser:
         else:
             return None
 
+    def get_avg_lim(self, disk_type, io_type):
+        if io_type == "read":
+            return self._conf.get(
+                f"latency_{DISK_TYPE_MAP.get(disk_type, '')}", {}
+            ).get("read_avg_lim", None)
+        elif io_type == "write":
+            return self._conf.get(
+                f"latency_{DISK_TYPE_MAP.get(disk_type, '')}", {}
+            ).get("write_avg_lim", None)
+        else:
+            return None
+
     def get_train_data_duration_and_train_update_duration(self):
         return (
             self._conf["algorithm"]["train_data_duration"],
@@ -550,13 +600,13 @@ class ConfigParser:
 
     def get_window_size_and_window_minimum_threshold(self):
         return (
-            self._conf["sliding_window"]["window_size"],
-            self._conf["sliding_window"]["window_minimum_threshold"],
+            self._conf["algorithm"]["win_size"],
+            self._conf["algorithm"]["win_threshold"],
         )
 
     @property
-    def slow_io_detect_frequency(self):
-        return self._conf["common"]["slow_io_detect_frequency"]
+    def period_time(self):
+        return self._conf["common"]["period_time"]
 
     @property
     def algorithm_type(self):
@@ -564,7 +614,7 @@ class ConfigParser:
 
     @property
     def sliding_window_type(self):
-        return self._conf["sliding_window"]["sliding_window_type"]
+        return self._conf["algorithm"]["win_type"]
 
     @property
     def train_data_duration(self):
@@ -576,11 +626,11 @@ class ConfigParser:
 
     @property
     def window_size(self):
-        return self._conf["sliding_window"]["window_size"]
+        return self._conf["algorithm"]["win_size"]
 
     @property
     def window_minimum_threshold(self):
-        return self._conf["sliding_window"]["window_minimum_threshold"]
+        return self._conf["algorithm"]["win_threshold"]
 
     @property
     def absolute_threshold(self):
