@@ -75,6 +75,18 @@ class Detector:
                 f' sliding_window_type: {self._slidingWindow}')
 
 
+def set_to_str(parameter: set):
+    ret = ""
+    parameter = list(parameter)
+    length = len(parameter)
+    for i in range(length):
+        if i == 0:
+            ret += parameter[i]
+        else:
+            ret += "," + parameter[i]
+    return ret
+
+
 class DiskDetector:
 
     def __init__(self, disk_name: str):
@@ -124,7 +136,7 @@ class DiskDetector:
                 alarm_type.add(metric_name.metric_name)
 
         latency_wins, iodump_wins = self.get_detector_list_window()
-        details = f"latency: {latency_wins}, iodump: {iodump_wins}"
+        details = {"latency": latency_wins, "iodump": iodump_wins}
 
         io_press = {"throtl", "wbt", "iocost", "bfq"}
         driver_slow = {"rq_driver"}
@@ -137,7 +149,7 @@ class DiskDetector:
         elif not kernel_slow.isdisjoint(block_stack):
             reason = "kernel_slow"
 
-        return True, driver_name, reason, str(block_stack), str(io_type), str(alarm_type), details
+        return True, driver_name, reason, set_to_str(block_stack), set_to_str(io_type), set_to_str(alarm_type), details
 
     def __repr__(self):
         msg = f'disk: {self._disk_name}, '

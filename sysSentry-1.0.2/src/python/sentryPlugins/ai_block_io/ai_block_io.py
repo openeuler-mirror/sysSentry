@@ -23,6 +23,7 @@ from .data_access import (
     get_io_data_from_collect_plug,
     check_collect_valid,
     get_disk_type,
+    check_disk_is_available
 )
 from .io_data import MetricName
 from .alarm_report import Xalarm, Report
@@ -31,14 +32,14 @@ CONFIG_FILE = "/etc/sysSentry/plugins/ai_block_io.ini"
 
 
 def sig_handler(signum, frame):
-    logging.info("receive signal: %d", signum)
     Report.report_pass(f"receive signal: {signum}, exiting...")
+    logging.info("Finished ai_block_io plugin running.")
     exit(signum)
 
 
 class SlowIODetection:
     _config_parser = None
-    _disk_list = None
+    _disk_list = []
     _detector_name_list = defaultdict(list)
     _disk_detectors = {}
 
@@ -48,32 +49,30 @@ class SlowIODetection:
         self.__init_detector()
 
     def __init_detector_name_list(self):
-        self._disk_list = check_collect_valid(
-            self._config_parser.period_time
-        )
-        if self._disk_list is None:
-            Report.report_pass(
-                "get available disk error, please check if the collector plug is enable. exiting..."
-            )
-            logging.critical("get available disk error, please check if the collector plug is enable. exiting...")
-            exit(1)
-
-        logging.info(f"ai_block_io plug has found disks: {self._disk_list}")
         disks: list = self._config_parser.disks_to_detection
         stages: list = self._config_parser.stage
         iotypes: list = self._config_parser.iotype
-        # 情况1：None，则启用所有磁盘检测
-        # 情况2：is not None and len = 0，则不启动任何磁盘检测
-        # 情况3：len ！= 0，则取交集
+
         if disks is None:
-            logging.warning(
-                "you not specify any disk or use default, so ai_block_io will enable all available disk."
-            )
-        for disk in self._disk_list:
-            if disks is not None:
-                if disk not in disks:
-                    continue
-                disks.remove(disk)
+            logging.warning("you not specify any disk or use default, so ai_block_io will enable all available disk.")
+            all_available_disk_list = check_collect_valid(self._config_parser.period_time)
+            if all_available_disk_list is None:
+                Report.report_pass("get available disk error, please check if the collector plug is enable. exiting...")
+                logging.critical("get available disk error, please check if the collector plug is enable. exiting...")
+                exit(1)
+            if len(all_available_disk_list) == 0:
+                Report.report_pass("not found available disk. exiting...")
+                logging.critical("not found available disk. exiting...")
+                exit(1)
+            disks = all_available_disk_list
+            logging.info(f"available disk list is follow: {disks}.")
+
+        for disk in disks:
+            tmp_disk = [disk]
+            ret = check_disk_is_available(self._config_parser.period_time, tmp_disk)
+            if not ret:
+                logging.warning(f"disk: {disk} is not available, it will be ignored.")
+                continue
 
             disk_type_result = get_disk_type(disk)
             if disk_type_result["ret"] == 0 and disk_type_result["message"] in (
@@ -89,20 +88,15 @@ class SlowIODetection:
                     disk_type_result,
                 )
                 continue
+            self._disk_list.append(disk)
             for stage in stages:
                 for iotype in iotypes:
                     self._detector_name_list[disk].append(MetricName(disk, disk_type, stage, iotype, "latency"))
                     self._detector_name_list[disk].append(MetricName(disk, disk_type, stage, iotype, "io_dump"))
-        if disks:
-            logging.warning(
-                "disks: %s not in available disk list, so they will be ignored.",
-                disks,
-            )
+
         if not self._detector_name_list:
+            Report.report_pass("the disks to detection is empty, ai_block_io will exit.")
             logging.critical("the disks to detection is empty, ai_block_io will exit.")
-            Report.report_pass(
-                "the disks to detection is empty, ai_block_io will exit."
-            )
             exit(1)
 
     def __init_detector(self):
@@ -202,16 +196,20 @@ class SlowIODetection:
             logging.debug("step3. Report slow io event to sysSentry.")
             for slow_io_event in slow_io_event_list:
                 alarm_content = {
+                    "alarm_source": "ai_block_io",
                     "driver_name": slow_io_event[1],
+                    "io_type": slow_io_event[4],
                     "reason": slow_io_event[2],
                     "block_stack": slow_io_event[3],
-                    "io_type": slow_io_event[4],
-                    "alarm_source": "ai_block_io",
                     "alarm_type": slow_io_event[5],
-                    "details": slow_io_event[6],
+                    "details": slow_io_event[6]
                 }
                 Xalarm.major(alarm_content)
-                logging.warning("[SLOW IO] " + str(alarm_content))
+                tmp_alarm_content = alarm_content.copy()
+                del tmp_alarm_content["details"]
+                logging.warning("[SLOW IO] " + str(tmp_alarm_content))
+                logging.warning(f"latency: " + str(alarm_content.get("details").get("latency")))
+                logging.warning(f"iodump: " + str(alarm_content.get("details").get("iodump")))
 
             # Step4：等待检测时间
             logging.debug("step4. Wait to start next slow io event detection loop.")
