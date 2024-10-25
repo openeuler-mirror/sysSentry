@@ -19,8 +19,6 @@ from .io_data import MetricName, IOData
 
 
 def get_threshold_type_enum(algorithm_type: str):
-    if algorithm_type.lower() == "absolute":
-        return ThresholdType.AbsoluteThreshold
     if algorithm_type.lower() == "boxplot":
         return ThresholdType.BoxplotThreshold
     if algorithm_type.lower() == "n_sigma":
