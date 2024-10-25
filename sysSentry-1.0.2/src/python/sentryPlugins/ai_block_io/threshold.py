@@ -65,9 +65,12 @@ class Threshold:
     def __repr__(self):
         return "Threshold"
 
+    def __str__(self):
+        return "Threshold"
+
 
 class AbsoluteThreshold(Threshold):
-    def __init__(self, data_queue_size: int = 10000, data_queue_update_size: int = 1000):
+    def __init__(self, data_queue_size: int = 10000, data_queue_update_size: int = 1000, **kwargs):
         super().__init__(data_queue_size, data_queue_update_size)
 
     def push_latest_data_to_queue(self, data):
@@ -75,6 +78,9 @@ class AbsoluteThreshold(Threshold):
 
     def __repr__(self):
         return "[AbsoluteThreshold]"
+
+    def __str__(self):
+        return "absolute"
 
 
 class BoxplotThreshold(Threshold):
@@ -112,6 +118,9 @@ class BoxplotThreshold(Threshold):
     def __repr__(self):
         return f"[BoxplotThreshold, param is: {self.parameter}, train_size: {self.data_queue.maxsize}, update_size: {self.data_queue_update_size}]"
 
+    def __str__(self):
+        return "boxplot"
+
 
 class NSigmaThreshold(Threshold):
     def __init__(self, n_sigma_parameter: float = 3.0, data_queue_size: int = 10000, data_queue_update_size: int = 1000, **kwargs):
@@ -146,6 +155,9 @@ class NSigmaThreshold(Threshold):
 
     def __repr__(self):
         return f"[NSigmaThreshold, param is: {self.parameter}, train_size: {self.data_queue.maxsize}, update_size: {self.data_queue_update_size}]"
+
+    def __str__(self):
+        return "n_sigma"
 
 
 class ThresholdType(Enum):

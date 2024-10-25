@@ -107,7 +107,7 @@ class MedianSlidingWindow(SlidingWindow):
         if len(self._io_data_queue) < self._queue_length or (self._ai_threshold is None and self._abs_threshold is None):
             is_slow_io_event = False
         median = np.median(self._io_data_queue)
-        if median >= self._ai_threshold:
+        if (self._ai_threshold is not None and median > self._ai_threshold) or (self._abs_threshold is not None and median > self._abs_threshold):
             is_slow_io_event = True
         return (is_slow_io_event, is_abnormal_period), self._io_data_queue, self._ai_threshold, self._abs_threshold, self._avg_lim
 

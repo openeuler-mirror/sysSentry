@@ -105,21 +105,26 @@ class ConfigParser:
         ge=None,
         lt=None,
         le=None,
+        section=None
     ):
+        if section is not None:
+            print_key = section + "." + key
+        else:
+            print_key = key
         value = config_items.get(key)
         if value is None:
             logging.warning(
                 "config of %s not found, the default value %s will be used.",
-                key,
+                print_key,
                 default_value,
             )
             value = default_value
         if not value:
             logging.critical(
-                "the value of %s is empty, ai_block_io plug will exit.", key
+                "the value of %s is empty, ai_block_io plug will exit.", print_key
             )
             Report.report_pass(
-                f"the value of {key} is empty, ai_block_io plug will exit."
+                f"the value of {print_key} is empty, ai_block_io plug will exit."
             )
             exit(1)
         try:
@@ -127,51 +132,51 @@ class ConfigParser:
         except ValueError:
             logging.critical(
                 "the value of %s is not a valid %s, ai_block_io plug will exit.",
-                key,
+                print_key,
                 value_type,
             )
             Report.report_pass(
-                f"the value of {key} is not a valid {value_type}, ai_block_io plug will exit."
+                f"the value of {print_key} is not a valid {value_type}, ai_block_io plug will exit."
             )
             exit(1)
         if gt is not None and value <= gt:
             logging.critical(
                 "the value of %s is not greater than %s, ai_block_io plug will exit.",
-                key,
+                print_key,
                 gt,
             )
             Report.report_pass(
-                f"the value of {key} is not greater than {gt}, ai_block_io plug will exit."
+                f"the value of {print_key} is not greater than {gt}, ai_block_io plug will exit."
             )
             exit(1)
         if ge is not None and value < ge:
             logging.critical(
                 "the value of %s is not greater than or equal to %s, ai_block_io plug will exit.",
-                key,
+                print_key,
                 ge,
             )
             Report.report_pass(
-                f"the value of {key} is not greater than or equal to {ge}, ai_block_io plug will exit."
+                f"the value of {print_key} is not greater than or equal to {ge}, ai_block_io plug will exit."
             )
             exit(1)
         if lt is not None and value >= lt:
             logging.critical(
                 "the value of %s is not less than %s, ai_block_io plug will exit.",
-                key,
+                print_key,
                 lt,
             )
             Report.report_pass(
-                f"the value of {key} is not less than {lt}, ai_block_io plug will exit."
+                f"the value of {print_key} is not less than {lt}, ai_block_io plug will exit."
             )
             exit(1)
         if le is not None and value > le:
             logging.critical(
                 "the value of %s is not less than or equal to %s, ai_block_io plug will exit.",
-                key,
+                print_key,
                 le,
             )
             Report.report_pass(
-                f"the value of {key} is not less than or equal to {le}, ai_block_io plug will exit."
+                f"the value of {print_key} is not less than or equal to {le}, ai_block_io plug will exit."
             )
             exit(1)
 
@@ -188,7 +193,7 @@ class ConfigParser:
         frequency = self._conf["common"]["period_time"]
         ret = check_detect_frequency_is_valid(frequency)
         if ret is None:
-            log = f"period_time: {frequency} is valid, "\
+            log = f"period_time: {frequency} is invalid, "\
                   f"Check whether the value range is too large or is not an "\
                   f"integer multiple of period_time.. exiting..."
             Report.report_pass(log)
@@ -202,6 +207,7 @@ class ConfigParser:
             self._conf["common"]["disk"] = None
             return
         disks_to_detection = disks_to_detection.strip()
+        disks_to_detection = disks_to_detection.lower()
         if not disks_to_detection:
             logging.critical("the value of disk is empty, ai_block_io plug will exit.")
             Report.report_pass(
@@ -213,7 +219,18 @@ class ConfigParser:
         if len(disk_list) == 1 and disk_list[0] == "default":
             self._conf["common"]["disk"] = None
             return
-        self._conf["common"]["disk"] = disk_list
+        if len(disk_list) > 10:
+            ten_disk_list = disk_list[0:10]
+            other_disk_list = disk_list[10:]
+            logging.warning(f"disk only support maximum is 10, disks: {ten_disk_list} will be retained, other: {other_disk_list} will be ignored.")
+        else:
+            ten_disk_list = disk_list
+        set_ten_disk_list = set(ten_disk_list)
+        if len(ten_disk_list) > len(set_ten_disk_list):
+            tmp = ten_disk_list
+            ten_disk_list = list(set_ten_disk_list)
+            logging.warning(f"disk exist duplicate, it will be deduplicate, before: {tmp}, after: {ten_disk_list}")
+        self._conf["common"]["disk"] = ten_disk_list
 
     def _read_train_data_duration(self, items_algorithm: dict):
         self._conf["algorithm"]["train_data_duration"] = self._get_config_value(
@@ -244,10 +261,12 @@ class ConfigParser:
 
     def _read_algorithm_type_and_parameter(self, items_algorithm: dict):
         algorithm_type = items_algorithm.get("algorithm_type")
-        if algorithm_type is not None:
-            self._conf["algorithm"]["algorithm_type"] = get_threshold_type_enum(
-                algorithm_type
-            )
+        if algorithm_type is None:
+            default_algorithm_type = self._conf["algorithm"]["algorithm_type"]
+            logging.warning(f"algorithm_type not found, it will be set default: {default_algorithm_type}")
+        else:
+            self._conf["algorithm"]["algorithm_type"] = get_threshold_type_enum(algorithm_type)
+
         if self._conf["algorithm"]["algorithm_type"] is None:
             logging.critical(
                 "the algorithm_type: %s you set is invalid. ai_block_io plug will exit.",
@@ -257,6 +276,7 @@ class ConfigParser:
                 f"the algorithm_type: {algorithm_type} you set is invalid. ai_block_io plug will exit."
             )
             exit(1)
+
         elif self._conf["algorithm"]["algorithm_type"] == ThresholdType.NSigmaThreshold:
             self._conf["algorithm"]["n_sigma_parameter"] = self._get_config_value(
                 items_algorithm,
@@ -279,9 +299,14 @@ class ConfigParser:
             )
 
     def _read_stage(self, items_algorithm: dict):
-        stage_str = items_algorithm.get(
-            "stage", self.DEFAULT_CONF["common"]["stage"]
-        ).strip()
+        stage_str = items_algorithm.get("stage")
+        if stage_str is None:
+            stage_str = self.DEFAULT_CONF["common"]["stage"]
+            logging.warning(f"stage not found, it will be set default: {stage_str}")
+        else:
+            stage_str = stage_str.strip()
+
+        stage_str = stage_str.lower()
         stage_list = stage_str.split(",")
         stage_list = [stage.strip() for stage in stage_list]
         if len(stage_list) == 1 and stage_list[0] == "":
@@ -307,9 +332,14 @@ class ConfigParser:
         self._conf["common"]["stage"] = dup_stage_list
 
     def _read_iotype(self, items_algorithm: dict):
-        iotype_str = items_algorithm.get(
-            "iotype", self.DEFAULT_CONF["common"]["iotype"]
-        ).strip()
+        iotype_str = items_algorithm.get("iotype")
+        if iotype_str is None:
+            iotype_str = self.DEFAULT_CONF["common"]["iotype"]
+            logging.warning(f"iotype not found, it will be set default: {iotype_str}")
+        else:
+            iotype_str = iotype_str.strip()
+
+        iotype_str = iotype_str.lower()
         iotype_list = iotype_str.split(",")
         iotype_list = [iotype.strip() for iotype in iotype_list]
         if len(iotype_list) == 1 and iotype_list[0] == "":
@@ -333,6 +363,13 @@ class ConfigParser:
 
     def _read_sliding_window_type(self, items_sliding_window: dict):
         sliding_window_type = items_sliding_window.get("win_type")
+
+        if sliding_window_type is None:
+            default_sliding_window_type = self._conf["algorithm"]["win_type"]
+            logging.warning(f"win_type not found, it will be set default: {default_sliding_window_type}")
+            return
+
+        sliding_window_type = sliding_window_type.strip()
         if sliding_window_type is not None:
             self._conf["algorithm"]["win_type"] = (
                 get_sliding_window_type_enum(sliding_window_type)
@@ -439,6 +476,7 @@ class ConfigParser:
                 int,
                 self.DEFAULT_CONF["latency_sata_ssd"]["read_tot_lim"],
                 gt=0,
+                section="latency_sata_ssd"
             )
             self._conf["latency_sata_ssd"]["write_tot_lim"] = self._get_config_value(
                 items_latency_sata_ssd,
@@ -446,21 +484,32 @@ class ConfigParser:
                 int,
                 self.DEFAULT_CONF["latency_sata_ssd"]["write_tot_lim"],
                 gt=0,
+                section="latency_sata_ssd"
             )
             self._conf["latency_sata_ssd"]["read_avg_lim"] = self._get_config_value(
                 items_latency_sata_ssd,
                 "read_avg_lim",
                 int,
                 self.DEFAULT_CONF["latency_sata_ssd"]["read_avg_lim"],
-                gt=0
+                gt=0,
+                section="latency_sata_ssd"
             )
             self._conf["latency_sata_ssd"]["write_avg_lim"] = self._get_config_value(
                 items_latency_sata_ssd,
                 "write_avg_lim",
                 int,
                 self.DEFAULT_CONF["latency_sata_ssd"]["write_avg_lim"],
-                gt=0
+                gt=0,
+                section="latency_sata_ssd"
             )
+            if self._conf["latency_sata_ssd"]["read_avg_lim"] >= self._conf["latency_sata_ssd"]["read_tot_lim"]:
+                Report.report_pass("latency_sata_ssd.read_avg_lim must < latency_sata_ssd.read_tot_lim . exiting...")
+                logging.critical("latency_sata_ssd.read_avg_lim must < latency_sata_ssd.read_tot_lim . exiting...")
+                exit(1)
+            if self._conf["latency_sata_ssd"]["write_avg_lim"] >= self._conf["latency_sata_ssd"]["write_tot_lim"]:
+                Report.report_pass("latency_sata_ssd.write_avg_lim must < latency_sata_ssd.write_tot_lim . exiting...")
+                logging.critical("latency_sata_ssd.read_avg_lim must < latency_sata_ssd.read_tot_lim . exiting...")
+                exit(1)
         else:
             Report.report_pass("not found latency_sata_ssd section. exiting...")
             logging.critical("not found latency_sata_ssd section. exiting...")
@@ -474,6 +523,7 @@ class ConfigParser:
                 int,
                 self.DEFAULT_CONF["latency_nvme_ssd"]["read_tot_lim"],
                 gt=0,
+                section="latency_nvme_ssd"
             )
             self._conf["latency_nvme_ssd"]["write_tot_lim"] = self._get_config_value(
                 items_latency_nvme_ssd,
@@ -481,21 +531,32 @@ class ConfigParser:
                 int,
                 self.DEFAULT_CONF["latency_nvme_ssd"]["write_tot_lim"],
                 gt=0,
+                section="latency_nvme_ssd"
             )
             self._conf["latency_nvme_ssd"]["read_avg_lim"] = self._get_config_value(
                 items_latency_nvme_ssd,
                 "read_avg_lim",
                 int,
                 self.DEFAULT_CONF["latency_nvme_ssd"]["read_avg_lim"],
-                gt=0
+                gt=0,
+                section="latency_nvme_ssd"
             )
             self._conf["latency_nvme_ssd"]["write_avg_lim"] = self._get_config_value(
                 items_latency_nvme_ssd,
                 "write_avg_lim",
                 int,
                 self.DEFAULT_CONF["latency_nvme_ssd"]["write_avg_lim"],
-                gt=0
+                gt=0,
+                section="latency_nvme_ssd"
             )
+            if self._conf["latency_nvme_ssd"]["read_avg_lim"] >= self._conf["latency_nvme_ssd"]["read_tot_lim"]:
+                Report.report_pass("latency_nvme_ssd.read_avg_lim must < latency_nvme_ssd.read_tot_lim . exiting...")
+                logging.critical("latency_nvme_ssd.read_avg_lim must < latency_nvme_ssd.read_tot_lim . exiting...")
+                exit(1)
+            if self._conf["latency_nvme_ssd"]["write_avg_lim"] >= self._conf["latency_nvme_ssd"]["write_tot_lim"]:
+                Report.report_pass("latency_nvme_ssd.write_avg_lim must < latency_nvme_ssd.write_tot_lim . exiting...")
+                logging.critical("latency_nvme_ssd.write_avg_lim must < latency_nvme_ssd.write_tot_lim . exiting...")
+                exit(1)
         else:
             Report.report_pass("not found latency_nvme_ssd section. exiting...")
             logging.critical("not found latency_nvme_ssd section. exiting...")
@@ -509,6 +570,7 @@ class ConfigParser:
                 int,
                 self.DEFAULT_CONF["latency_sata_hdd"]["read_tot_lim"],
                 gt=0,
+                section="latency_sata_hdd"
             )
             self._conf["latency_sata_hdd"]["write_tot_lim"] = self._get_config_value(
                 items_latency_sata_hdd,
@@ -516,21 +578,32 @@ class ConfigParser:
                 int,
                 self.DEFAULT_CONF["latency_sata_hdd"]["write_tot_lim"],
                 gt=0,
+                section="latency_sata_hdd"
             )
             self._conf["latency_sata_hdd"]["read_avg_lim"] = self._get_config_value(
                 items_latency_sata_hdd,
                 "read_avg_lim",
                 int,
                 self.DEFAULT_CONF["latency_sata_hdd"]["read_avg_lim"],
-                gt=0
+                gt=0,
+                section="latency_sata_hdd"
             )
             self._conf["latency_sata_hdd"]["write_avg_lim"] = self._get_config_value(
                 items_latency_sata_hdd,
                 "write_avg_lim",
                 int,
                 self.DEFAULT_CONF["latency_sata_hdd"]["write_avg_lim"],
-                gt=0
+                gt=0,
+                section="latency_sata_hdd"
             )
+            if self._conf["latency_sata_hdd"]["read_avg_lim"] >= self._conf["latency_sata_hdd"]["read_tot_lim"]:
+                Report.report_pass("latency_sata_hdd.read_avg_lim must < latency_sata_hdd.read_tot_lim . exiting...")
+                logging.critical("latency_sata_hdd.read_avg_lim must < latency_sata_hdd.read_tot_lim . exiting...")
+                exit(1)
+            if self._conf["latency_sata_hdd"]["write_avg_lim"] >= self._conf["latency_sata_hdd"]["write_tot_lim"]:
+                Report.report_pass("latency_sata_hdd.write_avg_lim must < latency_sata_hdd.write_tot_lim . exiting...")
+                logging.critical("latency_sata_hdd.write_avg_lim must < latency_sata_hdd.write_tot_lim . exiting...")
+                exit(1)
         else:
             Report.report_pass("not found latency_sata_hdd section. exiting...")
             logging.critical("not found latency_sata_hdd section. exiting...")
