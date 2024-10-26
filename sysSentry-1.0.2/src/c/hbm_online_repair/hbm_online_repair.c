@@ -127,10 +127,7 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    ret = init_all_flash();
-    if (ret < 0) {
-        log(LOG_ERROR, "flash writer init failed\n");
-    }
+    get_flash_total_size();
 
     handle_ras_events(ras);
 
