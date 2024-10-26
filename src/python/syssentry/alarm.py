@@ -180,7 +180,30 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Di
                 if 'details' in alarm_info:
                     alarm_info.pop('details', None)
             alarm.pop('msg1', None)
+
+            # dump each {key,value} of details in one line
+            if 'details' in alarm_info and isinstance(alarm_info['details'], dict):
+                for key in alarm_info['details']:
+                    alarm_info['details'][key] = json.dumps(alarm_info['details'][key], indent=None)
+
             alarm['alarm_info'] = alarm_info
+        alarm_list = [alarm for alarm in alarm_list if 'alarm_source' in alarm['alarm_info'] and alarm['alarm_info']['alarm_source'] == task_name]
+
+        alarm_level_mapping = { 
+                1: 'MINOR_ALM',
+                2: 'MAJOR_ALM',
+                3: 'CRITICAL_ALM'
+                }   
+
+        alarm_type_mapping = { 
+                1: 'ALARM_TYPE_OCCUR',
+                2: 'ALARM_TYPE_RECOVER'
+                }   
+
+        for alarm in alarm_list:
+            alarm['alarm_level'] = alarm_level_mapping.get(alarm['alarm_level'], 'UNKNOWN_LEVEL')
+            alarm['alarm_type'] = alarm_type_mapping.get(alarm['alarm_type'], 'UNKNOWN_TYPE')
         return alarm_list
+
     finally:
         alarm_list_lock.release()
