@@ -184,7 +184,7 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Di
             # dump each {key,value} of details in one line
             if 'details' in alarm_info and isinstance(alarm_info['details'], dict):
                 for key in alarm_info['details']:
-                    alarm_info['details'][key] = json.dumps(alarm_info['details'][key], indent=None)
+                    alarm_info['details'][key] = str(alarm_info['details'][key])
 
             alarm['alarm_info'] = alarm_info
         alarm_list = [alarm for alarm in alarm_list if 'alarm_source' in alarm['alarm_info'] and alarm['alarm_info']['alarm_source'] == task_name]
