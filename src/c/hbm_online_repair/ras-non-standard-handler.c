@@ -7,17 +7,21 @@
 #include "ras-non-standard-handler.h"
 #include "logger.h"
 
-static char *uuid_le(const char *uu)
+static int uuid_le(const char *uu, char* uuid)
 {
-    static char uuid[sizeof("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")];
     if (!uu) {
         log(LOG_ERROR, "uuid_le failed: uu is empty");
-        return uuid;
+        return -1;
     }
     size_t uu_len = strlen(uu);
-    if (uu_len < SECTION_TYPE_UUID_LEN) {
-        log(LOG_ERROR, "uuid_le failed: uu is too short");
-        return uuid;
+    if (uu_len != SECTION_TYPE_UUID_LEN) {
+        log(LOG_ERROR, "uuid_le failed: uu len is incorrect");
+        return -1;
+    }
+    size_t uuid_len = strlen(uuid);
+    if (uuid_len != strlen(UUID_STR_TYPE)) {
+        log(LOG_ERROR, "uuid_le failed: uuid len is incorrect");
+        return -1;
     }
 
     char *p = uuid;
@@ -38,7 +42,7 @@ static char *uuid_le(const char *uu)
 
     *p = 0;
 
-    return uuid;
+    return 0;
 }
 
 int ras_non_standard_event_handler(struct trace_seq *s,
@@ -52,15 +56,20 @@ int ras_non_standard_event_handler(struct trace_seq *s,
     ev.sec_type = tep_get_field_raw(s, event, "sec_type",
                        record, &len, 1);
     if(!ev.sec_type) {
-        log(LOG_WARNING, "get event section type failed");
+        log(LOG_WARNING, "get event section type failed\n");
         return -1;
     }
 
     trace_seq_printf(s, "\n");
-    trace_seq_printf(s, "sec_type: %s\n", uuid_le(ev.sec_type));
+    char uuid[sizeof(UUID_STR_TYPE)] = UUID_STR_TYPE;
+    if (uuid_le(ev.sec_type, uuid) < 0) {
+        log(LOG_WARNING, "get uuid failed\n");
+        return -1;
+    }
+    trace_seq_printf(s, "sec_type: %s\n", uuid);
 
     if (tep_get_field_val(s, event, "len", record, &val, 1) < 0) {
-        log(LOG_WARNING, "tep get field val failed");
+        log(LOG_WARNING, "tep get field val failed\n");
         return -1;
     }
 
@@ -69,11 +78,11 @@ int ras_non_standard_event_handler(struct trace_seq *s,
 
     ev.error = tep_get_field_raw(s, event, "buf", record, &len, 1);
     if(!ev.error || ev.length != len) {
-        log(LOG_WARNING, "get event error failed");
+        log(LOG_WARNING, "get event error failed\n");
         return -1;
     }
 
-    if (strcmp(uuid_le(ev.sec_type), HISI_COMMON_SECTION_TYPE_UUID) == 0) {
+    if (strcmp(uuid, HISI_COMMON_SECTION_TYPE_UUID) == 0) {
         decode_hisi_common_section(&ev);
     }
 

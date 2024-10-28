@@ -84,6 +84,6 @@
 #define FLASH_ENTRY_NUM 8
 #define KB_SIZE 1024
 
-extern int init_all_flash();
+extern void get_flash_total_size();
 
 #endif

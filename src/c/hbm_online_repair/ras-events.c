@@ -348,7 +348,6 @@ static int read_ras_event_all_cpus(struct pcpu_data *pdata,
                         "Error on CPU %i\n", i);
                     warnonce[i]++;
                 }
-                continue;
             }
             if (!(fds[i].revents & POLLIN)) {
                 count_nready++;

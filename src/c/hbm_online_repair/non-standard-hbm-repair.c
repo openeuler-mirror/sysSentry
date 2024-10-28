@@ -15,7 +15,7 @@
 #include "non-standard-hbm-repair.h"
 
 extern int page_isolation_threshold;
-size_t total_size = 0;
+size_t flash_total_size = 0;
 struct hisi_common_error_section {
     uint32_t   val_bits;
     uint8_t    version;
@@ -122,28 +122,58 @@ static void parse_fault_addr_info(struct fault_addr_info* info_struct, unsigned 
     info_struct->crc8 = (uint32_t)fault_addr;
 }
 
-static bool variable_existed(char *name, char *guid)
+static bool is_variable_existing(char *name, char *guid)
 {
     char filename[PATH_MAX];
+    snprintf(filename, PATH_MAX - 1, "%s/%s-%s", EFIVARFS_PATH, name, guid);
+
+    return access(filename, F_OK | R_OK) == 0;
+}
+
+static size_t get_var_size(char *name, char *guid) {
+    char filename[PATH_MAX];
     int fd;
+    struct stat stat;
 
     snprintf(filename, PATH_MAX - 1, "%s/%s-%s", EFIVARFS_PATH, name, guid);
 
     // open var file
     fd = open(filename, O_RDONLY);
     if (fd < 0) {
-        log(LOG_WARNING, "open file %s failed\n", filename);
-        return false;
+        log(LOG_WARNING, "open %s failed\n", filename);
+        goto err;
+    }
+    // read stat
+    if (fstat(fd, &stat) != 0) {
+        log(LOG_WARNING, "fstat %s failed\n", filename);
+        goto err;
     }
     close(fd);
-    return true;
+    return stat.st_size;
+err:
+    if (fd >= 0)
+        close(fd);
+    return (size_t)-1;
 }
 
-static uint32_t read_variable_attribute(char *name, char *guid) {
+void get_flash_total_size() {
+    for (int i = 0; i < FLASH_ENTRY_NUM; i++) {
+        if (is_variable_existing(flash_names[i], flash_guids[i])) {
+            flash_total_size += get_var_size(flash_names[i], flash_guids[i]);
+        }
+    }
+    // check total entry size
+    log(LOG_DEBUG, "current fault info total size: %luKB, flash max threshold: %uKB\n",
+           flash_total_size / KB_SIZE, MAX_VAR_SIZE / KB_SIZE);
+    if (flash_total_size > MAX_VAR_SIZE) {
+        log(LOG_WARNING, "fault info storage %zu reach threshold, cannot save new record\n", flash_total_size);
+    }
+}
+
+static int read_variable_attribute(char *name, char *guid, uint32_t *attribute) {
     char filename[PATH_MAX];
     int fd;
     size_t readsize;
-    uint32_t attribute = (uint32_t)-1;
 
     snprintf(filename, PATH_MAX - 1, "%s/%s-%s", EFIVARFS_PATH, name, guid);
 
@@ -151,17 +181,18 @@ static uint32_t read_variable_attribute(char *name, char *guid) {
     fd = open(filename, O_RDONLY);
     if (fd < 0) {
         log(LOG_ERROR, "open %s failed\n", filename);
-        return attribute;
+        return -1;
     }
 
     // read attributes from first 4 bytes
-    readsize = read(fd, &attribute, sizeof(uint32_t));
+    readsize = read(fd, attribute, sizeof(uint32_t));
     if (readsize != sizeof(uint32_t)) {
         log(LOG_ERROR, "read attribute of %s failed\n", filename);
+        return -1;
     }
 
     close(fd);
-    return attribute;
+    return 0;
 }
 
 static int efivarfs_set_mutable(char *name, char *guid, bool mutable)
@@ -205,8 +236,8 @@ err:
     return -1;
 }
 
-static int write_variable(char *name, char *guid, void *value, unsigned long size, uint32_t attribute) {
-    int fd, mode;
+static int write_variable(char *name, char *guid, void *value, unsigned long size, uint32_t attribute, bool is_existing) {
+    int fd = -1, mode;
     size_t writesize;
     void *buffer;
     unsigned long total;
@@ -225,16 +256,13 @@ static int write_variable(char *name, char *guid, void *value, unsigned long siz
     memcpy(buffer + sizeof(uint32_t), value, size);
 
     // change attr
-    if (efivarfs_set_mutable(name, guid, 1) != 0) {
+    if (is_existing && efivarfs_set_mutable(name, guid, 1) != 0) {
         log(LOG_ERROR, "set mutable for %s failed\n", filename);
         goto err;
     }
 
     mode = O_WRONLY;
-    if (attribute & EFI_VARIABLE_APPEND_WRITE)
-        mode |= O_APPEND;
-    else
-        mode |= O_CREAT;
+    mode |= is_existing ? O_APPEND : O_CREAT;
 
     // open var file
     fd = open(filename, mode, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -252,7 +280,7 @@ static int write_variable(char *name, char *guid, void *value, unsigned long siz
 
     close(fd);
     free(buffer);
-    if (efivarfs_set_mutable(name, guid, 0) != 0) {
+    if (is_existing && efivarfs_set_mutable(name, guid, 0) != 0) {
         log(LOG_ERROR, "set immutable for %s failed\n", filename);
     }
     return 0;
@@ -261,86 +289,21 @@ err:
         close(fd);
     if (buffer)
         free(buffer);
-    if (efivarfs_set_mutable(name, guid, 0) != 0) {
+    if (is_existing && efivarfs_set_mutable(name, guid, 0) != 0) {
         log(LOG_ERROR, "set immutable for %s failed\n", filename);
     }
     return -1;
-}
-
-static int append_variable(char *name, char *guid, void *data, unsigned long size) {
-    // prepare append attribute
-    uint32_t attribute = read_variable_attribute(name, guid);
-    if (attribute == (uint32_t)-1) {
-        log(LOG_ERROR, "read %s-%s attribute failed\n", name, guid);
-        return -1;
-    }
-    attribute |= EFI_VARIABLE_APPEND_WRITE;
-
-    return write_variable(name, guid, data, size, attribute);
-}
-
-static size_t get_var_size(char *name, char *guid) {
-    char filename[PATH_MAX];
-    int fd;
-    struct stat stat;
-
-    snprintf(filename, PATH_MAX - 1, "%s/%s-%s", EFIVARFS_PATH, name, guid);
-
-    // open var file
-    fd = open(filename, O_RDONLY);
-    if (fd < 0) {
-        log(LOG_WARNING, "open %s failed\n", filename);
-        goto err;
-    }
-    // read stat
-    if (fstat(fd, &stat) != 0) {
-        log(LOG_WARNING, "fstat %s failed\n", filename);
-        goto err;
-    }
-    close(fd);
-    return stat.st_size;
-err:
-    if (fd >= 0)
-        close(fd);
-    return (size_t)-1;
-}
-
-int init_all_flash() {
-    for (int i = 0; i < FLASH_ENTRY_NUM; i++) {
-        // check existed entry
-        if (variable_existed(flash_names[i], flash_guids[i])) {
-            total_size += get_var_size(flash_names[i], flash_guids[i]);
-            continue;
-        }
-        // create new entry
-        uint32_t attribute = EFI_VARIABLE_NON_VOLATILE |
-                             EFI_VARIABLE_BOOTSERVICE_ACCESS |
-                             EFI_VARIABLE_RUNTIME_ACCESS;
-        char *data = "";
-        unsigned long size = 1;
-        int ret = write_variable(flash_names[i], flash_guids[i], data, size, attribute);
-        if (ret) {
-            log(LOG_ERROR, "init %s-%s failed, fault info storage funtion not enabled\n", flash_names[i], flash_guids[i]);
-            return -1;
-        }
-        total_size += sizeof(uint32_t) + 1;
-    }
-    // check total entry size
-    log(LOG_DEBUG, "current fault info total size: %luKB, flash max threshold: %uKB\n",
-           total_size / KB_SIZE, MAX_VAR_SIZE / KB_SIZE);
-    if (total_size > MAX_VAR_SIZE) {
-        log(LOG_ERROR, "fault info storage reach threshold, cannot save new record\n");
-    }
-    return 0;
 }
 
 static int write_fault_info_to_flash(const struct hisi_common_error_section *err) {
     int ret, guid_index;
     uint32_t reg_size;
     uint64_t fault_addr;
+    bool is_existing;
+    uint32_t attribute = -1;
 
     // check flash usage threshold
-    if (total_size + sizeof(uint64_t) > MAX_VAR_SIZE) {
+    if (flash_total_size + sizeof(uint64_t) > MAX_VAR_SIZE) {
         log(LOG_WARNING, "fault info storage reach threshold, cannot save new record into flash\n");
         return -1;
     }
@@ -359,14 +322,29 @@ static int write_fault_info_to_flash(const struct hisi_common_error_section *err
         log(LOG_ERROR, "invalid fault info\n");
         return -1;
     }
+
+    // judge if the efivar is existing to set the attribute
+    is_existing = is_variable_existing(flash_names[guid_index], flash_guids[guid_index]);
+    attribute = EFI_VARIABLE_NON_VOLATILE |
+                EFI_VARIABLE_BOOTSERVICE_ACCESS |
+                EFI_VARIABLE_RUNTIME_ACCESS;
+    if (is_existing) {
+        ret = read_variable_attribute(flash_names[guid_index], flash_guids[guid_index], &attribute);
+        if (ret < 0) {
+            log(LOG_ERROR, "read variable %s-%s attribute failed, stop writing\n", flash_names[guid_index], flash_guids[guid_index]);
+            return -1;
+        }
+        attribute |= EFI_VARIABLE_APPEND_WRITE;
+    }
+
     // record physical addr in flash
-    ret = append_variable(flash_names[guid_index], flash_guids[guid_index], &fault_addr, sizeof(uint64_t));
+    ret = write_variable(flash_names[guid_index], flash_guids[guid_index], &fault_addr, sizeof(uint64_t), attribute, is_existing);
     if (ret < 0) {
-        log(LOG_ERROR, "append to %s-%s failed\n", flash_names[guid_index], flash_guids[guid_index]);
+        log(LOG_ERROR, "write to %s-%s failed\n", flash_names[guid_index], flash_guids[guid_index]);
         return -1;
     }
-    total_size += sizeof(uint64_t);
-    log(LOG_INFO, "write hbm fault info to flash success\n");
+    flash_total_size += sizeof(uint64_t);
+    log(LOG_INFO, "write hbm fault info to flash %s-%s success\n", flash_names[guid_index], flash_guids[guid_index]);
     return 0;
 }
 
@@ -421,7 +399,7 @@ static int get_hardware_corrupted_size()
     return hardware_corrupted_size;
 }
 
-static uint8_t get_repair_result_code(int ret)
+static uint8_t get_repair_failed_result_code(int ret)
 {
     if (ret == -ENOSPC) {
         return REPAIR_FAILED_NO_RESOURCE;
@@ -582,11 +560,11 @@ static int hbmc_hbm_page_isolate(const struct hisi_common_error_section *err)
 static int hbmc_hbm_after_repair(bool is_acls, const int repair_ret, const unsigned long long paddr)
 {
     int ret;
-    if (repair_ret < 0) {
+    if (repair_ret <= 0) {
         log(LOG_WARNING, "HBM %s: Keep page (0x%llx) offline\n", is_acls ? "ACLS" : "SPPR", paddr);
         /* not much we can do about errors here */
         (void)write_file("/sys/kernel/page_eject", "remove_page", paddr);
-        return get_repair_result_code(repair_ret);
+        return get_repair_failed_result_code(repair_ret);
     }
 
     ret = write_file("/sys/kernel/page_eject", "online_page", paddr);
@@ -615,9 +593,13 @@ static uint8_t hbmc_hbm_repair(const struct hisi_common_error_section *err, char
         err->reg_array[HBM_REPAIR_REQ_TYPE] & HBM_PSUE_ACLS;
 
     ret = write_file(path, is_acls ? "acls_query" : "sppr_query", paddr);
-    if (ret < 0) {
-        notice_BMC(err, get_repair_result_code(ret));
-        log(LOG_WARNING, "HBM: Address 0x%llx is not supported to %s repair\n", paddr, is_acls ? "ACLS" : "SPPR");
+
+    /* Only positive num means the error is supported to repair */
+    if (ret <= 0) {
+        if (ret != -ENXIO) {
+            notice_BMC(err, get_repair_failed_result_code(ret));
+            log(LOG_WARNING, "HBM: Address 0x%llx is not supported to %s repair\n", paddr, is_acls ? "ACLS" : "SPPR");
+        }
         return ret;
     }
 
@@ -642,8 +624,9 @@ static uint8_t hbmc_hbm_repair(const struct hisi_common_error_section *err, char
                 all_online_success = false;
             }
         }
-        if (ret < 0) {
-            notice_BMC(err, get_repair_result_code(ret));
+        /* The ret is from the acls/sppr repair, and only positive num means the error is repaired successfully */
+        if (ret <= 0) {
+            notice_BMC(err, get_repair_failed_result_code(ret));
             return ret;
         } else if (all_online_success) {
             notice_BMC(err, ISOLATE_REPAIR_ONLINE_SUCCESS);
@@ -698,7 +681,7 @@ static void hbm_repair_handler(const struct hisi_common_error_section *err)
     struct dirent *dent;
     DIR *dir;
     int ret;
-    bool find_device = false, find_hbm_mem = false;
+    bool find_device = false, find_hbm_mem = false, addr_in_hbm_device = false;
 
     ret = hbmc_hbm_page_isolate(err);
     if (ret < 0) {
@@ -723,10 +706,13 @@ static void hbm_repair_handler(const struct hisi_common_error_section *err)
         if (hbmc_get_memory_type(path) == HBM_HBM_MEMORY) {
             find_hbm_mem = true;
             ret = hbmc_hbm_repair(err, path);
-            if (ret != -ENXIO)
+            if (ret != -ENXIO) {
+                addr_in_hbm_device = true;
                 break;
+            }
         }
     }
+
     if (!find_device) {
         log(LOG_ERROR, "Repair driver is not loaded, skip error, error_type is %u\n",
                 err->reg_array[HBM_REPAIR_REQ_TYPE] & HBM_ERROR_MASK);
@@ -735,6 +721,10 @@ static void hbm_repair_handler(const struct hisi_common_error_section *err)
         log(LOG_ERROR, "No HBM device memory type found, skip error, error_type is %u\n",
                 err->reg_array[HBM_REPAIR_REQ_TYPE] & HBM_ERROR_MASK);
         notice_BMC(err, REPAIR_FAILED_OTHER_REASON);
+    } else if (!addr_in_hbm_device) {
+        log(LOG_ERROR, "Err addr is not in device, skip error, error_type is %u\n",
+                err->reg_array[HBM_REPAIR_REQ_TYPE] & HBM_ERROR_MASK);
+        notice_BMC(err, REPAIR_FAILED_INVALID_PARAM);
     }
 
     closedir(dir);
@@ -769,7 +759,7 @@ static bool hbm_repair_validate(const struct hisi_common_error_section *err)
         (err->reg_array_size == HBM_CACHE_ARRAY_SIZE);
 
     if (!(is_acls_valid || is_sppr_valid || is_cache_mode)) {
-        log(LOG_DEBUG, "err type (%u) is unknown or address array length (%u) is invalid\n",
+        log(LOG_WARNING, "err type (%u) is unknown or address array length (%u) is invalid\n",
                     hbm_repair_reg_type, err->reg_array_size);
         return false;
     }
