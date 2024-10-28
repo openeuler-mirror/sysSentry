@@ -1,0 +1,2256 @@
+From f110a04312b47c5ad397211ef35001aab214849e Mon Sep 17 00:00:00 2001
+From: xuyi <xuyi91@huawei.com>
+Date: Thu, 24 Oct 2024 11:57:18 +0800
+Subject: [PATCH] nvme_inject
+
+---
+ Makefile  | 540 ++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ adapter.c | 515 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ adapter.h | 322 ++++++++++++++++++++++++++++++++
+ core.c    | 297 ++++++++++++++++++++++++++++--
+ nvme.h    | 159 +++++++++++++++-
+ pci.c     | 152 ++++++++-------
+ trace.h   |  10 +-
+ 7 files changed, 1891 insertions(+), 104 deletions(-)
+ create mode 100644 adapter.c
+ create mode 100644 adapter.h
+
+diff --git ./Makefile ./Makefile
+index aea459c..1b24f46 100644
+--- ./Makefile
++++ ./Makefile
+@@ -1,23 +1,531 @@
+-# SPDX-License-Identifier: GPL-2.0
++obj-m += nvme.o
++nvme-objs := pci.o \
++	     core.o \
++	     adapter.o 
+ 
+-ccflags-y				+= -I$(src)
++#EXTRA_CFLAGS += -Wno-error
+ 
+-obj-$(CONFIG_NVME_CORE)			+= nvme-core.o
+-obj-$(CONFIG_BLK_DEV_NVME)		+= nvme.o
+-obj-$(CONFIG_NVME_FABRICS)		+= nvme-fabrics.o
+-obj-$(CONFIG_NVME_RDMA)			+= nvme-rdma.o
+-obj-$(CONFIG_NVME_FC)			+= nvme-fc.o
++ifeq ($(DIF_CRC_FLAG), 1)
++	nvme-objs += crct10dif-pcl-asm_64.o
++endif
+ 
+-nvme-core-y				:= core.o
+-nvme-core-$(CONFIG_TRACING)		+= trace.o
+-nvme-core-$(CONFIG_NVME_MULTIPATH)	+= multipath.o
+-nvme-core-$(CONFIG_NVM)			+= lightnvm.o
+-nvme-core-$(CONFIG_FAULT_INJECTION_DEBUG_FS)	+= fault_inject.o
++ifeq ($(DIF_SUSE_MEM_FLAG), 1)
++	EXTRA_CFLAGS += -D__LINUX_ -DDIF_CRC_FLAG=$(DIF_CRC_FLAG) -DDIF_MEMCPY_FLAG=1
++else
++	ifeq ($(DIF_MEMCPY_FLAG), 1)
++		CFLAGS_nvme-core.o = -march=native -mavx -mpreferred-stack-boundary=8
++	endif
++	#EXTRA_CFLAGS += -D__LINUX_ -DDIF_CRC_FLAG=$(DIF_CRC_FLAG) -DDIF_MEMCPY_FLAG=$(DIF_MEMCPY_FLAG)
++	EXTRA_CFLAGS += -D__LINUX_ 
++endif 
++
++EXTRA_CFLAGS += -D_VERSION_DRIVER="\""$(VERSION)"\""
++EXTRA_CFLAGS += -D_CONFIG_PCI_IOV -fno-stack-protector
++EXTRA_CFLAGS += -DHW_NVME_FAULT_INJECT
++#EXTRA_CFLAGS += -D_SVN_VER="\""$(SVN_VER)"\""
++
++SUB_OBJS := $(nvme-objs)
++
++UNAME=
++ifeq ($(UNAME),)
++  UNAME=$(shell uname -r)
++endif
++
++
++# redhat/centos/oracle
++ifeq ($(UNAME),2.6.18-348.el5)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x509 -DNVME_CQ_HANDLER_TASKLET
++endif
++ifeq ($(UNAME),2.6.18-371.el5)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x50A -DNVME_CQ_HANDLER_TASKLET
++endif
++ifeq ($(UNAME),2.6.18-398.el5)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x50B -DNVME_CQ_HANDLER_TASKLET
++endif
++ifeq ($(UNAME),2.6.32-71.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x600
++endif
++ifeq ($(UNAME),2.6.32-131.0.15.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x601
++endif
++ifeq ($(UNAME),2.6.32-220.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x602
++endif
++ifeq ($(UNAME),2.6.32-279.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x603
++endif
++ifeq ($(UNAME),2.6.32-358.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x604
++endif
++ifeq ($(UNAME),2.6.32-431.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x605
++endif
++ifeq ($(UNAME),2.6.32-504.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x606
++endif
++ifeq ($(UNAME),2.6.32-573.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x607
++endif
++ifeq ($(UNAME),2.6.32-696.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x609
++endif
++ifeq ($(UNAME),3.10.0-123.el7.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x700
++endif
++ifeq ($(UNAME),3.10.0-229.el7.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701
++endif
++ifeq ($(UNAME),3.10.0-327.el7.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x702
++endif
++ifeq ($(UNAME),3.10.0-514.el7.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++ifeq ($(UNAME),3.10.0-514.32.3.18_40.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++ifeq ($(UNAME),3.10.0-693.el7.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x704
++endif
++ifeq ($(UNAME),3.10.0-862.el7.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x705
++endif
++ifeq ($(UNAME),3.8.13-98.7.1.el7uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x702
++endif
++ifeq ($(UNAME),3.8.13-55.1.6.el7uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x701
++endif
++ifeq ($(UNAME),3.8.13-35.3.1.el7uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x700
++endif
++ifeq ($(UNAME),3.8.13-44.1.1.el6uek.x86_64) 
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x606 
++endif
++ifeq ($(UNAME),3.8.13-16.2.1.el6uek.x86_64) 
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x605 
++endif
++ifeq ($(UNAME),4.18.0-32.el8.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800
++endif
++
++
++#suse
++ifeq ($(UNAME),2.6.32.46-0.3-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB01
++endif
++ifeq ($(UNAME),2.6.32.12-0.7-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB01
++endif
++ifeq ($(UNAME),2.6.32.12-0.7-xen)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB01
++endif
++ifeq ($(UNAME),3.0.13-0.27-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB02
++endif
++ifeq ($(UNAME),3.0.13-0.27-xen)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB02
++endif
++ifeq ($(UNAME),3.0.76-0.11-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB03
++endif
++ifeq ($(UNAME),3.0.76-0.11-xen)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB03
++endif
++ifeq ($(UNAME),3.0.101-63-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB04
++endif
++ifeq ($(UNAME),3.0.101-63-xen)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB04
++endif
++ifeq ($(UNAME),3.12.28-4-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC00
++endif
++ifeq ($(UNAME),3.12.28-4-xen)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC00
++endif
++ifeq ($(UNAME),3.12.49-11-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC00
++endif
++ifeq ($(UNAME),4.4.21-69-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC02
++endif
++#opensles13.1
++ifeq ($(UNAME),3.11.6-4-desktop)
++   EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC00
++endif
++ifeq ($(UNAME),3.16.6-2-desktop)
++   EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC00
++endif
++ifeq ($(UNAME),4.4.27-2-default)
++   EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC02
++endif
++#suse12sp4
++ifeq ($(UNAME),4.12.14-94.41-default)
++   EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC02
++endif
++
++
++#debian
++ifeq ($(UNAME),3.2.0-4-amd64)
++  EXTRA_CFLAGS += -D__DEBIAN -DSSD_BIOVEC_PHYS_MERGEABLE_FIXED
++endif
++ifeq ($(UNAME),3.16.0-4-amd64)
++  EXTRA_CFLAGS += -D__DEBIAN
++# EXTRA_CFLAGS += -DSSD_BIOVEC_PHYS_MERGEABLE_FIXED
++endif
++ifeq ($(UNAME),4.9.0-3-amd64)
++  EXTRA_CFLAGS += -D__DEBIAN
++# EXTRA_CFLAGS += -DSSD_BIOVEC_PHYS_MERGEABLE_FIXED
++endif
++
++#ubuntu
++ifeq ($(UNAME),3.13.0-24-generic)
++  EXTRA_CFLAGS += -D__UBUNTU -D__OS_VER=0xE04
++endif
++ifeq ($(UNAME),3.19.0-15-generic)
++  EXTRA_CFLAGS += -D__UBUNTU -D__OS_VER=0xF04
++endif
++ifeq ($(UNAME),4.4.0-21-generic)
++  EXTRA_CFLAGS += -D__UBUNTU -D__OS_VER=0x1004
++endif
++ifeq ($(UNAME),4.4.0-31-generic)
++  EXTRA_CFLAGS += -D__UBUNTU -D__OS_VER=0x1004
++endif
++ifeq ($(UNAME),4.4.0-62-generic)
++  EXTRA_CFLAGS += -D__UBUNTU -D__OS_VER=0x1004
++endif
++ifeq ($(UNAME),4.4.0-104-generic)
++  EXTRA_CFLAGS += -D__UBUNTU -D__OS_VER=0x1004
++endif
++#ubuntu18.04
++ifeq ($(UNAME),4.15.0-20-generic)
++  EXTRA_CFLAGS += -D__UBUNTU -D__OS_VER=0x1004 -Wframe-larger-than=2048
++endif
++#uvp
++ifeq ($(UNAME),3.0.93-0.8-xen)
++  EXTRA_CFLAGS += -D__UVP
++endif
++ifeq ($(UNAME),3.0.93-0.8-default)
++  EXTRA_CFLAGS += -D__UVP
++endif
++ifeq ($(UNAME),3.0.58-0.6.6-xen)
++  EXTRA_CFLAGS += -D__UVP
++endif
++ifeq ($(UNAME),4.19.36-1.2.159.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM
++endif
++ifeq ($(UNAME),3.10.0-862.14.1.6_39.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x705
++endif
++ifeq ($(UNAME),4.18.0-147.5.1.6.h475_163.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800
++endif
++
++
++#citrix
++ifeq ($(UNAME),2.6.32.43-0.4.1.xs1.8.0.835.170778-xen)
++  override UNAME = 2.6.32.43-0.4.1.xs1.8.0.835.170778xen
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB01
++endif
++ifeq ($(UNAME),2.6.32.43-0.4.1.xs1.8.0.835.170778-kdump)
++  override UNAME = 2.6.32.43-0.4.1.xs1.8.0.835.170778kdump
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB01
++endif
++ifeq ($(UNAME),2.6.32.43-0.4.1.xs1.8.0.847.170785-xen)
++  override UNAME = 2.6.32.43-0.4.1.xs1.8.0.847.170785xen
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB01
++endif
++ifeq ($(UNAME),2.6.32.43-0.4.1.xs1.8.0.847.170785-kdump)
++  override UNAME = 2.6.32.43-0.4.1.xs1.8.0.847.170785kdump
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB01
++endif
++
++ifeq ($(UNAME),3.10.0+2)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701
++endif
++
++ifeq ($(UNAME),4.4.0+2)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++ifeq ($(UNAME),4.4.0+10)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++#lemon
++ifeq ($(UNAME),4.1.32-vhulk3.7.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701 -D__ARM
++endif
++
++ifeq ($(UNAME),4.1.43-vhulk1708.1.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701 -D__ARM
++endif
++
++ifeq ($(UNAME),4.1.44-05.98.vhulk1711.1.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701 -D__ARM
++endif
++
++ifeq ($(UNAME),4.1.44-05.92.vhulk1711.1.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701 -D__ARM
++endif
++
++ifeq ($(UNAME),4.1.44-06.132.vhulk1711.1.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701 -D__ARM
++endif
++
++ifeq ($(UNAME),4.19.36-vhulk1905.1.0.h276.eulerosv2r8.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++
++ifeq ($(UNAME),4.19.36-vhulk1907.1.0.h410.eulerosv2r8.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++
++ifeq ($(UNAME),4.19.90-23.48.v2101.ky10.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++
++ifeq ($(UNAME),4.19.90.1000)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++
++ifeq ($(UNAME),4.19.90-2003.4.0.0036.oe1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++
++ifeq ($(UNAME),4.19.90-vhulk2006.2.0.h171.eulerosv2r9.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++ifeq ($(UNAME),4.19.90-vhulk2103.1.0.h462.eulerosv2r9.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++ifeq ($(UNAME),4.19.90-vhulk2009.2.0.h269.eulerosv2r9.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++ifeq ($(UNAME),4.1.38-02.08.vhulk1702.1.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701 -D__ARM
++endif
++ifeq ($(UNAME),4.1.44-03.47.vhulk1711.1.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701 -D__ARM
++endif
++ifeq ($(UNAME),4.1.38-01.05.vhulk1702.1.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701 -D__ARM
++endif
++ifeq ($(UNAME),4.14.10-vhulk1801.2.1.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x704 -D__ARM
++endif
++ifeq ($(UNAME),4.19.90-vhulk2111.1.0.h893.eulerosv2r10.aarch64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800 -D__ARM -D__SYMBOL_LINK
++endif
++#$(info $(EXTRA_CFLAGS))
++
++#euleros
++ifeq ($(UNAME),3.10.0-514.35.4.1_46.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++ifeq ($(UNAME),3.10.0-514.41.4.28.h70.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++ifeq ($(UNAME),3.10.0-514.41.4.28_67.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++ifeq ($(UNAME),3.10.0-514.32.3.18_27.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++ifeq ($(UNAME),3.10.0-514.44.5.10.h121.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++ifeq ($(UNAME),3.10.0-514.54.6.7.h161.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++ifeq ($(UNAME),3.10.0-514.44.5.10.h165.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++ifeq ($(UNAME),3.10.0-514.54.6.7.h177.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++ifeq ($(UNAME),3.10.0-862.14.0.1.h105.eulerosv2r7.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x705
++endif
++
++ifeq ($(UNAME),4.18.0-147.5.0.5.h116.eulerosv2r9.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800
++endif
++
++ifeq ($(UNAME),4.18.0-147.5.1.2.h314.eulerosv2r9.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800
++endif
++ifeq ($(UNAME),4.18.0-147.5.1.6.h451.eulerosv2r9.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800
++endif
++ifeq ($(UNAME),4.18.0-147.5.2.5.h732.eulerosv2r10.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x800
++endif
++ifeq ($(UNAME),3.10.0-862.14.1.2.h249.eulerosv2r7.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x705
++endif
++
++ifeq ($(UNAME),3.10.0-327.49.58.52_13.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x702
++endif
++
++ifeq ($(UNAME),3.10.0-327.53.58.73.h2.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x702
++endif
++
++ifeq ($(UNAME),3.10.0-327.28.3.53.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x702
++endif
++ifeq ($(UNAME),3.10.0-327.22.2.26.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x702
++endif
++ifeq ($(UNAME),3.10.0-327.59.59.46.h27.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x702
++endif
++ifeq ($(UNAME),3.10.0-327.59.59.46.h29.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x702
++endif
++ifeq ($(UNAME),3.4.24.25-0.11-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xB03
++endif
++ifeq ($(UNAME),4.4.73-5-default)
++  EXTRA_CFLAGS += -D__SUSE -D__OS_VER=0xC03
++endif
++#euleros2.2rc2
++ifeq ($(UNAME),3.10.0-327.44.58.35.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x701
++endif
++ifeq ($(UNAME),3.10.0-327.62.59.83.h79.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x702
++endif
++
++ifeq ($(UNAME),3.10.0-514.54.6.7.h200.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703
++endif
++
++#360hadoop
++ifeq ($(UNAME),2.6.32-220.7.1.el6.3.0.1.1.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x602
++endif
++#centos6.8
++ifeq ($(UNAME),2.6.32-642.el6.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x607
++endif
++
++#centos6.6 3.10.68
++ifeq ($(UNAME),3.10.68-11.el6.centos.alt.x86_64)
++	EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x700
++endif
++#oracle 6.9uek
++ifeq ($(UNAME),4.1.12-61.1.28.el6uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x609
++endif
++#oracle 6.9p1uek
++ifeq ($(UNAME),4.1.12-94.7.8.el6uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x609
++endif
++#oracle 6.7uek
++ifeq ($(UNAME),3.8.13-68.3.4.el6uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x607
++endif
++#oracle 6.7uekp1
++ifeq ($(UNAME),3.8.13-118.8.1.el6uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x607
++endif
++#oracle 7.3uek
++ifeq ($(UNAME),4.1.12-61.1.18.el7uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x703
++endif
++#oracle 7.4uek
++ifeq ($(UNAME),4.1.12-94.3.9.el7uek.x86_64)
++  EXTRA_CFLAGS += -D__ORACLE -D__OS_VER=0x704
++endif
++
++#fedora
++ifeq ($(UNAME),4.5.5-300.fc24.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x704
++endif
++ifeq ($(UNAME),4.8.6-300.fc25.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x704
++endif
++
++#ubuntu18.04.1 +4.18
++ifeq ($(UNAME),4.18.20-1812ev110)
++  EXTRA_CFLAGS += -D__UBUNTU -D__OS_VER=0x1004 -Wframe-larger-than=4196
++endif
++ifeq ($(UNAME),3.10.0-514.44.5.10.h142.x86_64)
++  EXTRA_CFLAGS += -D__RHEL -D__OS_VER=0x703 -DNVME_LINK_TIMEOUT
++endif
++
++ifdef WRAP
++CC = $(WRAP) cc
++LD = $(WRAP) ld
++endif
++
++KDIR  := $(PREFIX)/lib/modules/$(UNAME)/build
++KMOD  := $(PREFIX)/lib/modules/$(UNAME)/kernel
++PWD   := $(shell pwd)
++
++EXTRA_CFLAGS += -D__LINUX__ -Wall $(INCLUDE) -DDBG_LEVEL=3
++
++default:
++ifeq ($(UNAME),2.6.32.43-0.4.1.xs1.8.0.835.170778xen)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=$(ARCH) modules
++else ifeq ($(UNAME),4.1.32-vhulk3.7.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.1.44-03.47.vhulk1711.1.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.1.44-06.132.vhulk1711.1.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.1.44-05.98.vhulk1711.1.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.1.44-05.92.vhulk1711.1.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.1.38-02.08.vhulk1702.1.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.1.38-01.05.vhulk1702.1.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.1.43-vhulk1708.1.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.1.44-06.151.vhulk1711.1.1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.90-23.48.v2101.ky10.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.90.1000)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.90-2003.4.0.0036.oe1.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.36-vhulk1905.1.0.h276.eulerosv2r8.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.36-vhulk1907.1.0.h410.eulerosv2r8.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.90-vhulk2006.2.0.h171.eulerosv2r9.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.90-vhulk2009.2.0.h269.eulerosv2r9.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.90-vhulk2103.1.0.h462.eulerosv2r9.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.36-1.2.159.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++else ifeq ($(UNAME),4.19.90-vhulk2111.1.0.h893.eulerosv2r10.aarch64)
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=arm64 modules
++	
++else
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules
++	strip -d *.ko
++endif
++
++clean:
++	rm -rf $(SUB_OBJS) *.ko *.o *.mod.* .H* .tm* .*cmd Module.symvers *.ko.unsigned modules.order
+ 
+-nvme-y					+= pci.o
+ 
+-nvme-fabrics-y				+= fabrics.o
+ 
+-nvme-rdma-y				+= rdma.o
+ 
+-nvme-fc-y				+= fc.o
+diff --git ./adapter.c ./adapter.c
+new file mode 100644
+index 0000000..ed8559b
+--- /dev/null
++++ ./adapter.c
+@@ -0,0 +1,515 @@
++/*
++ * hiodriver for Huawei NVMe devices
++ * Copyright (c) 2019, Huawei Technologies Co., Ltd.
++ *
++ * This program is free software; you can redistribute it and/or modify it under 
++ * the terms and conditions of the GNU General Public License, version 2, 
++ * as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT ANY WARRANTY; 
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
++ * See the GNU General Public License for more details.
++ */
++ 
++#include <linux/version.h>
++#include "adapter.h"
++bool nvme_cancel_request(struct request *req, void *data, bool reserved)/*这是void类型*/
++{
++// os bt_tags_iter已判断blk_mq_request_started(req)条件
++#if ((LINUX_VERSION_CODE >= KERNEL_VERSION(4,8,0)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0)))
++if (!blk_mq_request_started(req))
++	return;
++#endif
++
++	dev_dbg_ratelimited(((struct nvme_ctrl *) data)->device,
++				"Cancelling I/O %d", req->tag);
++
++	nvme_req(req)->status = NVME_SC_ABORT_REQ;
++	blk_mq_complete_request(req);
++	return;
++}
++//  #if 1
++// #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0) || (defined(__RHEL) && (__OS_VER >= RHEL_OS_8_0) && !(defined(__ARM))))
++//     bool nvme_cancel_request(struct request *req, void *data, bool reserved)/*这是bool类型*/
++//     {
++//     	dev_dbg_ratelimited(((struct nvme_ctrl *) data)->device,
++//     				"Cancelling I/O %d", req->tag);
++
++//     	nvme_req(req)->status = NVME_SC_ABORT_REQ;
++//     	blk_mq_complete_request(req);
++//     	return true;
++//     }
++// #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,7,0))
++//     void nvme_cancel_request(struct request *req, void *data, bool reserved)/*这是void类型*/
++//     {
++// 	// os bt_tags_iter已判断blk_mq_request_started(req)条件
++// 	#if ((LINUX_VERSION_CODE >= KERNEL_VERSION(4,8,0)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0)))
++// 	if (!blk_mq_request_started(req))
++// 		return;
++//  	#endif
++	
++//     	dev_dbg_ratelimited(((struct nvme_ctrl *) data)->device,
++//     				"Cancelling I/O %d", req->tag);
++
++//     	nvme_req(req)->status = NVME_SC_ABORT_REQ;
++//     	blk_mq_complete_request(req);
++//     	return;
++//     }
++// #else
++//     #if (defined(__RHEL) && !defined(__ARM))
++//         #if (__OS_VER >= RHEL_OS_7_3)
++//             void nvme_cancel_request(struct request *req, void *data, bool reserved)
++//             {
++//             	struct nvme_queue *nvmeq = data;
++//             	int status;
++
++//             	if (!blk_mq_request_started(req))
++//             		return;
++
++//             	dev_dbg_ratelimited(nvmeq->q_dmadev,
++//             		 "Cancelling I/O %d QID %d\n", req->tag, nvmeq->qid);
++
++//             	status = NVME_SC_ABORT_REQ;
++//             	if (blk_queue_dying(req->q))
++//             		status |= NVME_SC_DNR;
++//                 nvme_req(req)->status = status;
++//                 #if (__OS_VER >= RHEL_OS_7_5)
++//                     blk_mq_complete_request(req, 0);
++//                 #else
++//             	    blk_mq_complete_request(req, status);
++//                 #endif
++//             }
++//         #else
++//             void nvme_cancel_request(struct request *req, void *data, bool reserved)
++//             {
++//             	struct nvme_queue *nvmeq = data;
++
++//             	if (!blk_mq_request_started(req))
++//             		return;
++
++//             	dev_dbg_ratelimited(nvmeq->q_dmadev,
++//             		 "Cancelling I/O %d QID %d\n", req->tag, nvmeq->qid);
++                
++//                 req->errors = -EIO;
++//                 nvme_req(req)->status = EIO;
++//                 nvme_unmap_data(nvmeq->dev, req);
++//             	blk_mq_complete_request(req);
++//             }
++//         #endif
++//     #else
++//         void nvme_cancel_request(struct blk_mq_hw_ctx *hctx,
++//         				struct request *req, void *data, bool reserved)
++//         {
++//         	struct nvme_queue *nvmeq = data;
++
++//         	dev_dbg_ratelimited(((struct nvme_ctrl *) data)->device,
++//         				"Cancelling I/O %d", req->tag);
++//         	if (!blk_mq_request_started(req))
++//         		return;
++
++//             req->errors = -EIO;
++//             nvme_req(req)->status = EIO;
++//         	dev_warn(nvmeq->q_dmadev, "Cancelling I/O %d QID %d\n",
++//         						req->tag, nvmeq->qid);
++
++//             #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,5,0))
++//                 /*释放资源*/
++//                 nvme_unmap_data(nvmeq->dev, req);
++//             #endif
++//             blk_mq_complete_request(req);
++//         }
++//     #endif
++// #endif
++
++/*高于5.0内核。euler2.9 x86虽然是4.18，但是使用的nvme部分是大于5.0的*/
++// #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0) || (defined(__RHEL) && (__OS_VER >= RHEL_OS_8_0) && !(defined(__ARM))))
++// int nvme_poll(struct blk_mq_hw_ctx *hctx)
++// {
++// 	struct nvme_queue *nvmeq = hctx->driver_data;
++// 	u16 start, end;
++// 	bool found;
++
++// 	if (!nvme_cqe_pending(nvmeq))
++// 		return 0;
++
++// 	spin_lock(&nvmeq->cq_poll_lock);
++// 	found = nvme_process_cq(nvmeq, &start, &end, -1);
++// 	spin_unlock(&nvmeq->cq_poll_lock);
++
++// 	nvme_complete_cqes(nvmeq, start, end);
++// 	return found;
++// }
++// #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0))
++// int nvme_poll(struct blk_mq_hw_ctx *hctx, unsigned int tag)
++// {
++
++// 	struct nvme_queue *nvmeq = hctx->driver_data;
++// 	u16 start, end;
++// 	bool found;
++
++// 	if (!nvme_cqe_pending(nvmeq))
++// 		return 0;
++
++// 	spin_lock_irq(&nvmeq->cq_poll_lock);
++// 	found = nvme_process_cq(nvmeq, &start, &end, -1);
++// 	spin_unlock_irq(&nvmeq->cq_poll_lock);
++
++// 	nvme_complete_cqes(nvmeq, start, end);
++// 	return found;
++// }
++// #endif
++
++
++void hw_device_add_disk(struct device *parent, struct gendisk *disk, const struct attribute_group **groups)
++{
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,20,0) || (defined(__RHEL) && (__OS_VER >= RHEL_OS_8_0) && !(defined(__ARM))))
++	device_add_disk(parent, disk, groups);
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,8,0))
++    device_add_disk(parent, disk);
++	if (sysfs_create_group(&disk_to_dev(disk)->kobj, groups[0]))
++		pr_warn("%s: failed to create sysfs group for identification\n", disk->disk_name);
++#else 
++    disk->driverfs_dev = parent;
++	add_disk(disk);
++	if (sysfs_create_group(&disk_to_dev(disk)->kobj, groups[0]))
++		pr_warn("%s: failed to create sysfs group for identification\n", disk->disk_name);
++#endif
++}
++
++
++#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,4,9) )
++void *nvme_kmap_atomic(struct page *page)
++{
++    return kmap_atomic(page, KM_USER0);/***/
++}
++
++void nvme_kunmap_atomic(void *kvaddr)
++{
++    kunmap_atomic(kvaddr, KM_USER0);/***/
++}
++#else
++void *nvme_kmap_atomic(struct page *page_t)
++{
++    return kmap_atomic(page_t);/***/
++}
++
++void nvme_kunmap_atomic(void *kvaddr)
++{
++    kunmap_atomic(kvaddr);/***/
++}
++#endif
++
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0))
++unsigned short hw_blk_rq_nr_discard_segments(struct request *rq)
++{
++	return blk_rq_nr_discard_segments(rq);
++}
++#else
++unsigned short hw_blk_rq_nr_discard_segments(struct request *rq)
++{
++	return 1;
++}
++#endif
++
++#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
++struct page *hw_sg_page(struct scatterlist *sg)
++{
++    return sg->page;
++}
++
++void hw_sg_init_table(struct scatterlist *sgl, unsigned int nents)
++{
++	memset(sgl, 0, sizeof(*sgl) * nents);
++}
++
++void hw_sg_mark_end(struct scatterlist *sg)
++{
++    return;
++}
++
++void hw_sg_set_page(struct scatterlist *sg, struct page *page_t,
++			       unsigned int len, unsigned int offset)
++{
++    sg->page = page_t;
++	sg->offset = offset;/***/
++	sg->length = len;
++}
++
++struct scatterlist *hw_sg_next(struct scatterlist *sg)
++{
++    return sg + 1;
++}
++#else
++struct page *hw_sg_page(struct scatterlist *sg)
++{
++    return sg_page(sg);
++}
++
++ void hw_sg_init_table(struct scatterlist *sgl, unsigned int nents)
++{
++	sg_init_table(sgl, nents);
++}
++
++void hw_sg_mark_end(struct scatterlist *sg)
++{
++    sg_mark_end(sg);
++}
++
++void hw_sg_set_page(struct scatterlist *sg, struct page *page_t,
++			       unsigned int len, unsigned int offset)
++{
++    sg_set_page(sg, page_t, len, offset);
++}
++
++struct scatterlist *hw_sg_next(struct scatterlist *sg)
++{
++    return sg_next(sg);
++}
++#endif
++
++#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0) )
++void hw_cdev_device_del(struct cdev *cdev, struct device *dev)
++{
++	cdev_device_del(cdev,dev);
++}
++
++int hw_cdev_device_add(struct cdev *cdev, struct device *dev)
++{
++	return cdev_device_add(cdev, dev);
++}
++
++#else
++void hw_cdev_device_del(struct cdev *cdev, struct device *dev)
++{
++	device_del(dev);
++	if (dev->devt)
++		cdev_del(cdev);
++}
++
++static void hw_cdev_set_parent(struct cdev *p, struct kobject *kobj)
++{
++	WARN_ON(!kobj->state_initialized);
++	p->kobj.parent = kobj;
++}
++
++int hw_cdev_device_add(struct cdev *cdev, struct device *dev)
++{
++	int rc = 0;
++
++	if (dev->devt) {
++		hw_cdev_set_parent(cdev, &dev->kobj);
++
++		rc = cdev_add(cdev, dev->devt, 1);
++		if (rc)
++			return rc;
++	}
++
++	rc = device_add(dev);
++	if (rc)
++		cdev_del(cdev);
++
++	return rc;
++}
++
++#endif
++
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0) || (defined(__RHEL) && !defined(__ARM) && (__OS_VER == RHEL_OS_7_5))) 
++void hw_blk_mq_freeze_queue_wait(struct request_queue *q)
++{
++    blk_mq_freeze_queue_wait(q);
++}
++
++int hw_blk_mq_freeze_queue_wait_timeout(struct request_queue *q,
++				     unsigned long timeout)
++{
++	return blk_mq_freeze_queue_wait_timeout(q,timeout);
++}
++#else
++void hw_blk_mq_freeze_queue_wait(struct request_queue *q)
++{
++    return;
++}
++int hw_blk_mq_freeze_queue_wait_timeout(struct request_queue *q,
++				     unsigned long timeout)
++{
++    #if (defined(__RHEL) && !defined(__ARM) && (__OS_VER >= RHEL_OS_7_3))
++        return wait_event_timeout(q->mq_freeze_wq,
++                    percpu_ref_is_zero(&q->q_usage_counter),
++                    timeout);
++    #else
++	    return wait_event_timeout(q->mq_freeze_wq,
++					percpu_ref_is_zero(&q->mq_usage_counter),
++					timeout);
++    #endif
++}
++#endif
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0) || (defined(__RHEL) && !defined(__ARM) && (__OS_VER == RHEL_OS_7_5)))
++int hw_pci_irq_vector(struct nvme_dev *dev, unsigned int nr)
++{
++	struct pci_dev *pdev = to_pci_dev(dev->dev);
++    return pci_irq_vector(pdev,nr);
++}
++#else
++int hw_pci_irq_vector(struct nvme_dev *dev, unsigned int nr)
++{
++    return dev->entry[nr].vector;
++}
++#endif
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,13,0))
++blk_status_t nvme_error_status(struct request *req)
++{
++	switch (nvme_req(req)->status & 0x7ff) {
++	case NVME_SC_SUCCESS:
++		return HW_BLK_STS_OK;
++	case NVME_SC_CAP_EXCEEDED:
++		return HW_BLK_STS_NOSPC;
++	case NVME_SC_LBA_RANGE:
++		return HW_BLK_STS_TARGET;
++	case NVME_SC_BAD_ATTRIBUTES:
++	case NVME_SC_ONCS_NOT_SUPPORTED:
++	case NVME_SC_INVALID_OPCODE:
++	case NVME_SC_INVALID_FIELD:
++	case NVME_SC_INVALID_NS:
++		return HW_BLK_STS_NOTSUPP;
++	case NVME_SC_WRITE_FAULT:
++	case NVME_SC_READ_ERROR:
++	case NVME_SC_UNWRITTEN_BLOCK:
++	case NVME_SC_ACCESS_DENIED:
++	case NVME_SC_READ_ONLY:
++	case NVME_SC_COMPARE_FAILED:
++		return HW_BLK_STS_MEDIUM;
++	case NVME_SC_GUARD_CHECK:
++	case NVME_SC_APPTAG_CHECK:
++	case NVME_SC_REFTAG_CHECK:
++	case NVME_SC_INVALID_PI:
++		return HW_BLK_STS_PROTECTION;
++	case NVME_SC_RESERVATION_CONFLICT:
++		return HW_BLK_STS_NEXUS;
++	default:
++		return HW_BLK_STS_IOERR;
++	}
++}
++#else
++blk_status_t nvme_error_status(struct request *req)
++{
++    switch (nvme_req(req)->status & 0x7ff) {
++        case NVME_SC_SUCCESS:
++            return 0;
++        case NVME_SC_CAP_EXCEEDED:
++            return -ENOSPC;
++        default:
++            return -EIO;
++    }
++}
++#endif
++
++void hw_blk_mq_complete_request(struct request *rq, int error)
++{
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0))
++    blk_mq_complete_request(rq);
++#elif ((LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)) || ((defined(__RHEL)) && !defined(__ARM) && (__OS_VER >= RHEL_OS_7_3)))
++    blk_mq_complete_request(rq, error);
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
++    blk_mq_complete_request(rq);
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0))
++    blk_mq_complete_request(rq, error);
++#endif
++    return;
++}
++
++
++int hw_blk_rq_map_sg(struct request_queue *q, struct request *rq,
++		  struct scatterlist *sglist)
++{
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
++    return blk_rq_map_sg(q, rq, sglist);
++#else    
++    if (nvme_req(rq)->self_flags & NVME_REQ_SPECIAL_PAYLOAD) {
++        sg_set_page(sglist, nvme_req(rq)->special_vec.bv_page, nvme_req(rq)->special_vec.bv_len, nvme_req(rq)->special_vec.bv_offset);
++		sg_mark_end(sglist);
++        return 1;
++    }
++    else
++        return blk_rq_map_sg(q, rq, sglist);
++#endif
++}
++
++void hw_blk_mq_unquiesce_queue(struct request_queue *q)
++{
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,13,0))
++	blk_mq_unquiesce_queue(q);
++#else
++	blk_mq_start_stopped_hw_queues(q, true);
++#endif
++}
++
++void hw_nvme_start_queues(struct nvme_ctrl *ctrl)
++{
++	struct nvme_ns *ns;
++
++	down_read(&ctrl->namespaces_rwsem);
++	list_for_each_entry(ns, &ctrl->namespaces, list) {
++#if (!defined(__ARM) && (__OS_VER == RHEL_OS_7_3))
++		queue_flag_clear_unlocked(QUEUE_FLAG_STOPPED, ns->queue);
++#endif
++		hw_blk_mq_unquiesce_queue(ns->queue);
++	}
++	up_read(&ctrl->namespaces_rwsem);
++}
++
++#if (HW_NVME_IOINFO_DEBUG)
++#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,0))
++void set_ioinfo_sw(struct timer_list * timer)
++{
++    struct nvme_dev *pdev = container_of(timer, struct nvme_dev, io_timer);
++    //printk("timer 1min in, timer: %p, pdev:%p\n", timer, pdev);
++    //dev_err(pdev->ctrl.device, "timer 1min in, timer: %p\n", timer);
++    if (pdev != NULL) {
++        atomic_set(&pdev->iostats.stats_switch, true);  //1 打开
++        // dev_err(pdev->ctrl.device, "timer 1min in, device: %s\n", pdev->ctrl.name)
++        // debug: dev_err(pdev->ctrl.device,"stats_switch:%d\n", atomic_read(&pdev->iostats.stats_switch));
++        if (get_ioinfo_turnon()) { //此处加限制防止启动后中途停止功能, 可以将定时器关闭
++            mod_timer(&pdev->io_timer, jiffies + HZ); //1秒
++        }
++    } else {
++        printk("timer 1min in, pdev is null(del?).\n");
++    }
++    
++}
++#else 
++void set_ioinfo_sw(unsigned long data)
++{
++    struct nvme_dev *pdev = (struct nvme_dev *)data ;
++    //printk("timer 1min in, pdev:%p\n", pdev);
++    if (pdev != NULL) {
++        atomic_set(&pdev->iostats.stats_switch, true); //1 打开
++        // dev_err(pdev->ctrl.device, "timer 1min in, device: %s\n", pdev->ctrl.name)
++        // debug: dev_err(pdev->ctrl.device,"stats_switch:%d\n", atomic_read(&pdev->iostats.stats_switch));
++        if (get_ioinfo_turnon()) { //此处加限制防止启动后中途停止功能, 可以将定时器关闭
++            mod_timer(&pdev->io_timer, jiffies + HZ); //1秒
++        }
++    } else {
++        printk("timer 1min in, pdev is null(del?).\n");
++    }
++}
++#endif
++
++void timer_setup_adpt(struct nvme_dev *pdev)
++{
++#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,0))
++    timer_setup(&pdev->io_timer, set_ioinfo_sw, 0);
++#else
++    setup_timer(&pdev->io_timer, set_ioinfo_sw, (unsigned long)pdev);
++#endif
++    return ;
++}
++#endif
++
++          
++
++
++
+diff --git ./adapter.h ./adapter.h
+new file mode 100644
+index 0000000..b8f8a6b
+--- /dev/null
++++ ./adapter.h
+@@ -0,0 +1,322 @@
++/*
++ * hiodriver for Huawei NVMe devices
++ * Copyright (c) 2019, Huawei Technologies Co., Ltd.
++ *
++ * This program is free software; you can redistribute it and/or modify it under 
++ * the terms and conditions of the GNU General Public License, version 2, 
++ * as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT ANY WARRANTY; 
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
++ * See the GNU General Public License for more details.
++ */
++
++
++#ifndef _LINUX_NVME_ADAPTER_H
++#define _LINUX_NVME_ADAPTER_H
++
++#include "nvme.h"
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0) || (defined(__RHEL) && !defined(__ARM) && (__OS_VER == RHEL_OS_7_5)))
++#include <linux/blk-mq-pci.h>
++#endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,0))
++#include <linux/once.h>
++#endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0))
++#include <linux/io-64-nonatomic-lo-hi.h>
++#endif
++#include "nvme.h"
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,5,0) || ((defined(__RHEL)) && !defined(__ARM) && (__OS_VER >= RHEL_OS_7_3)))
++#include <linux/pr.h>
++#include <linux/nvme_ioctl.h>
++#endif
++
++#define LIST_SIZE (4096)
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0))
++#define IS_FLUSH(req) (req_op(req) == REQ_OP_FLUSH)
++#define REFERENCE_READ(pkref) kref_read((pkref))
++#else
++#define IS_FLUSH(req) (req->cmd_flags & REQ_FLUSH)
++#define REFERENCE_READ(pkref) atomic_read(&((pkref)->refcount))
++#endif
++
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++
++#define BLK_EH_DONE 1
++#define BLK_EH_RESET_TIMER 2
++
++#endif
++
++#ifndef ARRAY_SIZE
++#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]) + __must_be_array(arr))
++#endif
++
++#ifndef BLK_MAX_WRITE_HINTS
++#define BLK_MAX_WRITE_HINTS	5
++#endif
++
++#if ((LINUX_VERSION_CODE >= KERNEL_VERSION(4,5,0)) || ((defined(__RHEL)) && !defined(__ARM) &&(__OS_VER >= RHEL_OS_7_3)))
++#define SUPPORT_REQ_COMPLETE_PROCESS 1
++#else
++#define SUPPORT_REQ_COMPLETE_PROCESS 0
++#endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,13,0))
++#define	HW_BLK_STS_OK           BLK_STS_OK
++#define HW_BLK_STS_NOTSUPP		BLK_STS_NOTSUPP
++#define HW_BLK_STS_TIMEOUT		BLK_STS_TIMEOUT
++#define HW_BLK_STS_NOSPC		BLK_STS_NOSPC
++#define HW_BLK_STS_TRANSPORT	BLK_STS_TRANSPORT
++#define HW_BLK_STS_TARGET		BLK_STS_TARGET
++#define HW_BLK_STS_NEXUS		BLK_STS_NEXUS
++#define HW_BLK_STS_MEDIUM		BLK_STS_MEDIUM
++#define HW_BLK_STS_PROTECTION	BLK_STS_PROTECTION
++#define HW_BLK_STS_RESOURCE	    BLK_STS_RESOURCE
++#define HW_BLK_STS_IOERR		BLK_STS_IOERR
++#else
++#define	HW_BLK_STS_OK           BLK_MQ_RQ_QUEUE_OK
++#define HW_BLK_STS_NOTSUPP		BLK_MQ_RQ_QUEUE_ERROR
++#define HW_BLK_STS_TIMEOUT		BLK_MQ_RQ_QUEUE_ERROR
++#define HW_BLK_STS_NOSPC		BLK_MQ_RQ_QUEUE_ERROR
++#define HW_BLK_STS_TRANSPORT	BLK_MQ_RQ_QUEUE_ERROR
++#define HW_BLK_STS_TARGET		BLK_MQ_RQ_QUEUE_ERROR
++#define HW_BLK_STS_NEXUS		BLK_MQ_RQ_QUEUE_ERROR
++#define HW_BLK_STS_MEDIUM		BLK_MQ_RQ_QUEUE_ERROR
++#define HW_BLK_STS_PROTECTION	BLK_MQ_RQ_QUEUE_ERROR
++#define HW_BLK_STS_RESOURCE	    BLK_MQ_RQ_QUEUE_BUSY
++#define HW_BLK_STS_IOERR		BLK_MQ_RQ_QUEUE_ERROR
++#endif
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0))
++#define HW_REQ_IS_PREP(req) (req->rq_flags & RQF_DONTPREP)
++#define HW_SET_REQ_PREP(req)  req->rq_flags |= RQF_DONTPREP
++#define HW_CLEAR_REQ_PREP(req) /* 高版本内核清理PREP bit在块设备层，在此处定义空 */
++#define HW_REQ_CMD_IS_READY(req) ((req_op(req) == REQ_OP_DRV_IN) || (req_op(req) == REQ_OP_DRV_OUT))
++#else
++#define HW_REQ_IS_PREP(req) (nvme_req(req)->self_flags & NVME_REQ_PROCESSED)
++#define HW_SET_REQ_PREP(req)  nvme_req(req)->self_flags |= NVME_REQ_PROCESSED
++#define HW_CLEAR_REQ_PREP(req) nvme_req(req)->self_flags &= ~NVME_REQ_PROCESSED
++#define HW_REQ_CMD_IS_READY(req) (nvme_req(req)->self_flags & NVME_REQ_CMD_READY)
++#endif
++
++void hw_device_add_disk(struct device *parent, struct gendisk *disk, const struct attribute_group **groups);
++
++
++#include <linux/version.h>
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,20,0) || (defined(__RHEL) && __OS_VER >= RHEL_OS_8_0 && !defined(__ARM)))
++#include <linux/pci-p2pdma.h>
++#else
++static inline int pci_p2pdma_add_resource(struct pci_dev *pdev, int bar,
++		size_t size, u64 offset)
++{
++	return -EOPNOTSUPP;
++}
++static inline int pci_p2pdma_distance_many(struct pci_dev *provider,
++	struct device **clients, int num_clients, bool verbose)
++{
++	return -1;
++}
++static inline bool pci_has_p2pmem(struct pci_dev *pdev)
++{
++	return false;
++}
++static inline struct pci_dev *pci_p2pmem_find_many(struct device **clients,
++						   int num_clients)
++{
++	return NULL;
++}
++static inline void *pci_alloc_p2pmem(struct pci_dev *pdev, size_t size)
++{
++	return NULL;
++}
++static inline void pci_free_p2pmem(struct pci_dev *pdev, void *addr,
++		size_t size)
++{
++}
++#if (defined(__RHEL) && !defined(__ARM) && (__OS_VER <= RHEL_OS_7_2))
++static inline u64 pci_p2pmem_virt_to_bus(struct pci_dev *pdev,
++						    void *addr)
++{
++	return 0;
++}
++#else
++static inline pci_bus_addr_t pci_p2pmem_virt_to_bus(struct pci_dev *pdev,
++						    void *addr)
++{
++	return 0;
++}
++#endif
++static inline struct scatterlist *pci_p2pmem_alloc_sgl(struct pci_dev *pdev,
++		unsigned int *nents, u32 length)
++{
++	return NULL;
++}
++static inline void pci_p2pmem_free_sgl(struct pci_dev *pdev,
++		struct scatterlist *sgl)
++{
++}
++static inline void pci_p2pmem_publish(struct pci_dev *pdev, bool publish)
++{
++}
++static inline int pci_p2pdma_map_sg(struct device *dev,
++		struct scatterlist *sg, int nents, enum dma_data_direction dir)
++{
++	return 0;
++}
++static inline int pci_p2pdma_enable_store(const char *page,
++		struct pci_dev **p2p_dev, bool *use_p2pdma)
++{
++	*use_p2pdma = false;
++	return 0;
++}
++static inline ssize_t pci_p2pdma_enable_show(char *page,
++		struct pci_dev *p2p_dev, bool use_p2pdma)
++{
++	return sprintf(page, "none\n");
++}
++static inline bool is_pci_p2pdma_page(const struct page *page)
++{
++	return false;
++}
++#endif
++
++#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32) )
++static inline void hw_blk_queue_logical_block_size(struct request_queue *q, unsigned short blk_size)
++{
++    blk_queue_hardsect_size((request_queue_t *)q, blk_size);
++    return;
++}
++
++static inline void hw_blk_queue_max_hw_sectors(struct request_queue *q, unsigned int max_sectors)
++{
++    blk_queue_max_sectors((request_queue_t *)q, max_sectors);
++}
++
++#else
++static inline void hw_blk_queue_logical_block_size(struct request_queue *q, unsigned short blk_size)
++{
++    blk_queue_logical_block_size(q, blk_size);
++}
++
++static inline void hw_blk_queue_max_hw_sectors(struct request_queue *q, unsigned int max_sectors)
++{
++    blk_queue_max_hw_sectors(q, max_sectors);
++}
++#endif
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0))
++#define IS_READ_OR_WRITE(req) ((req_op(req) == REQ_OP_READ) || (req_op(req) == REQ_OP_WRITE))
++#else
++#define IS_READ_OR_WRITE(req) !((req->cmd_flags & REQ_DISCARD) || (req->cmd_flags & REQ_FLUSH))/*低版本没有直接表示读写的，通过排除disard和flush*/
++#endif
++
++
++bool nvme_cancel_request(struct request *req, void *data, bool reserved);/*这是void类型*/
++// #if 1
++// //#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0) || (defined(__RHEL) && (__OS_VER >= RHEL_OS_8_0) && !(defined(__ARM))))
++// bool nvme_cancel_request(struct request *req, void *data, bool reserved);/*这是bool类型*/
++// #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,7,0) || (defined(__RHEL) && !defined(__ARM)))
++// void nvme_cancel_request(struct request *req, void *data, bool reserved);/*这是void类型*/
++// #else
++// void nvme_cancel_request(struct blk_mq_hw_ctx *hctx, struct request *req, void *data, bool reserved);
++// #endif
++
++
++// #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0) || (defined(__RHEL) && (__OS_VER >= RHEL_OS_8_0) && !(defined(__ARM))))
++// int nvme_poll(struct blk_mq_hw_ctx *hctx);
++// #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0))
++// int nvme_poll(struct blk_mq_hw_ctx *hctx, unsigned int tag);
++// #endif
++
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
++#define hw_blk_rq_nr_phys_segments(rq) blk_rq_nr_phys_segments(rq)
++#define hw_blk_rq_payload_bytes(rq) blk_rq_payload_bytes(rq)
++#else
++static inline unsigned short hw_blk_rq_nr_phys_segments(struct request *rq)
++{
++    if (nvme_req(rq)->self_flags & NVME_REQ_SPECIAL_PAYLOAD)
++        return 1;
++	return rq->nr_phys_segments;
++}
++
++static inline unsigned int hw_blk_rq_payload_bytes(struct request *rq)
++{
++    if (nvme_req(rq)->self_flags & NVME_REQ_SPECIAL_PAYLOAD)
++        return nvme_req(rq)->special_vec.bv_len;
++	return blk_rq_bytes(rq);
++}
++#endif
++
++
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0))
++#define HW_BIO_RW(bio)    (bio)->bi_rw
++#define HW_BIO_SIZE(bio)    (bio)->bi_size
++#define HW_BIO_SECTOR(bio)  (bio)->bi_sector
++#define HW_BIO_IDX(bio)     (bio)->bi_idx
++#define HW_BIO_BVEC_PAGE(bvec)   (bvec)->bv_page
++#define HW_BIO_BVEC_LEN(bvec)    (bvec)->bv_len
++#define HW_BIO_BVEC_OFFSET(bvec) (bvec)->bv_offset
++#elif (LINUX_VERSION_CODE <= KERNEL_VERSION(4,5,1))
++#if(LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,73) && defined(__SUSE))
++#define HW_BIO_RW(bio)      (bio)->bi_opf
++#else
++#define HW_BIO_RW(bio)    (bio)->bi_rw
++#endif
++#define HW_BIO_SIZE(bio)    (bio)->bi_iter.bi_size
++#define HW_BIO_SECTOR(bio)  (bio)->bi_iter.bi_sector
++#define HW_BIO_IDX(bio)     (bio)->bi_iter.bi_idx
++#define HW_BIO_BVEC_PAGE(bvec)   (bvec).bv_page
++#define HW_BIO_BVEC_LEN(bvec)    (bvec).bv_len
++#define HW_BIO_BVEC_OFFSET(bvec) (bvec).bv_offset
++#else
++#define HW_BIO_RW(bio)      (bio)->bi_opf
++#define HW_BIO_SIZE(bio)    (bio)->bi_iter.bi_size
++#define HW_BIO_SECTOR(bio)  (bio)->bi_iter.bi_sector
++#define HW_BIO_IDX(bio)     (bio)->bi_iter.bi_idx
++#define HW_BIO_BVEC_PAGE(bvec)   (bvec).bv_page
++#define HW_BIO_BVEC_LEN(bvec)    (bvec).bv_len
++#define HW_BIO_BVEC_OFFSET(bvec) (bvec).bv_offset
++#endif
++
++void *nvme_kmap_atomic(struct page *page);
++void nvme_kunmap_atomic(void *kvaddr);
++int hw_pci_irq_vector(struct nvme_dev *dev, unsigned int nr);
++
++#if ( LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0) )
++extern void blk_set_queue_dying(struct request_queue *q);
++#endif
++
++unsigned short hw_blk_rq_nr_discard_segments(struct request *rq);
++struct page *hw_sg_page(struct scatterlist *sg);
++void hw_sg_init_table(struct scatterlist *sgl, unsigned int nents);
++void hw_sg_mark_end(struct scatterlist *sg);
++void hw_sg_set_page(struct scatterlist *sg, struct page *page_t,
++               unsigned int len, unsigned int offset);
++struct scatterlist *hw_sg_next(struct scatterlist *sg);
++void hw_cdev_device_del(struct cdev *cdev, struct device *dev);
++int hw_cdev_device_add(struct cdev *cdev, struct device *dev);
++void hw_blk_mq_freeze_queue_wait(struct request_queue *q);
++int hw_blk_mq_freeze_queue_wait_timeout(struct request_queue *q,
++                     unsigned long timeout);
++void hw_blk_freeze_queue_start(struct request_queue *q);
++blk_status_t nvme_error_status(struct request *req);
++void hw_blk_mq_complete_request(struct request *rq, int error);
++int hw_blk_rq_map_sg(struct request_queue *q, struct request *rq,
++		  struct scatterlist *sglist);
++void hw_blk_mq_unquiesce_queue(struct request_queue *q);
++void hw_nvme_start_queues(struct nvme_ctrl *ctrl);
++
++#if (HW_NVME_IOINFO_DEBUG)
++#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,0))
++extern void set_ioinfo_sw(struct timer_list * timer);
++#else 
++extern void set_ioinfo_sw(unsigned long data);    
++#endif
++extern void timer_setup_adpt(struct nvme_dev *pdev);
++#endif /* end of ioinfo  */
++
++#endif /* end of head file */
++
++
++
+diff --git ./core.c ./core.c
+index 8c76049..70f37a6 100644
+--- ./core.c
++++ ./core.c
+@@ -30,13 +30,19 @@
+ #include <asm/unaligned.h>
+ 
+ #define CREATE_TRACE_POINTS
+-#include "trace.h"
++//#include "trace.h"
++#undef CONFIG_NVME_MULTIPATH
+ 
+ #include "nvme.h"
+ #include "fabrics.h"
+ 
+ #define NVME_MINORS		(1U << MINORBITS)
+ 
++#ifdef HW_NVME_FAULT_INJECT
++const unsigned char bm_start[] = {0xff,0x7f,0x3f,0x1f,0x0f,0x07,0x03,0x01};
++const unsigned char bm_end[] = {0x80,0xc0,0xe0,0xf0,0xf8,0xfc,0xfe,0xff};
++#endif
++
+ unsigned int admin_timeout = 60;
+ module_param(admin_timeout, uint, 0644);
+ MODULE_PARM_DESC(admin_timeout, "timeout in seconds for admin commands");
+@@ -304,7 +310,7 @@ void nvme_complete_rq(struct request *req)
+ {
+ 	blk_status_t status = nvme_error_status(nvme_req(req)->status);
+ 
+-	trace_nvme_complete_rq(req);
++	//trace_nvme_complete_rq(req);
+ 
+ 	if (unlikely(status != BLK_STS_OK && nvme_req_needs_retry(req))) {
+ 		if ((req->cmd_flags & REQ_NVME_MPATH) && nvme_failover_req(req))
+@@ -319,20 +325,20 @@ void nvme_complete_rq(struct request *req)
+ }
+ EXPORT_SYMBOL_GPL(nvme_complete_rq);
+ 
+-void nvme_cancel_request(struct request *req, void *data, bool reserved)
+-{
+-	dev_dbg_ratelimited(((struct nvme_ctrl *) data)->device,
+-				"Cancelling I/O %d", req->tag);
++// void nvme_cancel_request(struct request *req, void *data, bool reserved)
++// {
++// 	dev_dbg_ratelimited(((struct nvme_ctrl *) data)->device,
++// 				"Cancelling I/O %d", req->tag);
+ 
+-	/* don't abort one completed request */
+-	if (blk_mq_request_completed(req))
+-		return;
++// 	/* don't abort one completed request */
++// 	if (blk_mq_request_completed(req))
++// 		return;
+ 
+-	nvme_req(req)->status = NVME_SC_HOST_ABORTED_CMD;
+-	blk_mq_complete_request(req);
++// 	nvme_req(req)->status = NVME_SC_HOST_ABORTED_CMD;
++// 	blk_mq_complete_request(req);
+ 
+-}
+-EXPORT_SYMBOL_GPL(nvme_cancel_request);
++// }
++// EXPORT_SYMBOL_GPL(nvme_cancel_request);
+ 
+ bool nvme_change_ctrl_state(struct nvme_ctrl *ctrl,
+ 		enum nvme_ctrl_state new_state)
+@@ -788,7 +794,7 @@ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req,
+ 	}
+ 
+ 	cmd->common.command_id = req->tag;
+-	trace_nvme_setup_cmd(req, cmd);
++	//trace_nvme_setup_cmd(req, cmd);
+ 	return ret;
+ }
+ EXPORT_SYMBOL_GPL(nvme_setup_cmd);
+@@ -830,6 +836,9 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ }
+ EXPORT_SYMBOL_GPL(__nvme_submit_sync_cmd);
+ 
++
++
++
+ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		void *buffer, unsigned bufflen)
+ {
+@@ -838,6 +847,61 @@ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ }
+ EXPORT_SYMBOL_GPL(nvme_submit_sync_cmd);
+ 
++#ifdef HW_NVME_FAULT_INJECT
++int nvme_finject_check_io(struct nvme_queue *nvmeq, struct request *req, struct nvme_ns *ns, blk_status_t *status)
++{
++	struct nvme_ctrl ctrl = nvmeq->dev->ctrl;
++	u32 base = 0x01;
++	u64 start_lba = 0;
++	u32 len = 0;
++	u32 offset = 0;
++	u32 offset_len = 0;
++	u64 finject_start_lba = 0;
++	u64 finject_end_lba = 0;
++	u32 bit_start_off = 0;
++	u32 bit_end_off = 0;
++	u32 byte_start_off = 0;
++	u32 byte_end_off = 0;
++	unsigned char* pbitmap = NULL;
++	u32 cnt = 0;
++	unsigned char temp_bitmap = 0;
++	u8 opcode = rq_data_dir(req) ? nvme_cmd_write : nvme_cmd_read;
++
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,12,0))
++	if (nvme_req(req)->self_flags & NVME_REQ_CMD_READY)
++		return ESEND;
++#endif
++
++if (ctrl.finject_flag & (base << FINJECT_AWAIT)) {
++		// msleep(ctrl.finject_content[FINJECT_AWAIT].argv[0] * 1000);
++		// msleep(ctrl.finject_content[FINJECT_AWAIT].argv[0]);
++		// usleep(ctrl.finject_content[FINJECT_AWAIT].argv[0]);
++		if ((ctrl.finject_flag & (base << FINJECT_UNC))){
++			start_lba = nvme_block_nr(ns, blk_rq_pos(req));
++			len = (blk_rq_bytes(req) >> ns->lba_shift) - 1;
++			finject_start_lba = ctrl.finject_content[FINJECT_UNC].argv[0];
++			finject_end_lba = ctrl.finject_content[FINJECT_UNC].argv[1];
++			if ((start_lba > finject_end_lba*1024) || ( finject_start_lba*1024> start_lba + len))
++				
++				return ESEND;
++			usleep_range(ctrl.finject_content[FINJECT_AWAIT].argv[0], ctrl.finject_content[FINJECT_AWAIT].argv[0]);
++		}
++		else{
++			usleep_range(ctrl.finject_content[FINJECT_AWAIT].argv[0], ctrl.finject_content[FINJECT_AWAIT].argv[0]);
++		}
++			
++		return ESEND;
++	}
++
++	if (ctrl.finject_flag & (base << FINJECT_READ_ONLY) && nvme_cmd_write == opcode) {
++		*status = BLK_STS_MEDIUM;
++		return EIO;
++	}
++
++	return ESEND;
++}
++#endif
++
+ static void *nvme_add_user_metadata(struct bio *bio, void __user *ubuf,
+ 		unsigned len, u32 seed, bool write)
+ {
+@@ -2966,6 +3030,149 @@ const struct attribute_group nvme_ns_id_attr_group = {
+ 	.is_visible	= nvme_ns_id_attrs_are_visible,
+ };
+ 
++
++#ifdef HW_NVME_FAULT_INJECT
++static ssize_t hw_nvme_finject_show(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	ssize_t ret = 0;
++	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
++
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "Usage:\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "  show the finject status:cat /sys/class/misc/nvme0/device/finject.\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "  inject the finject:echo <type> <flag> [arg1 [arg2 [arg3…]]] > /sys/class/misc/nvme0/device/finject.\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "         type [arg1 [arg2 [arg3…]]]:  \n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               0-slow disk  <time (s)>\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               1-IO time out  \n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               2-UNC  <start LBA> <end LBA>\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               3-read-only  \n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               4-percentage used  <percentage used >\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               5-composite temperature <temperature (DC)> \n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               6-available spare <percentage available spare > \n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               7-capacitance voltage <voltage (V)>\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "               8-DIF <arg1: 0-no error 1-read CRC check error 2-read LBA check error 3-write CRC error> \n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "         flag: 0-disable  1-enable.\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "Info:\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "  ================fault inject status=========\n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "  Type      Name     status      arg1    arg2  \n");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    0      await      %3s         %2lld      NA    \n",
++					(FINJECT_ENABLE == ctrl->finject_content[FINJECT_AWAIT].status)?"ON":"OFF",ctrl->finject_content[FINJECT_AWAIT].argv[0]);
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    1     timeout     %3s         NA      NA    \n",
++													(FINJECT_ENABLE == ctrl->finject_content[FINJECT_TIME_OUT].status)?"ON":"OFF");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    2       UNC       %3s         %2lld     %2lld    \n",
++													(FINJECT_ENABLE == ctrl->finject_content[FINJECT_UNC].status)?"ON":"OFF",
++													ctrl->finject_content[FINJECT_UNC].argv[0],ctrl->finject_content[FINJECT_UNC].argv[1]);
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    3     readonly    %3s         NA      NA    \n",
++													(FINJECT_ENABLE == ctrl->finject_content[FINJECT_READ_ONLY].status)?"ON":"OFF");
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    4      used       %3s         %2lld      NA    \n",
++					(FINJECT_ENABLE == ctrl->finject_content[FINJECT_USED].status)?"ON":"OFF",ctrl->finject_content[FINJECT_USED].argv[0]);
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    5    tempreature  %3s         %2lld      NA    \n",
++					(FINJECT_ENABLE == ctrl->finject_content[FINJECT_TEMPERATURE].status)?"ON":"OFF",ctrl->finject_content[FINJECT_TEMPERATURE].argv[0]);
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    6      spare      %3s         %2lld      NA    \n",
++					(FINJECT_ENABLE == ctrl->finject_content[FINJECT_SPARE].status)?"ON":"OFF",ctrl->finject_content[FINJECT_SPARE].argv[0]);
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    7     voltage     %3s         %2lld      NA    \n",
++					(FINJECT_ENABLE == ctrl->finject_content[FINJECT_VOLTAGE].status)?"ON":"OFF",ctrl->finject_content[FINJECT_VOLTAGE].argv[0]);
++	ret += snprintf(buf + ret, HW_NVME_STRING_LEN, "    8       DIF       %3s         %2lld      NA    \n",
++					(FINJECT_ENABLE == ctrl->finject_content[FINJECT_DIF].status)?"ON":"OFF",ctrl->finject_content[FINJECT_DIF].argv[0]);
++	
++	return ret;
++}
++
++int finject_parameter_check(unsigned int argc, long long* argv)
++{
++	long long type = argv[0];
++	long long status = argv[1];
++	long long argv1 = argv[2];
++	long long argv2 = argv[3];
++	
++	if (argc > MAX_OPT_CNT || type >= MAX_FINJECT_OBJ || type < 0
++		|| status > FINJECT_ENABLE || status < 0)
++		return -EINVAL;
++
++	if ( FINJECT_ENABLE == status &&
++		((FINJECT_AWAIT == type && argv1 <= 0) ||
++		(FINJECT_UNC== type && argv1 <= 0) ||
++		(FINJECT_UNC == type && argv2 <= 0) ||
++		(FINJECT_USED == type && argv1 <= 0) ||
++		//(FINJECT_TEMPERATURE == type && argv1 <= 0) ||
++		(FINJECT_SPARE == type && argv1 <= 0) ||
++		(FINJECT_VOLTAGE == type && argv1 <= 0) ||
++		(FINJECT_DIF == type && (argv1 < 0 || argv1 >3))))
++		return -EINVAL;
++
++	//UNC 不能超过2G的空间
++	if (FINJECT_UNC == type && FINJECT_ENABLE == status
++		&& ((*(argv+2) >= *(argv+3)) || (*(argv+3) - *(argv+2) > 2*MAX_INJECT_UNC_LBA)))
++		return -EINVAL;            
++
++	return 0;
++}
++
++static ssize_t hw_nvme_finject_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
++{   
++	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
++	unsigned int argc = 0;
++	long long argv[MAX_FINJECT_OPT] = {0};
++	char* ptr = NULL;
++	char* after ;
++	struct sub_st_finject* pfinject = ctrl->finject_content;
++	unsigned int type = 0;
++	unsigned int status = 0;
++	unsigned int base = 0x01;
++	char* temp_buf = (char*)buf;
++	int ret = 0;
++
++	printk("FINJECT start:%s",buf);
++	//options parse
++	while ((ptr = strsep(&temp_buf, " "))) {
++		if (argc >= MAX_OPT_CNT)  //最多四个参数
++			break;
++
++		argv[argc] = simple_strtol(ptr, &after, 10);
++		if (ptr == after || (*after && *after != '\n'))
++			return -EINVAL;
++
++		++argc;
++	}
++
++	ret = finject_parameter_check(argc,argv);
++	if (0 != ret) {
++		printk("FINJECT error:parameter invalid.\n");
++		return ret;
++	}
++
++	type = (u32)argv[0];
++	status = (u32)argv[1];
++	
++	//arg evalute
++	if ( FINJECT_DISABLE == status)
++		ctrl->finject_flag &= (~(base<<type));
++	else
++		ctrl->finject_flag |= (base<<type);
++	
++	pfinject[type].type = type;
++	pfinject[type].status = status;
++	if (FINJECT_DISABLE == status) {
++		pfinject[type].argv[0] = 0;
++		pfinject[type].argv[1] = 0;
++	} else {
++		pfinject[type].argv[0] = argv[2];
++		pfinject[type].argv[1] = argv[3];
++		if (FINJECT_TIME_OUT == type)
++			pfinject[FINJECT_TIME_OUT].argv[0] = NVME_IO_TIMEOUT;
++	}
++	
++	if (FINJECT_UNC == type)
++		memset((void *)(pfinject + FINJECT_UNC)->private_data, 0xff, MAX_INJECT_UNC_LBA/SIZE_OF_ONE_BIT);
++
++	printk("FINJECT end:store parameters suc.\n");
++	return count;
++}
++
++static DEVICE_ATTR(finject, 0644, hw_nvme_finject_show, hw_nvme_finject_store);
++#endif
++
++
++
+ #define nvme_show_str_function(field)						\
+ static ssize_t  field##_show(struct device *dev,				\
+ 			    struct device_attribute *attr, char *buf)		\
+@@ -3069,6 +3276,9 @@ static struct attribute *nvme_dev_attrs[] = {
+ 	&dev_attr_subsysnqn.attr,
+ 	&dev_attr_address.attr,
+ 	&dev_attr_state.attr,
++#ifdef HW_NVME_FAULT_INJECT
++	&dev_attr_finject.attr,
++#endif
+ 	NULL
+ };
+ 
+@@ -3767,6 +3977,51 @@ static void nvme_free_ctrl(struct device *dev)
+ 		nvme_put_subsystem(subsys);
+ }
+ 
++
++#ifdef HW_NVME_FAULT_INJECT
++static void nvme_init_finject_st(struct nvme_ctrl *ctrl, u32 type, char* name)
++{
++	if (NULL == ctrl || NULL == name) {
++		(void)printk("finject invalid parameter.\n");
++		return;
++	}
++
++	ctrl->finject_content[type].type = type;
++	memcpy(ctrl->finject_content[type].name, name, MAX_FINJECT_NAME_LEN);
++
++	return;
++}
++
++static void nvme_init_finject(struct nvme_ctrl *ctrl)
++{
++	if (NULL == ctrl) {
++		(void)printk("finject invalid parameter.\n");
++		return;
++	}
++
++	memset((void*)ctrl->finject_content, 0, MAX_FINJECT_OBJ * sizeof(struct sub_st_finject));
++	nvme_init_finject_st(ctrl, FINJECT_AWAIT, "await");
++	nvme_init_finject_st(ctrl, FINJECT_TIME_OUT, "timeout");
++	nvme_init_finject_st(ctrl, FINJECT_UNC, "UNC");
++	nvme_init_finject_st(ctrl, FINJECT_READ_ONLY, "read-only");
++	nvme_init_finject_st(ctrl, FINJECT_USED, "used");
++	nvme_init_finject_st(ctrl, FINJECT_TEMPERATURE, "temperature");
++	nvme_init_finject_st(ctrl, FINJECT_SPARE, "spare");
++	nvme_init_finject_st(ctrl, FINJECT_VOLTAGE, "voltage");
++	nvme_init_finject_st(ctrl, FINJECT_DIF, "dif");
++
++	ctrl->finject_content[FINJECT_UNC].private_data= (void *)kzalloc(MAX_INJECT_UNC_LBA/SIZE_OF_ONE_BIT, GFP_KERNEL);
++	if (NULL == ctrl->finject_content[FINJECT_UNC].private_data) {
++		(void)printk("alloc finject unc bitmap failed.\n");
++		return;
++	}
++	
++	memset((void*)ctrl->finject_content[FINJECT_UNC].private_data, 0xff, MAX_INJECT_UNC_LBA/SIZE_OF_ONE_BIT);
++	return;
++}
++#endif
++
++
+ /*
+  * Initialize a NVMe controller structures.  This needs to be called during
+  * earliest initialization so that we have the initialized structured around
+@@ -3836,6 +4091,10 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ 	dev_pm_qos_update_user_latency_tolerance(ctrl->device,
+ 		min(default_ps_max_latency_us, (unsigned long)S32_MAX));
+ 
++#ifdef HW_NVME_FAULT_INJECT
++	nvme_init_finject(ctrl);
++#endif
++
+ 	return 0;
+ out_free_name:
+ 	nvme_put_ctrl(ctrl);
+@@ -4019,7 +4278,9 @@ void nvme_core_exit(void)
+ 	ida_destroy(&nvme_instance_ida);
+ }
+ 
+-MODULE_LICENSE("GPL");
+-MODULE_VERSION("1.0");
+-module_init(nvme_core_init);
+-module_exit(nvme_core_exit);
++// MODULE_LICENSE("GPL");
++// MODULE_VERSION("1.0");
++// module_init(nvme_core_init);
++// module_exit(nvme_core_exit);
++
++
+diff --git ./nvme.h ./nvme.h
+index a2f784d..6444fcb 100644
+--- ./nvme.h
++++ ./nvme.h
+@@ -23,6 +23,7 @@
+ #include <linux/sed-opal.h>
+ #include <linux/fault-inject.h>
+ #include <linux/rcupdate.h>
++#include <linux/version.h>
+ 
+ extern unsigned int nvme_io_timeout;
+ #define NVME_IO_TIMEOUT	(nvme_io_timeout * HZ)
+@@ -32,11 +33,14 @@ extern unsigned int admin_timeout;
+ 
+ #define NVME_DEFAULT_KATO	5
+ #define NVME_KATO_GRACE		10
++#undef CONFIG_NVME_MULTIPATH
+ 
+ extern struct workqueue_struct *nvme_wq;
+ extern struct workqueue_struct *nvme_reset_wq;
+ extern struct workqueue_struct *nvme_delete_wq;
+ 
++struct nvme_queue;
++struct nvme_dev;
+ enum {
+ 	NVME_NS_LBA		= 0,
+ 	NVME_NS_LIGHTNVM	= 1,
+@@ -92,6 +96,80 @@ enum nvme_quirks {
+ 	NVME_QUIRK_MEDIUM_PRIO_SQ		= (1 << 7),
+ };
+ 
++#define RHEL_OS_8_0 0x800
++#define RHEL_OS_7_5 0x705
++#define RHEL_OS_7_4 0x704
++#define RHEL_OS_7_3 0x703
++#define RHEL_OS_7_2 0x702
++#define RHEL_OS_7_1 0x701
++#define RHEL_OS_7_0 0x700
++#define RHEL_OS_6_9 0x609
++#define RHEL_OS_6_8 0x608
++#define RHEL_OS_6_7 0x607
++#define RHEL_OS_6_6 0x606
++#define RHEL_OS_6_5 0x605
++#define RHEL_OS_6_4 0x604
++#define RHEL_OS_6_3 0x603
++#define RHEL_OS_6_2 0x602
++#define RHEL_OS_6_1 0x601
++#define RHEL_OS_6_0 0x600
++
++
++
++#ifdef HW_NVME_FAULT_INJECT
++#define MAX_OPT_CNT 4
++#define MAX_INJECT_UNC_LBA 2*1024*1024 //2GB to KB
++#define SIZE_OF_ONE_BIT 4 //KB
++#define SEC_PER_PAGE 8
++#define BITS_PER_BYTE 8
++#define MAX_FINJECT_NAME_LEN  32
++#define MAX_FINJECT_OBJ  32
++#define MAX_FINJECT_OPT 8
++#define FINJECT_DISABLE 0
++#define FINJECT_ENABLE 1
++#define MAX_OPT_LEN 64
++
++#define FINJECT_AWAIT 0
++#define FINJECT_TIME_OUT 1
++#define FINJECT_UNC 2
++#define FINJECT_READ_ONLY 3
++#define FINJECT_USED 4
++#define FINJECT_TEMPERATURE 5
++#define FINJECT_SPARE 6
++#define FINJECT_VOLTAGE 7
++#define FINJECT_DIF 8
++
++#define FINJECT_DIF_READ_GUARD_TAG 1
++#define FINJECT_DIF_READ_REF_TAG 2
++#define FINJECT_DIF_WRITE_GUARD_TAG 3
++
++
++#define ESEND 0xaa55
++
++#define OPCODE_ADMIN_GET_LOG_PAGE 0x02
++#define SUBOPCODE_NVME_LOG_SMART 0x02
++#define SUBOPCODE_LOG_VENDOR_SMART 0xc0
++#define _U8_MAX       ((u8 ) (~((u8 )  0)))  /* 0xFF               */
++#define _U32_SHIFT   2
++#define BYTE_TO_DWORD(size)  (((u32)(size) + 0x3) >> _U32_SHIFT) 
++#define LOGPAGE_DW10_NUMD_SHIFT  16
++
++#define HW_NVME_STRING_LEN      256
++
++struct sub_st_finject
++{
++    //spinlock_t lock;   
++    unsigned int type;/***/
++    char name[MAX_FINJECT_NAME_LEN];/***/
++    unsigned int status;/***/
++    long long argv[MAX_FINJECT_OPT];/***/
++    void *private_data;/***/
++};/***/
++#endif
++
++
++
++
+ /*
+  * Common request structure for NVMe passthrough.  All drivers must have
+  * this structure as the first member of their request-private data.
+@@ -245,6 +323,11 @@ struct nvme_ctrl {
+ 
+ 	struct page *discard_page;
+ 	unsigned long discard_page_busy;
++
++#ifdef HW_NVME_FAULT_INJECT
++	u32 finject_flag;
++    struct sub_st_finject finject_content[MAX_FINJECT_OBJ];/***/
++#endif
+ };
+ 
+ struct nvme_subsystem {
+@@ -373,6 +456,74 @@ static inline void nvme_fault_inject_fini(struct nvme_ns *ns) {}
+ static inline void nvme_should_fail(struct request *req) {}
+ #endif
+ 
++struct nvme_dev {
++	struct nvme_queue *queues;
++	struct blk_mq_tag_set tagset;
++	struct blk_mq_tag_set admin_tagset;
++	u32 __iomem *dbs;
++	struct device *dev;
++	struct dma_pool *prp_page_pool;
++	struct dma_pool *prp_small_pool;
++	unsigned online_queues;
++	unsigned max_qid;
++	unsigned int num_vecs;
++	int q_depth;
++	u32 db_stride;
++	void __iomem *bar;
++	unsigned long bar_mapped_size;
++	struct work_struct remove_work;
++	struct mutex shutdown_lock;
++	bool subsystem;
++	void __iomem *cmb;
++	pci_bus_addr_t cmb_bus_addr;
++	u64 cmb_size;
++	u32 cmbsz;
++	u32 cmbloc;
++	struct nvme_ctrl ctrl;
++	struct completion ioq_wait;
++
++	mempool_t *iod_mempool;
++
++	/* shadow doorbell buffer support: */
++	u32 *dbbuf_dbs;
++	dma_addr_t dbbuf_dbs_dma_addr;
++	u32 *dbbuf_eis;
++	dma_addr_t dbbuf_eis_dma_addr;
++
++	/* host memory buffer support: */
++	u64 host_mem_size;
++	u32 nr_host_mem_descs;
++	dma_addr_t host_mem_descs_dma;
++	struct nvme_host_mem_buf_desc *host_mem_descs;
++	void **host_mem_desc_bufs;
++};
++
++struct nvme_queue {
++	struct device *q_dmadev;
++	struct nvme_dev *dev;
++	spinlock_t sq_lock;
++	struct nvme_command *sq_cmds;
++	struct nvme_command __iomem *sq_cmds_io;
++	spinlock_t cq_lock ____cacheline_aligned_in_smp;
++	volatile struct nvme_completion *cqes;
++	struct blk_mq_tags **tags;
++	dma_addr_t sq_dma_addr;
++	dma_addr_t cq_dma_addr;
++	u32 __iomem *q_db;
++	u16 q_depth;
++	s16 cq_vector;
++	u16 sq_tail;
++	u16 cq_head;
++	u16 last_cq_head;
++	u16 qid;
++	u8 cq_phase;
++	u32 *dbbuf_sq_db;
++	u32 *dbbuf_cq_db;
++	u32 *dbbuf_sq_ei;
++	u32 *dbbuf_cq_ei;
++};
++
++
+ static inline bool nvme_ctrl_ready(struct nvme_ctrl *ctrl)
+ {
+ 	u32 val = 0;
+@@ -417,7 +568,7 @@ static inline void nvme_put_ctrl(struct nvme_ctrl *ctrl)
+ }
+ 
+ void nvme_complete_rq(struct request *req);
+-void nvme_cancel_request(struct request *req, void *data, bool reserved);
++bool nvme_cancel_request(struct request *req, void *data, bool reserved);
+ bool nvme_change_ctrl_state(struct nvme_ctrl *ctrl,
+ 		enum nvme_ctrl_state new_state);
+ int nvme_disable_ctrl(struct nvme_ctrl *ctrl, u64 cap);
+@@ -470,6 +621,10 @@ int nvme_delete_ctrl_sync(struct nvme_ctrl *ctrl);
+ int nvme_get_log(struct nvme_ctrl *ctrl, u32 nsid, u8 log_page, u8 lsp,
+ 		void *log, size_t size, u64 offset);
+ 
++#ifdef HW_NVME_FAULT_INJECT
++int nvme_finject_check_io(struct nvme_queue *nvmeq, struct request *req, struct nvme_ns *ns, blk_status_t *status);
++#endif
++
+ extern const struct attribute_group nvme_ns_id_attr_group;
+ extern const struct block_device_operations nvme_ns_head_ops;
+ 
+@@ -636,3 +791,5 @@ int __init nvme_core_init(void);
+ void nvme_core_exit(void);
+ 
+ #endif /* _NVME_H */
++
++
+diff --git ./pci.c ./pci.c
+index d52e443..cbe96a3 100644
+--- ./pci.c
++++ ./pci.c
+@@ -32,6 +32,7 @@
+ #include <linux/sed-opal.h>
+ 
+ #include "nvme.h"
++#include "adapter.h"
+ 
+ #define SQ_SIZE(depth)		(depth * sizeof(struct nvme_command))
+ #define CQ_SIZE(depth)		(depth * sizeof(struct nvme_completion))
+@@ -82,47 +83,47 @@ static void nvme_disable_io_queues(struct nvme_dev *dev);
+ /*
+  * Represents an NVM Express device.  Each nvme_dev is a PCI function.
+  */
+-struct nvme_dev {
+-	struct nvme_queue *queues;
+-	struct blk_mq_tag_set tagset;
+-	struct blk_mq_tag_set admin_tagset;
+-	u32 __iomem *dbs;
+-	struct device *dev;
+-	struct dma_pool *prp_page_pool;
+-	struct dma_pool *prp_small_pool;
+-	unsigned online_queues;
+-	unsigned max_qid;
+-	unsigned int num_vecs;
+-	int q_depth;
+-	u32 db_stride;
+-	void __iomem *bar;
+-	unsigned long bar_mapped_size;
+-	struct work_struct remove_work;
+-	struct mutex shutdown_lock;
+-	bool subsystem;
+-	void __iomem *cmb;
+-	pci_bus_addr_t cmb_bus_addr;
+-	u64 cmb_size;
+-	u32 cmbsz;
+-	u32 cmbloc;
+-	struct nvme_ctrl ctrl;
+-	struct completion ioq_wait;
+-
+-	mempool_t *iod_mempool;
+-
+-	/* shadow doorbell buffer support: */
+-	u32 *dbbuf_dbs;
+-	dma_addr_t dbbuf_dbs_dma_addr;
+-	u32 *dbbuf_eis;
+-	dma_addr_t dbbuf_eis_dma_addr;
+-
+-	/* host memory buffer support: */
+-	u64 host_mem_size;
+-	u32 nr_host_mem_descs;
+-	dma_addr_t host_mem_descs_dma;
+-	struct nvme_host_mem_buf_desc *host_mem_descs;
+-	void **host_mem_desc_bufs;
+-};
++// struct nvme_dev {
++// 	struct nvme_queue *queues;
++// 	struct blk_mq_tag_set tagset;
++// 	struct blk_mq_tag_set admin_tagset;
++// 	u32 __iomem *dbs;
++// 	struct device *dev;
++// 	struct dma_pool *prp_page_pool;
++// 	struct dma_pool *prp_small_pool;
++// 	unsigned online_queues;
++// 	unsigned max_qid;
++// 	unsigned int num_vecs;
++// 	int q_depth;
++// 	u32 db_stride;
++// 	void __iomem *bar;
++// 	unsigned long bar_mapped_size;
++// 	struct work_struct remove_work;
++// 	struct mutex shutdown_lock;
++// 	bool subsystem;
++// 	void __iomem *cmb;
++// 	pci_bus_addr_t cmb_bus_addr;
++// 	u64 cmb_size;
++// 	u32 cmbsz;
++// 	u32 cmbloc;
++// 	struct nvme_ctrl ctrl;
++// 	struct completion ioq_wait;
++
++// 	mempool_t *iod_mempool;
++
++// 	/* shadow doorbell buffer support: */
++// 	u32 *dbbuf_dbs;
++// 	dma_addr_t dbbuf_dbs_dma_addr;
++// 	u32 *dbbuf_eis;
++// 	dma_addr_t dbbuf_eis_dma_addr;
++
++// 	/* host memory buffer support: */
++// 	u64 host_mem_size;
++// 	u32 nr_host_mem_descs;
++// 	dma_addr_t host_mem_descs_dma;
++// 	struct nvme_host_mem_buf_desc *host_mem_descs;
++// 	void **host_mem_desc_bufs;
++// };
+ 
+ static int io_queue_depth_set(const char *val, const struct kernel_param *kp)
+ {
+@@ -154,30 +155,30 @@ static inline struct nvme_dev *to_nvme_dev(struct nvme_ctrl *ctrl)
+  * An NVM Express queue.  Each device has at least two (one for admin
+  * commands and one for I/O commands).
+  */
+-struct nvme_queue {
+-	struct device *q_dmadev;
+-	struct nvme_dev *dev;
+-	spinlock_t sq_lock;
+-	struct nvme_command *sq_cmds;
+-	struct nvme_command __iomem *sq_cmds_io;
+-	spinlock_t cq_lock ____cacheline_aligned_in_smp;
+-	volatile struct nvme_completion *cqes;
+-	struct blk_mq_tags **tags;
+-	dma_addr_t sq_dma_addr;
+-	dma_addr_t cq_dma_addr;
+-	u32 __iomem *q_db;
+-	u16 q_depth;
+-	s16 cq_vector;
+-	u16 sq_tail;
+-	u16 cq_head;
+-	u16 last_cq_head;
+-	u16 qid;
+-	u8 cq_phase;
+-	u32 *dbbuf_sq_db;
+-	u32 *dbbuf_cq_db;
+-	u32 *dbbuf_sq_ei;
+-	u32 *dbbuf_cq_ei;
+-};
++// struct nvme_queue {
++// 	struct device *q_dmadev;
++// 	struct nvme_dev *dev;
++// 	spinlock_t sq_lock;
++// 	struct nvme_command *sq_cmds;
++// 	struct nvme_command __iomem *sq_cmds_io;
++// 	spinlock_t cq_lock ____cacheline_aligned_in_smp;
++// 	volatile struct nvme_completion *cqes;
++// 	struct blk_mq_tags **tags;
++// 	dma_addr_t sq_dma_addr;
++// 	dma_addr_t cq_dma_addr;
++// 	u32 __iomem *q_db;
++// 	u16 q_depth;
++// 	s16 cq_vector;
++// 	u16 sq_tail;
++// 	u16 cq_head;
++// 	u16 last_cq_head;
++// 	u16 qid;
++// 	u8 cq_phase;
++// 	u32 *dbbuf_sq_db;
++// 	u32 *dbbuf_cq_db;
++// 	u32 *dbbuf_sq_ei;
++// 	u32 *dbbuf_cq_ei;
++// };
+ 
+ /*
+  * The nvme_iod describes the data in an I/O, including the list of PRP
+@@ -813,6 +814,9 @@ static blk_status_t nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
+ 	struct request *req = bd->rq;
+ 	struct nvme_command cmnd;
+ 	blk_status_t ret;
++#ifdef HW_NVME_FAULT_INJECT
++	int check_result;
++#endif
+ 
+ 	/*
+ 	 * We should not need to do this, but we're still using this to
+@@ -836,6 +840,15 @@ static blk_status_t nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
+ 	}
+ 
+ 	blk_mq_start_request(req);
++
++#ifdef HW_NVME_FAULT_INJECT
++	if ((dev->ctrl.finject_flag & 0x0f) //IO流程中只检测AWAIT\TIMEOUT\UNC\READ-ONLY故障
++		&& IS_READ_OR_WRITE(req)) {
++		check_result = nvme_finject_check_io(nvmeq, req, ns, &ret);
++		if (check_result == EIO)
++			return ret;
++	}
++#endif	
+ 	nvme_submit_cmd(nvmeq, &cmnd);
+ 	return BLK_STS_OK;
+ out_cleanup_iod:
+@@ -2757,6 +2770,12 @@ static struct pci_driver nvme_driver = {
+ 
+ static int __init nvme_init(void)
+ {
++	int result;
++	result = nvme_core_init();
++	if(result){
++		printk("nvme core init fail");
++		return result;
++	}
+ 	return pci_register_driver(&nvme_driver);
+ }
+ 
+@@ -2765,6 +2784,7 @@ static void __exit nvme_exit(void)
+ 	pci_unregister_driver(&nvme_driver);
+ 	flush_workqueue(nvme_wq);
+ 	_nvme_check_size();
++	nvme_core_exit();
+ }
+ 
+ MODULE_AUTHOR("Matthew Wilcox <willy@linux.intel.com>");
+@@ -2772,3 +2792,5 @@ MODULE_LICENSE("GPL");
+ MODULE_VERSION("1.0");
+ module_init(nvme_init);
+ module_exit(nvme_exit);
++
++
+diff --git ./trace.h ./trace.h
+index a490790..9714539 100644
+--- ./trace.h
++++ ./trace.h
+@@ -158,10 +158,12 @@ TRACE_EVENT(nvme_complete_rq,
+ 
+ #endif /* _TRACE_NVME_H */
+ 
+-#undef TRACE_INCLUDE_PATH
+-#define TRACE_INCLUDE_PATH .
+-#undef TRACE_INCLUDE_FILE
+-#define TRACE_INCLUDE_FILE trace
++// #undef TRACE_INCLUDE_PATH
++// #define TRACE_INCLUDE_PATH .
++// #undef TRACE_INCLUDE_FILE
++// #define TRACE_INCLUDE_FILE trace
+ 
+ /* This part must be outside protection */
+ #include <trace/define_trace.h>
++
++
+-- 
+2.23.0
+
