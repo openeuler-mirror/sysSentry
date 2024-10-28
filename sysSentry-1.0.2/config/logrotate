@@ -1,8 +1,9 @@
 /var/log/sysSentry/*.log {
-	nocompress
+	compress
 	missingok
 	notifempty
 	copytruncate
 	rotate 2
 	size +4096k
+        hourly
 }
