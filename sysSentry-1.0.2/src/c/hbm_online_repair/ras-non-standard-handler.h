@@ -7,6 +7,7 @@
 #define BIT(nr) (1UL << (nr))
 
 #define SECTION_TYPE_UUID_LEN         16
+#define UUID_STR_TYPE                 "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 #define HISI_COMMON_SECTION_TYPE_UUID "c8b328a8-9917-4af6-9a13-2e08ab2e7586"
 
 struct ras_non_standard_event {
