@@ -125,17 +125,9 @@ static void parse_fault_addr_info(struct fault_addr_info* info_struct, unsigned 
 static bool is_variable_existing(char *name, char *guid)
 {
     char filename[PATH_MAX];
-    int fd;
-
     snprintf(filename, PATH_MAX - 1, "%s/%s-%s", EFIVARFS_PATH, name, guid);
 
-    // open var file
-    fd = open(filename, O_RDONLY);
-    if (fd < 0) {
-        return false;
-    }
-    close(fd);
-    return true;
+    return access(filename, F_OK | R_OK) == 0;
 }
 
 static size_t get_var_size(char *name, char *guid) {
@@ -174,7 +166,7 @@ void get_flash_total_size() {
     log(LOG_DEBUG, "current fault info total size: %luKB, flash max threshold: %uKB\n",
            flash_total_size / KB_SIZE, MAX_VAR_SIZE / KB_SIZE);
     if (flash_total_size > MAX_VAR_SIZE) {
-        log(LOG_WARNING, "fault info storage %lu reach threshold, cannot save new record\n", flash_total_size);
+        log(LOG_WARNING, "fault info storage %zu reach threshold, cannot save new record\n", flash_total_size);
     }
 }
 
@@ -265,9 +257,9 @@ static int write_variable(char *name, char *guid, void *value, unsigned long siz
 
     // change attr
     if (is_existing && efivarfs_set_mutable(name, guid, 1) != 0) {
-            log(LOG_ERROR, "set mutable for %s failed\n", filename);
-            goto err;
-        }
+        log(LOG_ERROR, "set mutable for %s failed\n", filename);
+        goto err;
+    }
 
     mode = O_WRONLY;
     mode |= is_existing ? O_APPEND : O_CREAT;
@@ -297,7 +289,7 @@ err:
         close(fd);
     if (buffer)
         free(buffer);
-    if (is_variable_existing(name, guid) && efivarfs_set_mutable(name, guid, 0) != 0) {
+    if (is_existing && efivarfs_set_mutable(name, guid, 0) != 0) {
         log(LOG_ERROR, "set immutable for %s failed\n", filename);
     }
     return -1;
@@ -602,6 +594,7 @@ static uint8_t hbmc_hbm_repair(const struct hisi_common_error_section *err, char
 
     ret = write_file(path, is_acls ? "acls_query" : "sppr_query", paddr);
 
+    /* Only positive num means the error is supported to repair */
     if (ret <= 0) {
         if (ret != -ENXIO) {
             notice_BMC(err, get_repair_failed_result_code(ret));
@@ -631,6 +624,7 @@ static uint8_t hbmc_hbm_repair(const struct hisi_common_error_section *err, char
                 all_online_success = false;
             }
         }
+        /* The ret is from the acls/sppr repair, and only positive num means the error is repaired successfully */
         if (ret <= 0) {
             notice_BMC(err, get_repair_failed_result_code(ret));
             return ret;

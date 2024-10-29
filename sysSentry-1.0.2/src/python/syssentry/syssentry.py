@@ -23,12 +23,12 @@ import fcntl
 
 import select
 
-from .sentry_config import SentryConfig
+from .sentry_config import SentryConfig, get_log_level
 
 from .task_map import TasksMap
 from .global_values import SENTRY_RUN_DIR, CTL_SOCKET_PATH, SENTRY_RUN_DIR_PERM
 from .cron_process import period_tasks_handle
-from .callbacks import mod_list_show, task_start, task_get_status, task_stop, task_get_result
+from .callbacks import mod_list_show, task_start, task_get_status, task_stop, task_get_result, task_get_alarm
 from .mod_status import get_task_by_pid, set_runtime_status
 from .load_mods import load_tasks, reload_single_mod
 from .heartbeat import (heartbeat_timeout_chk, heartbeat_fd_create,
@@ -36,7 +36,11 @@ from .heartbeat import (heartbeat_timeout_chk, heartbeat_fd_create,
 from .result import RESULT_MSG_HEAD_LEN, RESULT_MSG_MAGIC_LEN, RESULT_MAGIC
 from .result import RESULT_LEVEL_ERR_MSG_DICT, ResultLevel
 from .utils import get_current_time_string
+from .alarm import alarm_register
 
+from xalarm.register_xalarm import xalarm_unregister
+
+clientId = -1
 
 CPU_EXIST = True
 try:
@@ -58,6 +62,7 @@ CTL_MSG_MAGIC_LEN = 3
 CTL_MSG_LEN_LEN = 3
 CTL_MAGIC = "CTL"
 RES_MAGIC = "RES"
+ALARM_MSG_DATA_LEN = 6
 
 CTL_LISTEN_QUEUE_LEN = 5
 SERVER_EPOLL_TIMEOUT = 0.3
@@ -68,6 +73,7 @@ type_func = {
     'stop': task_stop,
     'get_status': task_get_status,
     'get_result': task_get_result,
+    'get_alarm': task_get_alarm,
     'reload': reload_single_mod
 }
 
@@ -116,11 +122,12 @@ def msg_data_process(msg_data):
         return "Invalid cmd type"
 
     cmd_param = data_struct['data']
-    logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, cmd_param)
+    logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, str(cmd_param))
     if cmd_type in type_func:
         ret, res_data = type_func[cmd_type](cmd_param)
     else:
         ret, res_data = type_func_void[cmd_type]()
+    logging.debug("msg_data_process res_data:%s",str(res_data))
     res_msg_struct = {"ret": ret, "data": res_data}
     res_msg = json.dumps(res_msg_struct)
 
@@ -259,6 +266,8 @@ def server_recv(server_socket: socket.socket):
     res_head = RES_MAGIC
     if cmd_type == "get_result":
         res_data_len = str(len(res_data)).zfill(RESULT_MSG_HEAD_LEN - RESULT_MSG_MAGIC_LEN)
+    elif cmd_type == "get_alarm":
+        res_data_len = str(len(res_data)).zfill(ALARM_MSG_DATA_LEN)
     else:
         res_data_len = str(len(res_data)).zfill(CTL_MSG_MAGIC_LEN)
     res_head += res_data_len
@@ -621,7 +630,10 @@ def main():
         os.mkdir(SENTRY_RUN_DIR)
         os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
 
-    logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=logging.INFO)
+    log_level = get_log_level()
+    log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+
+    logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=log_level, format=log_format)
     os.chmod(SYSSENTRY_LOG_FILE, 0o600)
 
     if not chk_and_set_pidfile():
@@ -639,9 +651,12 @@ def main():
         _ = SentryConfig.init_param()
         TasksMap.init_task_map()
         load_tasks()
+        clientId = alarm_register()
         main_loop()
 
     except Exception:
         logging.error('%s', traceback.format_exc())
     finally:
+        if clientId != -1:
+            xalarm_unregister(clientId)
         release_pidfile()
