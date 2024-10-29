@@ -112,8 +112,8 @@ def msg_data_process(msg_data):
 
     cmd_type = data_struct['type']
     if cmd_type not in type_func and cmd_type not in type_func_void:
-        logging.error("recv invaild cmd type: %s", cmd_type)
-        return "Invaild cmd type"
+        logging.error("recv invalid cmd type: %s", cmd_type)
+        return "Invalid cmd type"
 
     cmd_param = data_struct['data']
     logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, cmd_param)
@@ -414,7 +414,7 @@ def server_result_recv(server_socket: socket.socket):
     try:
         client_socket.send(process_plugins_result.encode())
     except OSError:
-        logging.warning("server send reponse to plugins failed")
+        logging.warning("server send response to plugins failed")
     finally:
         client_socket.close()
     return
