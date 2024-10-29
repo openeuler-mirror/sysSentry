@@ -1,0 +1,15 @@
+[J-global] # 任务名称或作业组的名称
+direct=1   # 直接IO模式，绕过操作系统缓存，确保IO操作直接与磁盘交互
+iodepth=1  # IO深度，定义单个作业同时进行的IO请求数为1（串行处理IO请求）
+ioengine=psync     # IO引擎，使用同步IO模式（psync = 基于进程的同步IO）
+group_reporting    # 启用组报告，输出结果时，汇总多个作业的统计信息
+numjobs=20   # 作业数，指定同时运行20个作业，模拟高并发环境
+fsync=1      # 每次写操作后强制同步文件系统数据，确保数据持久化到磁盘
+time_based   # 时间模式，表示基于运行时间而不是数据量进行测试
+rw=randrw    # 随机读写混合模式
+rwmixwrite=100     # 读写混合比例，100表示只进行写操作（完全随机写）
+bs=8k        # 块大小，指定每次IO操作的块大小为8KB
+size=64M     # 文件大小，指定每个作业要生成的文件大小为64MB
+runtime=20    # 测试运行时间，设定为20秒
+filename_format=/data1/mytestfile-$jobname-$jobnum    # 文件名格式，生成的测试文件将保存到 /data1 目录，文件名中包含作业名称和作业编号
+
