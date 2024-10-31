@@ -1,7 +1,46 @@
+#!/bin/bash
+
+# 声明一个关联数组来存储设备路径和挂载点
+declare -A device_paths
+declare -A mount_points
+
+# 卸载过程
+
+# 步骤1: 卸载NVMe设备
+echo "步骤1: 卸载NVMe设备..."
+# 获取所有 NVMe 设备列表
+nvme_devices=$(lsblk -d -o NAME,PATH | grep -i nvme)
+# 检查是否获取到 NVMe 设备列表
+if [ -z "$nvme_devices" ]; then
+    echo "未找到 NVMe 设备。"
+    exit 0
+fi
+# 遍历 NVMe 设备列表
+while IFS=' ' read -r device path; do
+    # 获取设备的挂载点
+    mount_point=$(mount | grep "$path" | awk '{print $3}')
+    # 检查设备是否已挂载
+    if [ -n "$mount_point" ]; then
+        echo "设备 $device ($path) 已挂载在 $mount_point，正在尝试解挂载..."
+        # 解挂载设备
+        if umount "$mount_point"; then
+            echo "设备 $device ($path) 成功解挂载。"
+            # 记录设备路径和挂载点
+            device_paths[$device]="$path"
+            mount_points[$device]="$mount_point"
+        else
+            echo "设备 $device ($path) 解挂载失败，请手动检查。"
+            exit 1
+        fi
+    else
+        echo "设备 $device ($path) 未挂载，跳过。"
+    fi
+done <<< "$nvme_devices"
+echo "NVMe 设备解挂载完成。"
 
 
-echo "Uninstalling... Please wait for a moment."
-
+# 步骤2: 卸载nvme_inject
+echo "步骤2: 卸载nvme_inject..."
 if [ -e "/boot/System.map-4.19.90-23.48.v2101.ky10.aarch64" ]; then
     depmod -aeF "/boot/System.map-4.19.90-23.48.v2101.ky10.aarch64" "4.19.90-23.48.v2101.ky10.aarch64" > /dev/null || :
 else
@@ -81,5 +120,23 @@ fi
 fi
 
 echo "Uninstall kmod-hiodriver package successfully."
-echo "Please reboot the system"
+
+
+sleep 5;
+# 步骤3: 重新挂载所有nvme设备
+echo "步骤3: 重新挂载所有nvme设备..."
+for device in "${!mount_points[@]}"; do
+    path=${device_paths[$device]}
+    mount_point=${mount_points[$device]}
+    echo "正在重新挂载设备 $device ($path) 到 $mount_point..."
+    if mount "$path" "$mount_point"; then
+        echo "设备 $device ($path) 成功重新挂载到 $mount_point。"
+    else
+        echo "设备 $device ($path) 重新挂载到 $mount_point 失败。"
+        exit 1
+    fi
+done
+echo "NVMe重新挂载完成。"
+
+echo "nvme_inject卸载执行成功。"
 
