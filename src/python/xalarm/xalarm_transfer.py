@@ -62,7 +62,6 @@ def cleanup_closed_connections(server_sock, epoll, fd_to_socket):
             to_remove.append(fileno)
     
     for fileno in to_remove:
-        epoll.unregister(fileno)
         fd_to_socket[fileno].close()
         del fd_to_socket[fileno]
         logging.info(f"cleaned up connection {fileno} for client lost connection.")
@@ -97,7 +96,6 @@ def wait_for_connection(server_sock, epoll, fd_to_socket, thread_should_stop):
                         logging.info(f"connection reach max num of {MAX_CONNECTION_NUM}, closed current connection!")
                         connection.close()
                         continue
-                    epoll.register(connection.fileno(), select.EPOLLOUT)
                     fd_to_socket[connection.fileno()] = connection
         except socket.error as e: 
             logging.debug(f"socket error, reason is {e}")
@@ -122,7 +120,6 @@ def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data):
             except (BrokenPipeError, ConnectionResetError):
                 to_remove.append(fileno)
     for fileno in to_remove:
-        epoll.unregister(fileno)
         fd_to_socket[fileno].close()
         del fd_to_socket[fileno]
         logging.info(f"cleaned up connection {fileno} for client lost connection.")
