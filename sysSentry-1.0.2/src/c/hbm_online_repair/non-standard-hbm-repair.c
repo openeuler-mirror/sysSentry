@@ -359,7 +359,7 @@ static int write_file(char *path, const char *name, unsigned long long value)
 
     fd = open(fname, O_WRONLY);
     if (fd < 0) {
-        log(LOG_WARNING, "HBM ACLS: Cannot to open '%s': %s\n",
+        log(LOG_WARNING, "HBM: Cannot to open '%s': %s\n",
                     fname, strerror(errno));
         return -errno;
     }
@@ -367,7 +367,7 @@ static int write_file(char *path, const char *name, unsigned long long value)
     snprintf(buf, sizeof(buf), "0x%llx\n", value);
     ret = write(fd, buf, strlen(buf));
     if (ret <= 0)
-        log(LOG_WARNING, "HBM ACLS: Failed to set %s (0x%llx): %s\n",
+        log(LOG_WARNING, "HBM: Failed to set %s (0x%llx): %s\n",
                     fname, value, strerror(errno));
 
     close(fd);
@@ -557,7 +557,7 @@ static int hbmc_hbm_page_isolate(const struct hisi_common_error_section *err)
     return ret < 0 ? ret : 0;
 }
 
-static int hbmc_hbm_after_repair(bool is_acls, const int repair_ret, const unsigned long long paddr)
+static uint8_t hbmc_hbm_after_repair(bool is_acls, const int repair_ret, const unsigned long long paddr)
 {
     int ret;
     if (repair_ret <= 0) {
@@ -577,7 +577,7 @@ static int hbmc_hbm_after_repair(bool is_acls, const int repair_ret, const unsig
     }
 }
 
-static uint8_t hbmc_hbm_repair(const struct hisi_common_error_section *err, char *path)
+static int hbmc_hbm_repair(const struct hisi_common_error_section *err, char *path)
 {
     unsigned long long paddr;
     int ret;
