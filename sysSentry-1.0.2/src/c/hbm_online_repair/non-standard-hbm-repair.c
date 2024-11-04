@@ -112,7 +112,7 @@ static void parse_fault_addr_info(struct fault_addr_info* info_struct, unsigned 
     info_struct->row_id = fault_addr & FAULT_ADDR_ROW_ID_MASK;
     fault_addr >>= FAULT_ADDR_ROW_ID_LEN;
     info_struct->column_id = fault_addr & FAULT_ADDR_COLUMN_ID_MASK;
-    fault_addr >>= FAULT_ADDR_CHANNEL_ID_LEN;
+    fault_addr >>= FAULT_ADDR_COLUMN_ID_LEN;
     info_struct->error_type = fault_addr & FAULT_ADDR_ERROR_TYPE_MASK;
     fault_addr >>= FAULT_ADDR_ERROR_TYPE_LEN;
     info_struct->repair_type = fault_addr & FAULT_ADDR_REPAIR_TYPE_MASK;
@@ -371,7 +371,12 @@ static int write_file(char *path, const char *name, unsigned long long value)
                     fname, value, strerror(errno));
 
     close(fd);
-    return ret > 0 ? 0 : -errno;
+    if (ret == 0) {
+        ret = -EINVAL;
+    } else if (ret < 0) {
+        ret = -errno;
+    }
+    return ret;
 }
 
 static int get_hardware_corrupted_size()
@@ -560,7 +565,7 @@ static int hbmc_hbm_page_isolate(const struct hisi_common_error_section *err)
 static uint8_t hbmc_hbm_after_repair(bool is_acls, const int repair_ret, const unsigned long long paddr)
 {
     int ret;
-    if (repair_ret <= 0) {
+    if (repair_ret < 0) {
         log(LOG_WARNING, "HBM %s: Keep page (0x%llx) offline\n", is_acls ? "ACLS" : "SPPR", paddr);
         /* not much we can do about errors here */
         (void)write_file("/sys/kernel/page_eject", "remove_page", paddr);
@@ -594,8 +599,7 @@ static int hbmc_hbm_repair(const struct hisi_common_error_section *err, char *pa
 
     ret = write_file(path, is_acls ? "acls_query" : "sppr_query", paddr);
 
-    /* Only positive num means the error is supported to repair */
-    if (ret <= 0) {
+    if (ret < 0) {
         if (ret != -ENXIO) {
             notice_BMC(err, get_repair_failed_result_code(ret));
             log(LOG_WARNING, "HBM: Address 0x%llx is not supported to %s repair\n", paddr, is_acls ? "ACLS" : "SPPR");
@@ -624,8 +628,7 @@ static int hbmc_hbm_repair(const struct hisi_common_error_section *err, char *pa
                 all_online_success = false;
             }
         }
-        /* The ret is from the acls/sppr repair, and only positive num means the error is repaired successfully */
-        if (ret <= 0) {
+        if (ret < 0) {
             notice_BMC(err, get_repair_failed_result_code(ret));
             return ret;
         } else if (all_online_success) {
