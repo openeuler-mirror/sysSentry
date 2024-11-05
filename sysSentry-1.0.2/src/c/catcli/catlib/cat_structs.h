@@ -14,7 +14,7 @@ typedef enum {
     CAT_NOT_SUPPORTED = 102,     // The feature is not supported
     CAT_GENERIC_ERROR = 103,     // A generic, unspecified error
     CAT_LOAD_LIBRARY_FAIL = 104, // Load library fail
-    CAT_ALREADY_RUNNING = 105,   // AN instance is already running
+    CAT_ALREADY_RUNNING = 105,   // An instance is already running
     CAT_INVALID_PARAMETER = 106, // Invalid parameter
 } cat_return_t;
 // 巡检模块

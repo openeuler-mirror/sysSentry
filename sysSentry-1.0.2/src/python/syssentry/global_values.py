@@ -129,7 +129,7 @@ class InspectTask:
             if self.heartbeat_interval > 0:
                 self.last_heartbeat = time.perf_counter()
             return True, "start task success"
-        return True, "task is running, please wait finish"
+        return True, "task is running, please wait to finish"
 
     def stop(self):
         """stop"""

@@ -40,7 +40,7 @@ RESULT_INFO_MAX_LEN = 4096
 
 RESULT_LEVEL_ERR_MSG_DICT = {
         ResultLevel.PASS.name : "",
-        ResultLevel.SKIP.name : "not supported.maybe some rpm package not be installed.",
+        ResultLevel.SKIP.name : "not supported. maybe some rpm package not be installed.",
         ResultLevel.FAIL.name : "FAILED. config may be incorrect or the command may be invalid/killed!",
         ResultLevel.MINOR_ALM.name : "the command output shows that the status is 'INFO' or 'GENERAL_WARN'.",
         ResultLevel.MAJOR_ALM.name : "the command output shows that the status is 'WARN' or 'IMPORTANT_WARN'.",

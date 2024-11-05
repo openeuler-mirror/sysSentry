@@ -162,7 +162,7 @@ def process_and_update_task_result(result_msg_data: dict) -> bool:
 
     task = TasksMap.get_task_by_name(data_struct['task_name'])
     if not task:
-        logging.error("task '%s' do not exists!!", data_struct['task_name'])
+        logging.error("task '%s' does not exist!!", data_struct['task_name'])
         return False
 
     result_data = data_struct.get("result_data", {})
