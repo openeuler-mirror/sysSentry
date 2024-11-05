@@ -23,7 +23,7 @@ import fcntl
 
 import select
 
-from .sentry_config import SentryConfig
+from .sentry_config import SentryConfig, get_log_level
 
 from .task_map import TasksMap
 from .global_values import SENTRY_RUN_DIR, CTL_SOCKET_PATH, SENTRY_RUN_DIR_PERM
@@ -112,15 +112,16 @@ def msg_data_process(msg_data):
 
     cmd_type = data_struct['type']
     if cmd_type not in type_func and cmd_type not in type_func_void:
-        logging.error("recv invaild cmd type: %s", cmd_type)
-        return "Invaild cmd type"
+        logging.error("recv invalid cmd type: %s", cmd_type)
+        return "Invalid cmd type"
 
     cmd_param = data_struct['data']
-    logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, cmd_param)
+    logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, str(cmd_param))
     if cmd_type in type_func:
         ret, res_data = type_func[cmd_type](cmd_param)
     else:
         ret, res_data = type_func_void[cmd_type]()
+    logging.debug("msg_data_process res_data:%s",str(res_data))
     res_msg_struct = {"ret": ret, "data": res_data}
     res_msg = json.dumps(res_msg_struct)
 
@@ -414,7 +415,7 @@ def server_result_recv(server_socket: socket.socket):
     try:
         client_socket.send(process_plugins_result.encode())
     except OSError:
-        logging.warning("server send reponse to plugins failed")
+        logging.warning("server send response to plugins failed")
     finally:
         client_socket.close()
     return
@@ -621,7 +622,10 @@ def main():
         os.mkdir(SENTRY_RUN_DIR)
         os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
 
-    logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=logging.INFO)
+    log_level = get_log_level()
+    log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+
+    logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=log_level, format=log_format)
     os.chmod(SYSSENTRY_LOG_FILE, 0o600)
 
     if not chk_and_set_pidfile():
