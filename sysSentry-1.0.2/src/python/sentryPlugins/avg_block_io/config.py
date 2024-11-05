@@ -42,12 +42,12 @@ DEFAULT_PARAM = {
         CONF_ALGO_SIZE: 30,
         CONF_ALGO_THRE: 6
     }, 'latency_nvme_ssd': {
-        'read_avg_lim': 300,
-        'write_avg_lim': 300,
+        'read_avg_lim': 10000,
+        'write_avg_lim': 10000,
         'read_avg_time': 3,
         'write_avg_time': 3,
-        'read_tot_lim': 500,
-        'write_tot_lim': 500,
+        'read_tot_lim': 50000,
+        'write_tot_lim': 50000,
     }, 'latency_sata_ssd' : {
         'read_avg_lim': 10000,
         'write_avg_lim': 10000,
