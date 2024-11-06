@@ -89,6 +89,9 @@ void hbm_param_init(void)
     if (ret < 0) {
         global_level_setting = DEFAULT_LOG_LEVEL;
         log(LOG_WARNING, "Get log level from config failed, set the default value %d\n", DEFAULT_LOG_LEVEL);
+    } else if (global_level_setting < LOG_DEBUG || global_level_setting > LOG_ERROR) {
+        log(LOG_WARNING, "The log level value %d in config is out of range, set the default value %d\n", global_level_setting, DEFAULT_LOG_LEVEL);
+        global_level_setting = DEFAULT_LOG_LEVEL;
     } else {
         log(LOG_INFO, "log level: %d\n", global_level_setting);
     }
@@ -98,6 +101,9 @@ void hbm_param_init(void)
     if (ret < 0) {
         page_isolation_threshold = DEFAULT_PAGE_ISOLATION_THRESHOLD;
         log(LOG_WARNING, "Get page_isolation_threshold from config failed, set the default value %d\n", DEFAULT_PAGE_ISOLATION_THRESHOLD);
+    } else if (page_isolation_threshold < 0) {
+        log(LOG_WARNING, "The page_isolation_threshold %d in config is out of range, set the default value %d\n", page_isolation_threshold, DEFAULT_PAGE_ISOLATION_THRESHOLD);
+        page_isolation_threshold = DEFAULT_PAGE_ISOLATION_THRESHOLD;
     } else {
         log(LOG_INFO, "page_isolation_threshold: %d\n", page_isolation_threshold);
     }
