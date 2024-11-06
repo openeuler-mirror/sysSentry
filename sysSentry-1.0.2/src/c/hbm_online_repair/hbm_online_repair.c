@@ -9,7 +9,7 @@
 #include "non-standard-hbm-repair.h"
 
 #define DEFAULT_LOG_LEVEL LOG_INFO
-#define DEFAULT_PAGE_ISOLATION_THRESHOLD 128
+#define DEFAULT_PAGE_ISOLATION_THRESHOLD 3355443
 
 int global_level_setting;
 int page_isolation_threshold;
@@ -44,7 +44,7 @@ int execute_command(const char *command)
     }
 
     fgets(buffer, sizeof(buffer), fp);
-    log(LOG_DEBUG, "output of command is: %s\n", buffer);
+    log(LOG_DEBUG, "output of command %s is: %s\n", command, buffer);
 
     ret = pclose(fp);
     if (ret < 0) {
@@ -53,12 +53,12 @@ int execute_command(const char *command)
     }
 
     if (!WIFEXITED(ret)) {
-        log(LOG_ERROR, "command did not terminate normally\n");
+        log(LOG_ERROR, "command %s did not terminate normally\n", command);
         return -1;
     }
 
     ret = WEXITSTATUS(ret);
-    log(LOG_DEBUG, "command exited with status: %d\n", ret);
+    log(LOG_DEBUG, "command %s exited with status: %d\n", command, ret);
     return ret;
 }
 
