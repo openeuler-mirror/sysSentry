@@ -1,6 +1,0 @@
-*.o
-*.c~
-*.h~
-hbm_online_repair
-
-.vscode/

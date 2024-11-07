@@ -1,0 +1,27 @@
+# logs
+[Ll]og/
+[Ll]ogs/
+*.log
+
+# Visual Studio 
+*.vs/
+*.vscode/
+*.[Cc]ache
+!?*.[Cc]ache/
+
+# test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# coverage
+coverage*[.json, .xml, .info]
+*.coverage
+
+# python 
+*.__pycache__/
+*.pyc
+
+# C
+*.o
+*.c~
+*.h~
