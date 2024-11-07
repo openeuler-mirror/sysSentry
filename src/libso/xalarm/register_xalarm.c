@@ -363,6 +363,11 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
         return -1;
     }
 
+    if (pucParas == NULL || (int)strlen(pucParas) > MAX_PARAS_LEN) {
+        fprintf(stderr, "%s: alarm info invalid\n", __func__);
+        return -1;
+    }
+
     if (memset(&info, 0, sizeof(struct alarm_info)) == NULL) {
         fprintf(stderr, "%s: memset info failed, ret: %d\n", __func__, ret);
         return -1;
