@@ -14,10 +14,10 @@ fault_turn=$((60 / fault_length))
 if [ "$continue" -eq 1 ]; then
     if [ "$delay" -eq 150 ]; then
         echo "注入连续慢盘故障, 延迟增加150%, 持续"$fault_time"s" 
-        echo 0 1 200 > "$finject_path"
+        echo 0 1 8000 > "$finject_path"
     elif [ "$delay" -eq 250 ]; then
         echo "注入连续慢盘故障, 延迟增加250%, 持续"$fault_time"s" 
-        echo 0 1 400 > "$finject_path"
+        echo 0 1 15000 > "$finject_path"
     elif [ "$delay" == "iodump" ]; then
         echo "注入磁盘IO HANG场景, 使得部分IO超时, 持续"$fault_time"s" 
         echo 0 1 2000000  > "$finject_path"
@@ -29,10 +29,10 @@ else
     do
         if [ "$delay" -eq 150 ]; then
             echo "注入间歇慢盘故障, 延迟增加150%" 
-            echo 0 1 200 > "$finject_path"
+            echo 0 1 8000 > "$finject_path"
         elif [ "$delay" -eq 250 ]; then
             echo "注入间歇慢盘故障, 延迟增加250%"
-            echo 0 1 400 > "$finject_path"
+            echo 0 1 15000 > "$finject_path"
         elif [ "$delay" == "iodump" ]; then
             echo "注入磁盘IO HANG场景, 使得部分IO超时, 持续"$fault_time"s" 
             echo 0 1 2000000 > "$finject_path"
