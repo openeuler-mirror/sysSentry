@@ -329,7 +329,7 @@ static int read_ras_event_all_cpus(struct pcpu_data *pdata,
                 fdsiginfo.ssi_signo == SIGTERM ||
                 fdsiginfo.ssi_signo == SIGHUP ||
                 fdsiginfo.ssi_signo == SIGQUIT) {
-                log(LOG_INFO, "Recevied signal=%d\n",
+                log(LOG_INFO, "Received signal=%d\n",
                     fdsiginfo.ssi_signo);
                 goto error;
             } else {
