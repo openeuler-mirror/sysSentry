@@ -452,7 +452,7 @@ static int load_elf_maps_section(struct bpf_map_data *maps, int maps_shndx,
 			continue;
 		if (sym[nr_maps].st_shndx != maps_shndx)
 			continue;
-		/* Only increment iif maps section */
+		/* Only increment if maps section */
 		nr_maps++;
 	}
 
