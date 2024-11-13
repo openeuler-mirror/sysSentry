@@ -60,7 +60,7 @@ def heartbeat_timeout_chk():
 
 
 def thb_head_process(msg_head):
-    """heatbeat head process"""
+    """heartbeat head process"""
     ctl_magic = msg_head[:THB_MSG_MAGIC_LEN]
     if ctl_magic != THB_MAGIC:
         logging.error("recv heartbeat head magic invalid: %s", ctl_magic)

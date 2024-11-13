@@ -444,7 +444,7 @@ static int load_elf_maps_section(struct bpf_map_data *maps, int maps_shndx,
 		return -EINVAL;
 	}
 
-	/* For each map get corrosponding symbol table entry */
+	/* For each map get corresponding symbol table entry */
 	sym = calloc(MAX_MAPS+1, sizeof(GElf_Sym));
 	for (i = 0, nr_maps = 0; i < symbols->d_size / sizeof(GElf_Sym); i++) {
 		assert(nr_maps < MAX_MAPS+1);

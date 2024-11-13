@@ -111,7 +111,7 @@ if [ -z "${mods}" ]; then
     else
         echo "Install the new nvme kernel module successfully."
         
-        #servie name
+        #service name
         serv_name=$(systemctl -a -t service  | grep irq | grep balance | sed -e 's/[^ ]* //' | awk '{print $1}' | awk -F'.' '{print $1}')
         if [[ -z ${serv_name} ]]; then
             serv_name=$(chkconfig --list  | grep irq | grep balance | awk '{print $1}')

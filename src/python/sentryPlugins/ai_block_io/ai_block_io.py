@@ -179,7 +179,7 @@ class SlowIODetection:
             logging.debug(f"step1. Get io data: {str(io_data_dict_with_disk_name)}")
             if io_data_dict_with_disk_name is None:
                 Report.report_pass(
-                    "get io data error, please check if the collector plug is enable. exitting..."
+                    "get io data error, please check if the collector plug is enable. exiting..."
                 )
                 exit(1)
 
