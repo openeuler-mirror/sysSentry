@@ -1,11 +1,10 @@
 import os
-import sys
 import time
 import socket
 import logging
 from struct import error as StructParseError
 
-from .xalarm_api import alarm_stu2bin, Xalarm
+from xalarm.xalarm_api import alarm_stu2bin, Xalarm
 
 MAX_NUM_OF_ALARM_ID = 128
 MIN_ALARM_ID = 1001

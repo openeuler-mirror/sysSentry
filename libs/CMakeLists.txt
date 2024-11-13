@@ -7,4 +7,4 @@ project(libxalarm)
 SET(CMAKE_VERBOSE_MAKEFILE OFF)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
 
-add_subdirectory(xalarm)
+add_subdirectory(libxalarm)

@@ -4,7 +4,7 @@ import logging
 import socket
 from enum import Enum
 
-from .utils import execute_command
+from syssentry.utils import execute_command
 
 MAX_CORE_ID = 1024
 MAX_SOCKET_ID = 255

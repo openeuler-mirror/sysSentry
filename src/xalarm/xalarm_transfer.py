@@ -16,7 +16,6 @@ Create: 2023-11-02
 
 import socket
 import logging
-import select
 from time import sleep
 
 MIN_ID_NUMBER = 1001

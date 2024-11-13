@@ -9,7 +9,6 @@
 # PURPOSE.
 # See the Mulan PSL v2 for more details.
 import logging
-import os
 
 AVG_VALUE = 0
 AVG_COUNT = 1

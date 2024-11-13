@@ -655,4 +655,3 @@ int report_result(const char *task_name, enum RESULT_LEVEL result_level, const c
     return RETURE_CODE_SUCCESS;
 }
 
-

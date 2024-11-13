@@ -15,7 +15,6 @@ use for report alarm
 import threading
 from typing import Dict, List
 from datetime import datetime
-import time
 import logging
 import json
 import sys

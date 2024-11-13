@@ -1,14 +1,12 @@
 import os
 import sys
 import socket
-import logging
 import threading
 import time
-import fcntl
 import inspect
 from struct import error as StructParseError
 
-from .xalarm_api import Xalarm, alarm_bin2stu
+from xalarm.xalarm_api import Xalarm, alarm_bin2stu
 
 
 ALARM_REPORT_LEN = 8216
@@ -158,7 +156,7 @@ def xalarm_upgrade(clientId: int, id_filter: list) -> bool:
     if ALARM_REGISTER_INFO.thread_should_stop:
         sys.stderr.write("xalarm_upgrade: upgrade failed, alarm thread has stopped\n")
         return False
-     ALARM_REGISTER_INFO.id_filter = id_filter
+    ALARM_REGISTER_INFO.id_filter = id_filter
     return True
 
 
