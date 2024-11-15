@@ -30,20 +30,20 @@ class SlidingWindow:
         self._io_data_queue = []
         self._io_data_queue_abnormal_tag = []
 
+    def is_abnormal(self, data):
+        if self._avg_lim is not None and data < self._avg_lim:
+            return False
+        if self._ai_threshold is not None and data > self._ai_threshold:
+            return True
+        if self._abs_threshold is not None and data > self._abs_threshold:
+            return True
+
     def push(self, data: float):
         if len(self._io_data_queue) == self._queue_length:
             self._io_data_queue.pop(0)
             self._io_data_queue_abnormal_tag.pop(0)
         self._io_data_queue.append(data)
-        tag = False
-        if self._avg_lim is not None and data < self._avg_lim:
-            tag = False
-            self._io_data_queue_abnormal_tag.append(tag)
-            return tag
-        if self._ai_threshold is not None and data > self._ai_threshold:
-            tag = True
-        if self._abs_threshold is not None and data > self._abs_threshold:
-            tag = True
+        tag = self.is_abnormal(data)
         self._io_data_queue_abnormal_tag.append(tag)
         return tag
 
@@ -53,7 +53,7 @@ class SlidingWindow:
         self._ai_threshold = threshold
         self._io_data_queue_abnormal_tag.clear()
         for data in self._io_data_queue:
-            self._io_data_queue_abnormal_tag.append(data >= self._ai_threshold)
+            self._io_data_queue_abnormal_tag.append(self.is_abnormal(data))
 
     def is_slow_io_event(self, data):
         return False, None, None, None
