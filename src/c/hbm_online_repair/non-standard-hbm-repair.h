@@ -46,6 +46,23 @@
 #define ROW_FAULT         1
 #define SINGLE_ADDR_FAULT 6
 
+enum fault_field_index {
+    PROCESSOR_ID,
+    DIE_ID,
+    STACK_ID,
+    SID,
+    CHANNEL_ID,
+    BANKGROUP_ID,
+    BANK_ID,
+    ROW_ID,
+    COLUMN_ID,
+    ERROR_TYPE,
+    REPAIR_TYPE,
+    RESERVED,
+    CRC8,
+    FAULT_FIELD_NUM
+};
+
 #define FAULT_ADDR_PROCESSOR_ID_LEN  2
 #define FAULT_ADDR_DIE_ID_LEN        1
 #define FAULT_ADDR_STACK_ID_LEN      3
@@ -60,19 +77,7 @@
 #define FAULT_ADDR_RESERVED_LEN      2
 #define FAULT_ADDR_CRC8_LEN          8
 
-#define FAULT_ADDR_PROCESSOR_ID_MASK ((1 << FAULT_ADDR_PROCESSOR_ID_LEN ) - 1)
-#define FAULT_ADDR_DIE_ID_MASK       ((1 << FAULT_ADDR_DIE_ID_LEN       ) - 1)
-#define FAULT_ADDR_STACK_ID_MASK     ((1 << FAULT_ADDR_STACK_ID_LEN     ) - 1)
-#define FAULT_ADDR_SID_MASK          ((1 << FAULT_ADDR_SID_LEN          ) - 1)
-#define FAULT_ADDR_CHANNEL_ID_MASK   ((1 << FAULT_ADDR_CHANNEL_ID_LEN   ) - 1)
-#define FAULT_ADDR_BANKGROUP_ID_MASK ((1 << FAULT_ADDR_BANKGROUP_ID_LEN ) - 1)
-#define FAULT_ADDR_BANK_ID_MASK      ((1 << FAULT_ADDR_BANK_ID_LEN      ) - 1)
-#define FAULT_ADDR_ROW_ID_MASK       ((1 << FAULT_ADDR_ROW_ID_LEN       ) - 1)
-#define FAULT_ADDR_COLUMN_ID_MASK    ((1 << FAULT_ADDR_COLUMN_ID_LEN    ) - 1)
-#define FAULT_ADDR_ERROR_TYPE_MASK   ((1 << FAULT_ADDR_ERROR_TYPE_LEN   ) - 1)
-#define FAULT_ADDR_REPAIR_TYPE_MASK  ((1 << FAULT_ADDR_REPAIR_TYPE_LEN  ) - 1)
-#define FAULT_ADDR_RESERVED_MASK     ((1 << FAULT_ADDR_RESERVED_LEN     ) - 1)
-#define FAULT_ADDR_CRC8_MASK         ((1 << FAULT_ADDR_CRC8_LEN         ) - 1)
+#define FAULT_ADDR_FIELD_MASK(field_len) ((1 << field_len) - 1)
 
 #define EFI_VARIABLE_NON_VOLATILE       0x1
 #define EFI_VARIABLE_BOOTSERVICE_ACCESS 0x2

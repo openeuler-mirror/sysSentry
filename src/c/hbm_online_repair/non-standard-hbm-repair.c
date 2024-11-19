@@ -43,19 +43,28 @@ struct hisi_common_error_section {
 };
 
 struct fault_addr_info {
-    uint32_t processer_id;
-    uint32_t die_id;
-    uint32_t stack_id;
-    uint32_t sid;
-    uint32_t channel_id;
-    uint32_t bankgroup_id;
-    uint32_t bank_id;
-    uint32_t row_id;
-    uint32_t column_id;
-    uint32_t error_type;
-    uint32_t repair_type;
-    uint32_t reserved;
-    uint32_t crc8;
+    uint32_t fields[FAULT_FIELD_NUM];
+};
+
+typedef struct {
+    const char* name;
+    uint32_t len;
+} fault_field_meta;
+
+static const fault_field_meta field_meta[FAULT_FIELD_NUM] = {
+    {"processor_id", FAULT_ADDR_PROCESSOR_ID_LEN},
+    {"die_id", FAULT_ADDR_DIE_ID_LEN},
+    {"stack_id", FAULT_ADDR_STACK_ID_LEN},
+    {"sid", FAULT_ADDR_SID_LEN},
+    {"channel_id", FAULT_ADDR_CHANNEL_ID_LEN},
+    {"bankgroup_id", FAULT_ADDR_BANKGROUP_ID_LEN},
+    {"bank_id", FAULT_ADDR_BANK_ID_LEN},
+    {"row_id", FAULT_ADDR_ROW_ID_LEN},
+    {"column_id", FAULT_ADDR_COLUMN_ID_LEN},
+    {"error_type", FAULT_ADDR_ERROR_TYPE_LEN},
+    {"repair_type", FAULT_ADDR_REPAIR_TYPE_LEN},
+    {"reserved", FAULT_ADDR_RESERVED_LEN},
+    {"crc8", FAULT_ADDR_CRC8_LEN},
 };
 
 typedef struct {
@@ -87,7 +96,8 @@ char *flash_guids[FLASH_ENTRY_NUM] = {
     "6AED17B4-50C7-4a40-A5A7-48AF55DD8EAC"
 };
 
-static int get_guid_index(uint32_t socket_id, uint32_t error_type) {
+static int get_guid_index(uint32_t socket_id, uint32_t error_type)
+{
     if (2 * socket_id + error_type >= FLASH_ENTRY_NUM)
         return -1;
     return 2 * socket_id + error_type;
@@ -95,31 +105,18 @@ static int get_guid_index(uint32_t socket_id, uint32_t error_type) {
 
 static void parse_fault_addr_info(struct fault_addr_info* info_struct, unsigned long long fault_addr)
 {
-    info_struct->processer_id = fault_addr & FAULT_ADDR_PROCESSOR_ID_MASK;
-    fault_addr >>= FAULT_ADDR_PROCESSOR_ID_LEN;
-    info_struct->die_id = fault_addr & FAULT_ADDR_DIE_ID_MASK;
-    fault_addr >>= FAULT_ADDR_DIE_ID_LEN;
-    info_struct->stack_id = fault_addr & FAULT_ADDR_STACK_ID_MASK;
-    fault_addr >>= FAULT_ADDR_STACK_ID_LEN;
-    info_struct->sid = fault_addr & FAULT_ADDR_SID_MASK;
-    fault_addr >>= FAULT_ADDR_SID_LEN;
-    info_struct->channel_id = fault_addr & FAULT_ADDR_CHANNEL_ID_MASK;
-    fault_addr >>= FAULT_ADDR_CHANNEL_ID_LEN;
-    info_struct->bankgroup_id = fault_addr & FAULT_ADDR_BANKGROUP_ID_MASK;
-    fault_addr >>= FAULT_ADDR_BANKGROUP_ID_LEN;
-    info_struct->bank_id = fault_addr & FAULT_ADDR_BANK_ID_MASK;
-    fault_addr >>= FAULT_ADDR_BANK_ID_LEN;
-    info_struct->row_id = fault_addr & FAULT_ADDR_ROW_ID_MASK;
-    fault_addr >>= FAULT_ADDR_ROW_ID_LEN;
-    info_struct->column_id = fault_addr & FAULT_ADDR_COLUMN_ID_MASK;
-    fault_addr >>= FAULT_ADDR_COLUMN_ID_LEN;
-    info_struct->error_type = fault_addr & FAULT_ADDR_ERROR_TYPE_MASK;
-    fault_addr >>= FAULT_ADDR_ERROR_TYPE_LEN;
-    info_struct->repair_type = fault_addr & FAULT_ADDR_REPAIR_TYPE_MASK;
-    fault_addr >>= FAULT_ADDR_REPAIR_TYPE_LEN;
-    info_struct->reserved = fault_addr & FAULT_ADDR_RESERVED_MASK;
-    fault_addr >>= FAULT_ADDR_RESERVED_LEN;
-    info_struct->crc8 = (uint32_t)fault_addr;
+    for (int i = 0; i < FAULT_FIELD_NUM - 1; i++) {
+        const fault_field_meta* meta = &field_meta[i];
+        info_struct->fields[i] = (uint32_t)(fault_addr & FAULT_ADDR_FIELD_MASK(meta->len));
+        fault_addr >>= meta->len;
+    }
+    info_struct->fields[FAULT_FIELD_NUM - 1] = (uint32_t)fault_addr;
+}
+
+static void log_fault_addr_info(enum log_level level, const struct fault_addr_info* info_struct)
+{
+    for (int i = 0; i < FAULT_FIELD_NUM; i++)
+        log(level, "info_struct.%s is %u\n", field_meta[i].name, info_struct->fields[i]);
 }
 
 static bool is_variable_existing(char *name, char *guid)
@@ -317,7 +314,7 @@ static int write_fault_info_to_flash(const struct hisi_common_error_section *err
     // get guid
     struct fault_addr_info info_struct;
     parse_fault_addr_info(&info_struct, fault_addr);
-    guid_index = get_guid_index(info_struct.processer_id, info_struct.error_type);
+    guid_index = get_guid_index(info_struct.fields[PROCESSOR_ID], info_struct.fields[ERROR_TYPE]);
     if (guid_index < 0) {
         log(LOG_ERROR, "invalid fault info\n");
         return -1;
@@ -469,33 +466,21 @@ static int notice_BMC(const struct hisi_common_error_section *err, uint8_t repai
     struct fault_addr_info info_struct;
     parse_fault_addr_info(&info_struct, fault_addr);
 
-    log(LOG_DEBUG, "info_struct.processer_id is %u\n", info_struct.processer_id);
-    log(LOG_DEBUG, "info_struct.die_id is %u\n", info_struct.die_id);
-    log(LOG_DEBUG, "info_struct.stack_id is %u\n", info_struct.stack_id);
-    log(LOG_DEBUG, "info_struct.sid is %u\n", info_struct.sid);
-    log(LOG_DEBUG, "info_struct.channel_id is %u\n", info_struct.channel_id);
-    log(LOG_DEBUG, "info_struct.bankgroup_id is %u\n", info_struct.bankgroup_id);
-    log(LOG_DEBUG, "info_struct.bank_id is %u\n", info_struct.bank_id);
-    log(LOG_DEBUG, "info_struct.row_id is %u\n", info_struct.row_id);
-    log(LOG_DEBUG, "info_struct.column_id is %u\n", info_struct.column_id);
-    log(LOG_DEBUG, "info_struct.error_type is %u\n", info_struct.error_type);
-    log(LOG_DEBUG, "info_struct.repair_type is %u\n", info_struct.repair_type);
-    log(LOG_DEBUG, "info_struct.reserved is %u\n", info_struct.reserved);
-    log(LOG_DEBUG, "info_struct.crc8 is %u\n", info_struct.crc8);
+    log_fault_addr_info(LOG_DEBUG, &info_struct);
 
     snprintf(bmc_msg, sizeof(BMC_REPORT_FORMAT), BMC_REPORT_FORMAT,
         repair_type_code,
         repair_result_code,
         isolation_type_code,
-        info_struct.processer_id,
-        info_struct.die_id,
-        info_struct.stack_id,
-        info_struct.sid,
-        info_struct.channel_id,
-        info_struct.bankgroup_id,
-        info_struct.bank_id,
-        info_struct.row_id,
-        info_struct.column_id
+        info_struct.fields[PROCESSOR_ID],
+        info_struct.fields[DIE_ID],
+        info_struct.fields[STACK_ID],
+        info_struct.fields[SID],
+        info_struct.fields[CHANNEL_ID],
+        info_struct.fields[BANKGROUP_ID],
+        info_struct.fields[BANK_ID],
+        info_struct.fields[ROW_ID],
+        info_struct.fields[COLUMN_ID]
     );
 
     log(LOG_DEBUG, "Send msg to sysSentry, bmc msg is %s\n", bmc_msg);
