@@ -75,6 +75,8 @@ class InspectTask:
         self.onstart = False
         # ccnfig env_file
         self.env_file = ""
+        # env conf to popen arg
+        self.environ_conf = {}
         # start mode
         self.conflict = "up"
         # alarm id
@@ -112,7 +114,7 @@ class InspectTask:
                 logging.error("task %s log_file %s open failed", self.name, self.log_file)
                 logfile = subprocess.PIPE
             try:
-                child = subprocess.Popen(cmd_list, stdout=logfile, stderr=subprocess.STDOUT, close_fds=True)
+                child = subprocess.Popen(cmd_list, stdout=logfile, stderr=subprocess.STDOUT, close_fds=True, env=self.environ_conf)
             except OSError:
                 logging.error("task %s start Popen error, invalid cmd")
                 self.result_info["result"] = ResultLevel.FAIL.name
@@ -199,7 +201,7 @@ class InspectTask:
             return
 
         # read config
-        environ_conf = {}
+        self.environ_conf = dict(os.environ)
         with open(self.env_file, 'r') as file:
             for line in file:
                 line = line.strip()
@@ -210,11 +212,7 @@ class InspectTask:
                 if not key or not value:
                     logging.error("env_file = %s format is error, use default environ", self.env_file)
                     return
-                environ_conf[key] = value
-
-        # set environ
-        for key, value in environ_conf.items():
-            logging.debug("environ key=%s, value=%s", key, value)
-            os.environ[key] = value
+                self.environ_conf[key] = value
+                logging.debug("environ key=%s, value=%s", key, value)
 
         logging.debug("the subprocess=[%s] begin to run", self.name)
