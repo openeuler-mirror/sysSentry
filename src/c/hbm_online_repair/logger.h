@@ -3,10 +3,12 @@
 
 #define TOOL_NAME "hbm_online_repair"
 
-#define LOG_DEBUG   0
-#define LOG_INFO    1
-#define LOG_WARNING 2
-#define LOG_ERROR   3
+enum log_level {
+    LOG_DEBUG,
+    LOG_INFO,
+    LOG_WARNING,
+    LOG_ERROR
+};
 
 extern int global_level_setting;
 
