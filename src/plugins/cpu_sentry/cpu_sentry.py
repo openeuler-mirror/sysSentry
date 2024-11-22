@@ -19,9 +19,10 @@ import os
 
 from syssentry.utils import run_cmd, run_popen, get_process_pid
 from syssentry.result import ResultLevel, report_result
-from syssentry.sentry_config import CpuPluginsParamsConfig
+from syssentry.sentry_config import CpuPluginsParamsConfig, get_log_level
 
 CPU_SENTRY_PARAM_CONFIG = "/etc/sysSentry/plugins/cpu_sentry.ini"
+CPU_SENTRY_LOG_FILE = "/var/log/sysSentry/cpu_sentry.log"
 
 # Inspection commands running at the bottom layer
 LOW_LEVEL_INSPECT_CMD = "cat-cli"
@@ -167,6 +168,11 @@ def kill_process(signum, _f, cpu_sentry_obj):
 
 def main():
     """main function"""
+    log_level = get_log_level(filename=CPU_SENTRY_PARAM_CONFIG)
+    log_format = "%(asctime)s - %(levelname)7s - [%(filename)s:%(lineno)d] - %(message)s"
+    logging.basicConfig(filename=CPU_SENTRY_LOG_FILE, level=log_level, format=log_format)
+    os.chmod(CPU_SENTRY_LOG_FILE, 0o600)
+
     cpu_sentry_task = CpuSentry()
     cpu_params_config_parser = CpuPluginsParamsConfig(CPU_SENTRY_PARAM_CONFIG, "args")
 
