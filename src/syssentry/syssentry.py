@@ -44,7 +44,7 @@ clientId = -1
 
 CPU_EXIST = True
 try:
-    from .cpu_alarm import cpu_alarm_recv
+    from sentryPlugins.cpu_sentry.cpu_alarm import cpu_alarm_recv
 except ImportError:
     CPU_EXIST = False
 

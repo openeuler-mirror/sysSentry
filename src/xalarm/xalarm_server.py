@@ -19,7 +19,6 @@ import os
 import logging
 import select
 import threading
-from struct import error as StructParseError
 
 from .xalarm_api import alarm_bin2stu
 from .xalarm_transfer import (

@@ -11,7 +11,6 @@
 import json
 import logging
 import sys
-import time
 
 from .utils import is_abnormal, get_win_data, log_slow_win
 from sentryCollector.collect_plugin import is_iocollect_valid, get_io_data, Result_Messages, get_disk_type, Disk_Type

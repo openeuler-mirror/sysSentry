@@ -12,15 +12,11 @@
 """
 main loop for collect.
 """
-import sys
+
 import signal
 import traceback
-import socket
 import os
-import json
 import logging
-import fcntl
-import select
 
 import threading
 

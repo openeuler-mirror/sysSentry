@@ -24,7 +24,6 @@ from .task_map import TasksMap, ONESHOT_TYPE, PERIOD_TYPE
 from .cron_process import PeriodTask
 from .mod_status import set_task_status
 
-from xalarm.register_xalarm import MIN_ALARM_ID, MAX_ALARM_ID
 ONESHOT_CONF = 'oneshot'
 PERIOD_CONF = 'period'
 
