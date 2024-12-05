@@ -79,7 +79,7 @@ class PeriodTask(InspectTask):
             logfile = subprocess.PIPE
         try:
             child = subprocess.Popen(cmd_list, stdout=logfile,
-                                     stderr=subprocess.STDOUT, close_fds=True)
+                                     stderr=subprocess.STDOUT, close_fds=True, env=self.environ_conf)
         except OSError:
             self.result_info["result"] = ResultLevel.FAIL.name
             self.result_info["error_msg"] = RESULT_LEVEL_ERR_MSG_DICT.get(ResultLevel.FAIL.name)
