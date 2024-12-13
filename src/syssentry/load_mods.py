@@ -238,6 +238,7 @@ def load_tasks():
         return "failed", ""
 
     mod_files = os.listdir(TASKS_STORAGE_PATH)
+    mod_files.sort()
     for mod_file in mod_files:
         logging.debug("find mod, path is %s", mod_file)
         if not mod_file.endswith(MOD_FILE_SUFFIX):
