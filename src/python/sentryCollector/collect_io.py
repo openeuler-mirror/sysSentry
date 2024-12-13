@@ -269,6 +269,8 @@ class CollectIo():
                     if len(data_list) != 6:
                         continue
                     stage, finish_count, latency, io_dump, io_type ,disk_name = data_list
+                    if stage not in EBPF_STAGE_LIST:
+                        continue
                     if disk_name not in self.window_value:
                         continue
                     io_type = self.get_ebpf_io_type(io_type)

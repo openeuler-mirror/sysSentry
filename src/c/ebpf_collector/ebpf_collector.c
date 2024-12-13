@@ -11,6 +11,7 @@
 #include <time.h> 
 #include <stdlib.h> 
 #include <string.h> 
+#include <stdarg.h>
 #include <linux/sysinfo.h> 
 #include <sys/resource.h> 
 #include <bpf/bpf.h>
@@ -36,10 +37,24 @@
 #define TAG_RES_2    (map_fd[13])
 #define BPF_FILE   "/usr/lib/ebpf_collector.bpf.o"
 
+#define MAX_LINE_LENGTH 1024
+#define MAX_SECTION_NAME_LENGTH 256
+#define CONFIG_FILE "/etc/sysSentry/collector.conf"
+
 typedef struct {
     int major;
     int minor;
 } DeviceInfo;
+
+typedef enum {
+    LOG_LEVEL_NONE,
+    LOG_LEVEL_DEBUG,
+    LOG_LEVEL_INFO,
+    LOG_LEVEL_WARNING,
+    LOG_LEVEL_ERROR
+} LogLevel;
+
+LogLevel currentLogLevel = LOG_LEVEL_INFO;
 
 static volatile bool exiting; 
 
@@ -152,24 +167,28 @@ static int print_map_res(struct bpf_map *map_res, char *stage, int *map_size, in
     struct stage_data counter; 
     int key = 0;
 
+    logMessage(LOG_LEVEL_DEBUG, "print_map_res map_size: %d\n", map_size);
     for (key = 0; key < map_size; key++) {
         int err = bpf_map_lookup_elem(map_res, &key, &counter); 
         if (err < 0) { 
-            fprintf(stderr, "failed to lookup %s map_res: %d\n", stage, err); 
+            logMessage(LOG_LEVEL_ERROR, "failed to lookup %s map_res: %d\n", stage, err);
             return -1; 
         }
         
         size_t length = strlen(counter.io_type);
         char io_type;
         if (length > 0) {
+            logMessage(LOG_LEVEL_DEBUG, "io_type have value.\n");
             io_type = counter.io_type[0];
         } else {
+            logMessage(LOG_LEVEL_DEBUG, "io_type not value.\n");
             io_type = NULL;
         }
         int major = counter.major;
         int first_minor = counter.first_minor;
         dev_t dev = makedev(major, first_minor);    
         char *device_name = find_device_name(dev);
+        logMessage(LOG_LEVEL_DEBUG, "device_name: %s\n", device_name);
         if (device_name && io_type) {
             printf("%-7s %10llu %10llu %d %c %s\n",
                 stage, 
@@ -195,11 +214,106 @@ int init_map(int *map_fd, const char *map_name, int *map_size, DeviceInfo *devic
         init_data.major = devices[i].major;
         init_data.first_minor = devices[i].minor;
         if (bpf_map_update_elem(map_fd, &i, &init_data, BPF_ANY) != 0) {
-            printf("Failed to initialize map %s at index %d\n", map_name, i);
+            logMessage(LOG_LEVEL_ERROR, "Failed to initialize map %s at index %d\n", map_name, i);
             return 1;
         }
     }
 
+    return 0;
+}
+
+char *read_config_value(const char *file, const char *section, const char *key) {
+    FILE *fp = fopen(file, "r");
+    if (fp == NULL) {
+        logMessage(LOG_LEVEL_ERROR, "Failed to open config file.\n");
+        return NULL;
+    }
+
+    char line[MAX_LINE_LENGTH];
+    char current_section[MAX_SECTION_NAME_LENGTH] = {0};
+    char *value = NULL;
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        line[strcspn(line, "\n")] = 0;
+
+        if (line[0] == '\0' || line[0] == ';' || line[0] == '#') {
+            continue;
+        }
+
+        if (line[0] == '[') {
+            sscanf(line, "[%255[^]]", current_section);
+            continue;
+        }
+
+        if (strcmp(current_section, section) == 0) {
+            char *delimiter = "=";
+            char *token = strtok(line, delimiter);
+            if (token != NULL) {
+                if (strcmp(token, key) == 0) {
+                    token = strtok(NULL, delimiter);
+                    if (token != NULL) {
+                        value = strdup(token);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fclose(fp);
+    return value;
+}
+
+void setLogLevel(const char *levelStr) {
+    if (strcmp(levelStr, "info") == 0) {
+        currentLogLevel = LOG_LEVEL_INFO;
+    }
+    else if (strcmp(levelStr, "warning") == 0) {
+        currentLogLevel = LOG_LEVEL_WARNING;
+    }
+    else if (strcmp(levelStr, "error") == 0) {
+        currentLogLevel = LOG_LEVEL_ERROR;
+    }
+    else if (strcmp(levelStr, "debug") == 0) {
+        currentLogLevel = LOG_LEVEL_DEBUG;
+    }
+    else if (strcmp(levelStr, "none") == 0) {
+        currentLogLevel = LOG_LEVEL_NONE;
+    }
+    else {
+        logMessage(LOG_LEVEL_ERROR, "unknown log level: %s\n", levelStr);
+    }
+}
+
+void logMessage(LogLevel level, const char *format, ...){
+    if (level >= currentLogLevel) {
+        va_list args;
+        va_start(args, format);
+        vprintf(format, args);
+        va_end(args);
+    }
+}
+
+int check_for_device(const char *device_name) {
+    char path[256];
+    snprintf(path, sizeof(path), "/sys/block/%s", device_name);
+
+    DIR *dir = opendir(path);
+    if (dir == NULL) {
+        return 0; 
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        struct stat statbuf;
+        if (stat(path, &statbuf) == 0) {
+            if (S_ISDIR(statbuf.st_mode)) {
+                closedir(dir);
+                return 1;
+            }
+        }
+    }
+    closedir(dir);
     return 0;
 }
 
@@ -222,13 +336,29 @@ int main(int argc, char **argv) {
     struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY}; 
     setrlimit(RLIMIT_MEMLOCK, &r); 
 
+    char *level = read_config_value(CONFIG_FILE, "log", "level");
+    if (level != NULL) {
+        if (level[strlen(level) - 1] == '\r') {
+            size_t len = strlen(level);
+            level[len - 1] = '\0'; 
+        }
+        setLogLevel(level);
+        free(level);
+    } else {
+        logMessage(LOG_LEVEL_INFO, "the log level is incorrectly configured. the default log level is info.\n");
+    }
+    logMessage(LOG_LEVEL_DEBUG, "finish config parse.\n");
+
     err = argp_parse(&argp, argc, argv, 0, NULL, NULL); 
-    if (err) 
+    if (err) {
+        logMessage(LOG_LEVEL_ERROR, "argp parse failed.\n");
         return err; 
+    }
 
     snprintf(filename, sizeof(filename), BPF_FILE);
 
-    if (load_bpf_file(filename)) { 
+    if (load_bpf_file(filename)) {
+        logMessage(LOG_LEVEL_ERROR, "load_bpf_file failed.\n");
         return 1; 
     }
 
@@ -236,39 +366,52 @@ int main(int argc, char **argv) {
 
     dir = opendir("/dev");
     if (dir == NULL) {
-        printf("Failed to open /dev directory");
+        logMessage(LOG_LEVEL_ERROR, "Failed to open /dev directory.\n");
         return EXIT_FAILURE;
     }
 
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_BLK) { 
-            snprintf(path, sizeof(path), "/dev/%s", entry->d_name);
-            struct stat statbuf;
-            if (lstat(path, &statbuf) == 0) {
-                if (S_ISBLK(statbuf.st_mode)) {
-                    devices[device_count].major = major(statbuf.st_rdev);
-                    devices[device_count].minor = minor(statbuf.st_rdev);
-                    device_count++;
-                    if (device_count >= MAP_SIZE) {
-                        break;
-                    }
-                }
-            }
+        if (entry->d_type != DT_BLK) {
+            continue;
+        }
+        snprintf(path, sizeof(path), "/dev/%s", entry->d_name);
+        struct stat statbuf;
+        if (lstat(path, &statbuf) != 0 && !S_ISBLK(statbuf.st_mode)) {
+            continue;
+        }
+        if (!strncmp(entry->d_name, "dm-", 3) || !strncmp(entry->d_name, "loop", 4) ||
+            !strncmp(entry->d_name, "md", 2)) {
+            continue;
+        }
+        if (!check_for_device(entry->d_name)) {
+            continue;
+        }
+
+        devices[device_count].major = major(statbuf.st_rdev);
+        devices[device_count].minor = minor(statbuf.st_rdev);
+        device_count++;
+        if (device_count >= MAP_SIZE) {
+            logMessage(LOG_LEVEL_DEBUG, " device_count moren than MAP_SIZE.\n");
+            break;
         }
     }
 
     closedir(dir);
 
     if (init_map(BLK_RES, "blk_res_map", device_count, devices) != 0) {
+        logMessage(LOG_LEVEL_ERROR, "blk_res_map failed.\n");
         return 1;
     }
     if (init_map(BIO_RES, "blo_res_map", device_count, devices) != 0) {
+        logMessage(LOG_LEVEL_ERROR, "blo_res_map failed.\n");
         return 1;
     }
     if (init_map(WBT_RES, "wbt_res_map", device_count, devices) != 0) {
+        logMessage(LOG_LEVEL_ERROR, "wbt_res_map failed.\n");
         return 1;
     }
     if (init_map(TAG_RES, "tag_res_map", device_count, devices) != 0) {
+        logMessage(LOG_LEVEL_ERROR, "tag_res_map failed.\n");
         return 1;
     }
 
@@ -279,31 +422,40 @@ int main(int argc, char **argv) {
         int io_dump_blk[MAP_SIZE] = {0}; 
         update_io_dump(BLK_RES_2, io_dump_blk, device_count,"rq_driver"); 
         err = print_map_res(BLK_RES, "rq_driver", device_count, io_dump_blk); 
-        if (err) 
+        if (err) {
+            logMessage(LOG_LEVEL_ERROR, "print_map_res rq_driver error.\n");
             break; 
+        }
 
         int io_dump_bio[MAP_SIZE] = {0}; 
         update_io_dump(BIO_RES_2, io_dump_bio, device_count,"bio");
         err = print_map_res(BIO_RES, "bio", device_count, io_dump_bio); 
-        if (err) 
+        if (err) {
+            logMessage(LOG_LEVEL_ERROR, "print_map_res bio error.\n");
             break; 
+        }
 
         int io_dump_tag[MAP_SIZE] = {0}; 
         update_io_dump(TAG_RES_2, io_dump_tag, device_count,"gettag");        
         err = print_map_res(TAG_RES, "gettag", device_count, io_dump_tag); 
-        if (err)	
+        if (err) {
+            logMessage(LOG_LEVEL_ERROR, "print_map_res gettag error.\n");
             break; 
+        }
 
         int io_dump_wbt[MAP_SIZE] = {0}; 
         update_io_dump(WBT_RES_2, io_dump_wbt, device_count,"wbt");        
         err = print_map_res(WBT_RES, "wbt", device_count, io_dump_wbt); 
-        if (err) 
+        if (err) {
+            logMessage(LOG_LEVEL_ERROR, "print_map_res wbt error.\n");
             break; 
+        }
 
-        if (exiting) 
+        if (exiting) {
+            logMessage(LOG_LEVEL_DEBUG, "exit program.\n");
             break; 
+        }
     }
 
     return -err; 
 }
-
