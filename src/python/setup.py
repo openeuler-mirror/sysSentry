@@ -29,7 +29,6 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'cpu_sentry=syssentry.cpu_sentry:main',
             'syssentry=syssentry.syssentry:main',
             'xalarmd=xalarm.xalarm_daemon:alarm_process_create',
             'sentryCollector=sentryCollector.collectd:main',
