@@ -11,6 +11,8 @@
 #define DEFAULT_LOG_LEVEL LOG_INFO
 #define DEFAULT_PAGE_ISOLATION_THRESHOLD 3355443
 
+#define DRIVER_COMMAND_LEN 32
+
 int global_level_setting;
 int page_isolation_threshold;
 
@@ -57,25 +59,31 @@ int execute_command(const char *command)
         return -1;
     }
 
-    ret = WEXITSTATUS(ret);
+    ret = -WEXITSTATUS(ret);
     log(LOG_DEBUG, "command %s exited with status: %d\n", command, ret);
     return ret;
 }
 
-int load_required_driver(void)
+int handle_driver(char* driver_name, bool load)
 {
     int ret;
-    ret = execute_command("modprobe hisi_mem_ras 2>&1");
-    if (ret < 0) {
-        log(LOG_ERROR, "load repair driver failed\n");
+    char command[DRIVER_COMMAND_LEN];
+
+    snprintf(command, DRIVER_COMMAND_LEN, "%s %s 2>&1", load ? "modprobe" : "rmmod", driver_name);
+    ret = execute_command(command);
+    log(ret < 0 ? LOG_ERROR : LOG_DEBUG, "%s %s %s\n", load ? "load" : "unload", driver_name, ret < 0 ? "failed" : "success");
+    return ret;
+}
+
+int handle_all_drivers(bool load)
+{
+    int ret;
+
+    ret = handle_driver("hisi_mem_ras", load);
+    if (ret < 0)
         return ret;
-    }
-    ret = execute_command("modprobe page_eject 2>&1");
-    if (ret < 0) {
-        log(LOG_ERROR, "load page driver failed\n");
-        return ret;
-    }
-    log(LOG_INFO, "load required driver success\n");
+
+    ret = handle_driver("page_eject", load);
     return ret;
 }
 
@@ -116,21 +124,21 @@ int main(int argc, char *argv[])
 
     hbm_param_init();
 
-    ret = load_required_driver();
+    ret = handle_all_drivers(true);
     if (ret < 0) {
-        log(LOG_DEBUG, "load required driver failed\n");
         return ret;
     }
 
     struct ras_events *ras = init_trace_instance();
-    if (!ras)
-        return -1;
+    if (!ras) {
+        ret = -1;
+        goto err_unload;
+    }
 
     ret = toggle_ras_event(ras->tracing, "ras", "non_standard_event", 1);
     if (ret < 0) {
         log(LOG_WARNING, "unable to enable ras non_standard_event.\n");
-        free(ras);
-        return -1;
+        goto err_free;
     }
 
     get_flash_total_size();
@@ -142,6 +150,9 @@ int main(int argc, char *argv[])
         log(LOG_WARNING, "unable to disable ras non_standard_event.\n");
     }
 
+err_free:
     free(ras);
+err_unload:
+    handle_all_drivers(false);
     return ret;
 }
