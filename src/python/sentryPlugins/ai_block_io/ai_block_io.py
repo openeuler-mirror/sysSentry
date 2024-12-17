@@ -208,6 +208,11 @@ class SlowIODetection:
                 tmp_alarm_content = alarm_content.copy()
                 del tmp_alarm_content["details"]
                 logging.warning("[SLOW IO] " + str(tmp_alarm_content))
+                logging.warning(f'[SLOW IO] disk: {str(tmp_alarm_content.get("driver_name"))}, '
+                        f'stage: {str(tmp_alarm_content.get("driver_name"))}, '
+                        f'iotype: {str(tmp_alarm_content.get("io_type"))}, '
+                        f'type: {str(tmp_alarm_content.get("alarm_type"))}, '
+                        f'reason: {str(tmp_alarm_content.get("reason"))}')
                 logging.warning(f"latency: " + str(alarm_content.get("details").get("latency")))
                 logging.warning(f"iodump: " + str(alarm_content.get("details").get("iodump")))
 
