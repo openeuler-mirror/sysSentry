@@ -2,6 +2,7 @@
 #include <sys/un.h>
 #include <regex.h>
 #include <stdbool.h>
+#include <string.h>
 #include <limits.h>
 #include <unistd.h>
 #include "cli_common.h"
@@ -13,11 +14,13 @@
 void checkset_cpu_usage_percentage(char *getopt_optarg, catcli_request_body *p_request_body, struct option_errs *errs)
 {
     long cpu_utility = strtol(getopt_optarg, NULL, DECIMAL);
-    if (cpu_utility <= 0 || cpu_utility > CPU_USAGE_PERCENTAGE_MAX) {
+    if (cpu_utility <= 0 || cpu_utility > CPU_USAGE_PERCENTAGE_MAX || strchr(getopt_optarg, '.') != NULL) {
         strncpy(errs->patrol_module_err,
             "\"cpu_utility \" must be an integer greater in the range (0,100],correct \"-u, --cpu_utility\"\n", MAX_ERR_LEN);
+    	p_request_body->cpu_utility = 0;
+    } else {
+    	p_request_body->cpu_utility = (int)cpu_utility;
     }
-    p_request_body->cpu_utility = (int)cpu_utility;
 }
 
 void checkset_cpulist(char *getopt_optarg, catcli_request_body *p_request_body, struct option_errs *errs)
@@ -68,12 +71,13 @@ void checkset_cpulist(char *getopt_optarg, catcli_request_body *p_request_body, 
 void checkset_patrol_time(char *getopt_optarg, catcli_request_body *p_request_body, struct option_errs *errs)
 {
     long second = strtol(getopt_optarg, NULL, DECIMAL);
-    if (second <= 0 || second > INT_MAX) {
+    if (second <= 0 || second > INT_MAX || strchr(getopt_optarg, '.') != NULL) {
         strncpy(errs->patrol_time_err,
             "\"patrol_second\" must be a number in the range of (0,INT_MAX] ,correct \"-t, --patrol_second\"\n",
             MAX_ERR_LEN);
+    } else {
+    	p_request_body->patrol_second = (int)second;
     }
-    p_request_body->patrol_second = (int)second;
 }
 
 void checkset_patrol_type(char *getopt_optarg, catcli_request_body *p_request_body, struct option_errs *errs)

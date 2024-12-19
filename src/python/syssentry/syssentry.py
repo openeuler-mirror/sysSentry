@@ -23,7 +23,7 @@ import fcntl
 
 import select
 
-from .sentry_config import SentryConfig
+from .sentry_config import SentryConfig, get_log_level
 
 from .task_map import TasksMap
 from .global_values import SENTRY_RUN_DIR, CTL_SOCKET_PATH, SENTRY_RUN_DIR_PERM
@@ -36,8 +36,20 @@ from .heartbeat import (heartbeat_timeout_chk, heartbeat_fd_create,
 from .result import RESULT_MSG_HEAD_LEN, RESULT_MSG_MAGIC_LEN, RESULT_MAGIC
 from .result import RESULT_LEVEL_ERR_MSG_DICT, ResultLevel
 from .utils import get_current_time_string
-from .cpu_alarm import (upload_bmc, check_fixed_param, parser_cpu_alarm_info,
-                        Type, Module, TransTo, MIN_DATA_LEN, MAX_DATA_LEN)
+
+
+CPU_EXIST = True
+try:
+    from .cpu_alarm import cpu_alarm_recv
+except ImportError:
+    CPU_EXIST = False
+
+BMC_EXIST = True
+try:
+    from .bmc_alarm import bmc_recv
+except ImportError:
+    BMC_EXIST = False
+
 
 INSPECTOR = None
 
@@ -76,46 +88,10 @@ PID_FILE_FLOCK = None
 RESULT_SOCKET_PATH = "/var/run/sysSentry/result.sock"
 
 CPU_ALARM_SOCKET_PATH = "/var/run/sysSentry/report.sock"
-PARAM_REP_LEN = 3
-PARAM_TYPE_LEN = 1
-PARAM_MODULE_LEN = 1
-PARAM_TRANS_TO_LEN = 2
-PARAM_DATA_LEN = 3
 
+BMC_SOCKET_PATH = "/var/run/sysSentry/bmc.sock"
 
-def cpu_alarm_recv(server_socket: socket.socket):
-    try:
-        client_socket, _ = server_socket.accept()
-        logging.debug("cpu alarm fd listen ok")
-
-        data = client_socket.recv(PARAM_REP_LEN)
-        check_fixed_param(data, "REP")
-
-        data = client_socket.recv(PARAM_TYPE_LEN)
-        _type = check_fixed_param(data, Type)
-
-        data = client_socket.recv(PARAM_MODULE_LEN)
-        module = check_fixed_param(data, Module)
-
-        data = client_socket.recv(PARAM_TRANS_TO_LEN)
-        trans_to = check_fixed_param(data, TransTo)
-
-        data = client_socket.recv(PARAM_DATA_LEN)
-        data_len = check_fixed_param(data, (MIN_DATA_LEN, MAX_DATA_LEN))
-
-        data = client_socket.recv(data_len)
-
-        command, event_type, socket_id, core_id = parser_cpu_alarm_info(data)
-    except socket.error:
-        logging.error("socket error")
-        return
-    except (ValueError, OSError, UnicodeError, TypeError, NotImplementedError):
-        logging.error("server recv cpu alarm msg failed!")
-        client_socket.close()
-        return
-
-    upload_bmc(_type, module, command, event_type, socket_id, core_id)
-
+fd_list = []
 
 def msg_data_process(msg_data):
     """message data process"""
@@ -136,15 +112,16 @@ def msg_data_process(msg_data):
 
     cmd_type = data_struct['type']
     if cmd_type not in type_func and cmd_type not in type_func_void:
-        logging.error("recv invaild cmd type: %s", cmd_type)
-        return "Invaild cmd type"
+        logging.error("recv invalid cmd type: %s", cmd_type)
+        return "Invalid cmd type"
 
     cmd_param = data_struct['data']
-    logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, cmd_param)
+    logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, str(cmd_param))
     if cmd_type in type_func:
         ret, res_data = type_func[cmd_type](cmd_param)
     else:
         ret, res_data = type_func_void[cmd_type]()
+    logging.debug("msg_data_process res_data:%s",str(res_data))
     res_msg_struct = {"ret": ret, "data": res_data}
     res_msg = json.dumps(res_msg_struct)
 
@@ -358,6 +335,41 @@ def cpu_alarm_fd_create():
 
     return cpu_alarm_fd
 
+def bmc_fd_create():
+    """create bmc fd"""
+    if not os.path.exists(SENTRY_RUN_DIR):
+        logging.debug("%s not exist", SENTRY_RUN_DIR)
+        return None
+
+    try:
+        bmc_fd = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    except socket.error:
+        logging.error("bmc fd create failed")
+        return None
+
+    bmc_fd.setblocking(False)
+    if os.path.exists(BMC_SOCKET_PATH):
+        os.remove(BMC_SOCKET_PATH)
+
+    try:
+        bmc_fd.bind(BMC_SOCKET_PATH)
+    except OSError:
+        logging.error("bmc fd bind failed")
+        bmc_fd.close()
+        return None
+
+    os.chmod(BMC_SOCKET_PATH, 0o600)
+    try:
+        bmc_fd.listen(5)
+    except OSError:
+        logging.error("bmc fd listen failed")
+        bmc_fd.close()
+        return None
+
+    logging.debug("%s bind and listen", BMC_SOCKET_PATH)
+
+    return bmc_fd
+
 
 def server_result_recv(server_socket: socket.socket):
     """server result receive"""
@@ -403,7 +415,7 @@ def server_result_recv(server_socket: socket.socket):
     try:
         client_socket.send(process_plugins_result.encode())
     except OSError:
-        logging.warning("server send reponse to plugins failed")
+        logging.warning("server send response to plugins failed")
     finally:
         client_socket.close()
     return
@@ -431,37 +443,57 @@ def server_result_fd_create():
     return server_result_fd
 
 
+def close_all_fd():
+    for fd in fd_list:
+        fd.close()
+
+
 def main_loop():
     """main loop"""
+
     server_fd = server_fd_create()
     if not server_fd:
+        close_all_fd()
         return
+    fd_list.append(server_fd)
 
     server_result_fd = server_result_fd_create()
     if not server_result_fd:
-        server_fd.close()
+        close_all_fd()
         return
+    fd_list.append(server_result_fd)
 
     heartbeat_fd = heartbeat_fd_create()
     if not heartbeat_fd:
-        server_fd.close()
-        server_result_fd.close()
+        close_all_fd()
         return
+    fd_list.append(heartbeat_fd)
 
     cpu_alarm_fd = cpu_alarm_fd_create()
     if not cpu_alarm_fd:
-        server_fd.close()
-        heartbeat_fd.close()
-        server_result_fd.close()
+        close_all_fd()
         return
+    fd_list.append(cpu_alarm_fd)
+
+    bmc_fd = bmc_fd_create()
+    if not bmc_fd:
+        close_all_fd()
+        return
+    fd_list.append(bmc_fd)
 
     epoll_fd = select.epoll()
-    epoll_fd.register(server_fd.fileno(), select.EPOLLIN)
-    epoll_fd.register(server_result_fd.fileno(), select.EPOLLIN)
-    epoll_fd.register(heartbeat_fd.fileno(), select.EPOLLIN)
-    epoll_fd.register(cpu_alarm_fd.fileno(), select.EPOLLIN)
+    for fd in fd_list:
+        epoll_fd.register(fd.fileno(), select.EPOLLIN)
 
     logging.debug("start main loop")
+    # onstart_tasks_handle()
+    for task_type in TasksMap.tasks_dict:
+        for task_name in TasksMap.tasks_dict.get(task_type):
+            task = TasksMap.tasks_dict.get(task_type).get(task_name)
+            if not task:
+                continue
+            task.onstart_handle()
+
     while True:
         try:
             events_list = epoll_fd.poll(SERVER_EPOLL_TIMEOUT)
@@ -472,8 +504,10 @@ def main_loop():
                     server_result_recv(server_result_fd)
                 elif event_fd == heartbeat_fd.fileno():
                     heartbeat_recv(heartbeat_fd)
-                elif event_fd == cpu_alarm_fd.fileno():
+                elif CPU_EXIST and event_fd == cpu_alarm_fd.fileno():
                     cpu_alarm_recv(cpu_alarm_fd)
+                elif BMC_EXIST and event_fd == bmc_fd.fileno():
+                    bmc_recv(bmc_fd)
                 else:
                     continue
 
@@ -587,12 +621,16 @@ def main():
     if not os.path.exists(SENTRY_RUN_DIR):
         os.mkdir(SENTRY_RUN_DIR)
         os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
+
+    log_level = get_log_level()
+    log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+
+    logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=log_level, format=log_format)
+    os.chmod(SYSSENTRY_LOG_FILE, 0o600)
+
     if not chk_and_set_pidfile():
         logging.error("get pid file lock failed, exist")
         sys.exit(17)
-
-    logging.basicConfig(filename=SYSSENTRY_LOG_FILE, level=logging.INFO)
-    os.chmod(SYSSENTRY_LOG_FILE, 0o600)
 
     try:
         signal.signal(signal.SIGINT, sig_handler)
@@ -600,7 +638,7 @@ def main():
         signal.signal(signal.SIGHUP, sig_handler)
         signal.signal(signal.SIGCHLD, sigchld_handler)
 
-        logging.debug("finish main parse_args")
+        logging.info("finish main parse_args")
 
         _ = SentryConfig.init_param()
         TasksMap.init_task_map()

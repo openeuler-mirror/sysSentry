@@ -144,6 +144,7 @@ def period_tasks_handle():
 
         if not task.onstart:
             logging.debug("period onstart not enabled, task: %s", task.name)
+            task.runtime_status = EXITED_STATUS
             continue
 
         if task.runtime_status == WAITING_STATUS and \

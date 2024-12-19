@@ -30,9 +30,9 @@ typedef enum {
 #define CAT_LOG_W(...) CAT_LOG("WARN", __VA_ARGS__)
 #define CAT_LOG_E(...) CAT_LOG("ERROR", __VA_ARGS__)
 
-#define MAX_ISOLATE_CORES_PER_PATROL 64 // 一次巡检最大支持隔离故障核数量，一次巡检同时检测到2个以上故障核的概率非常低
+#define MAX_CPU_CORES 4096
 typedef struct {
-    unsigned int order_list[MAX_ISOLATE_CORES_PER_PATROL];
+    unsigned int order_list[MAX_CPU_CORES];
     unsigned short current_nums;
 } core_list_st;
 

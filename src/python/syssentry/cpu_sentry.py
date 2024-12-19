@@ -26,6 +26,8 @@ CPU_SENTRY_PARAM_CONFIG = "/etc/sysSentry/plugins/cpu_sentry.ini"
 # Inspection commands running at the bottom layer
 LOW_LEVEL_INSPECT_CMD = "cat-cli"
 
+# max length of msg in details
+DETAILS_LOG_MSG_MAX_LEN = 255
 
 class CpuSentry:
     """
@@ -87,14 +89,17 @@ class CpuSentry:
         }
 
     def handle_cpu_output(self, stdout: str):
-        if "<ERROR>" in stdout:
+        if not stdout:
+            logging.error("%s process output is None, it may be killed!", LOW_LEVEL_INSPECT_CMD)
             self.send_result["result"] = ResultLevel.FAIL
-            self.send_result["details"]["code"] = 1004
-            self.send_result["details"]["msg"] = stdout.split("\n")[0]
+            self.send_result["details"]["code"] = 1005
+            self.send_result["details"]["msg"] = "cpu_sentry task is killed!"
             return
+
         out_split = stdout.split("\n")
-        isolated_cores_number = 0
+        isolated_cores_number = -1
         found_fault_cores_list = []
+        error_msg_list = []
         for out_line_i in out_split:
             if "handle_patrol_result: Found fault cores" in out_line_i:
                 cores_number_tmp = out_line_i.split("Found fault cores:")[1]
@@ -106,9 +111,25 @@ class CpuSentry:
             elif out_line_i.startswith('<ISOLATED-CORE-LIST>'):
                 self.send_result["details"]["isolated_cpu_list"] = out_line_i.split(':')[1]
                 break
+            elif "ERROR" in out_line_i:
+                logging.error("[cat-cli error] - %s\n", out_line_i)
+                error_msg_list.append(out_line_i)
 
         found_fault_cores_number = len(set(found_fault_cores_list))
-        if found_fault_cores_number == 0:
+        if isolated_cores_number == -1:
+            self.send_result["result"] = ResultLevel.FAIL
+            self.send_result["details"]["code"] = 1004
+
+            send_error_msg = ""
+            # Remove ANSI escape sequences
+            for error_info in error_msg_list:
+                if error_info.startswith("\u001b"):
+                    ansi_escape = r'\x1b\[([0-9]+)(;[0-9]+)*([A-Za-z])'
+                    error_info = re.sub(ansi_escape, '', error_info)
+                if len(send_error_msg) + len(error_info) < DETAILS_LOG_MSG_MAX_LEN:
+                    send_error_msg += ";" + error_info
+            self.send_result["details"]["msg"] = send_error_msg
+        elif found_fault_cores_number == 0:
             self.send_result["details"]["code"] = 0
             self.send_result["result"] = ResultLevel.PASS
         elif 0 in found_fault_cores_list:
@@ -133,6 +154,7 @@ class CpuSentry:
 
         result_level = self.send_result.get("result", ResultLevel.FAIL)
         report_result(task_name, result_level, details)
+        self.init_send_result()
 
 def kill_process(signum, _f, cpu_sentry_obj):
     """kill process by 'pkill -9'"""
@@ -179,6 +201,6 @@ def main():
         cpu_sentry_task.send_result["result"] = ResultLevel.FAIL
         cpu_sentry_task.send_result["details"]["code"] = 1004
         cpu_sentry_task.send_result["details"]["msg"] = "run cmd [%s] raise Error" % cpu_sentry_task_cmd
-    finally:
         cpu_sentry_task.cpu_report_result()
-        cpu_sentry_task.init_send_result()
+    else:
+        cpu_sentry_task.cpu_report_result()
