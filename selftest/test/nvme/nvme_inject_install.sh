@@ -121,18 +121,18 @@ if [ -z "${mods}" ]; then
         fi
 
         if [[ -z ${serv_name} ]]; then
-            echo Please start irqbalance service mannually.
+            echo Please start irqbalance service manually.
         else
             #echo ${serv_name}
             serv_status=$(service ${serv_name} status  | grep running)
             #echo ${serv_status}
             if [[ -z ${serv_status} ]]; then
-                echo Please start ${serv_name} service mannually..
+                echo Please start ${serv_name} service manually..
             else
                 sleep 10
                 service ${serv_name} restart 
                 if [[ $? -ne 0 ]]; then
-                    echo Please start ${serv_name} service mannually...
+                    echo Please start ${serv_name} service manually...
                 else
                     if [[ "4.19.90-23.48.v2101.ky10.aarch64" < "4.19" ]]; then
                         irqbalance -p 0 --hintpolicy=exact 
