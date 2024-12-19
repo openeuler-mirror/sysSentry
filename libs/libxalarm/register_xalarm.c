@@ -605,7 +605,7 @@ static bool is_valid_task_name(const char *task_name)
 int report_result(const char *task_name, enum RESULT_LEVEL result_level, const char *report_data)
 {
     if (result_level < 0 || result_level >= RESULT_LEVEL_NUM) {
-        fprintf(stderr, "result_level (%u) is invaild, it must be in [0-5]\n", result_level);
+        fprintf(stderr, "result_level (%u) is invalid, it must be in [0-5]\n", result_level);
         return RETURE_CODE_FAIL;
     }
 
