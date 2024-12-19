@@ -58,11 +58,9 @@ class Detector:
             logging.info(f'[abnormal_period]: disk: {self._metric_name.disk_name}, '
                          f'stage: {self._metric_name.stage_name}, '
                          f'iotype: {self._metric_name.io_access_type_name}, '
-                         f'metric: {self._metric_name.metric_name}, '
-                         f'current value: {metric_value}, '
-                         f'ai threshold: {detection_result[2]}, '
-                         f'absolute threshold upper limit: {detection_result[3]}, '
-                         f'lower limit: {detection_result[4]}')
+                         f'type: {self._metric_name.metric_name}, '
+                         f'ai_threshold: {round(detection_result[2], 3)}, '
+                         f'curr_val: {metric_value}')
         else:
             logging.debug(f'Detection result: {str(detection_result)}')
         logging.debug(f'exit Detector: {self}')

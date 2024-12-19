@@ -28,7 +28,7 @@ class AbnormalWindowBase:
             self.abnormal_window.append(False)
 
     def is_abnormal_window(self):
-        return sum(self.abnormal_window) > self.window_threshold
+        return sum(self.abnormal_window) >= self.window_threshold
 
     def window_data_to_string(self):
         return ",".join(str(x) for x in self.window_data)
