@@ -23,6 +23,7 @@ ALARM_LEVELS = (1, 2, 3, 4, 5)
 ALARM_SOCK_PATH = "/var/run/xalarm/report"
 MIN_ALARM_ID = 1001
 MAX_ALARM_ID = 1128
+MAX_MSG_LEN = 8192
 
 
 @dataclasses.dataclass
@@ -97,15 +98,15 @@ class Xalarm:
     def msg1(self, msg):
         """msg1 setter
         """
-        if len(msg) > 512:
-            raise ValueError("msg1 length must below 255")
+        if len(msg) > MAX_MSG_LEN:
+            raise ValueError(f"msg1 length must below {MAX_MSG_LEN}")
         self._msg1 = msg
 
 
 def alarm_bin2stu(bin_data):
     """alarm binary to struct
     """
-    struct_data = struct.unpack("@HBBll512s", bin_data)
+    struct_data = struct.unpack(f"@HBBll{MAX_MSG_LEN}s", bin_data)
 
     alarm_info = Xalarm(1001, 2, 1, 0, 0, "")
     alarm_info.alarm_id = struct_data[0]
@@ -116,3 +117,18 @@ def alarm_bin2stu(bin_data):
     alarm_info.msg1 = struct_data[5]
 
     return alarm_info
+
+
+def alarm_stu2bin(alarm_info: Xalarm):
+    alarm_msg = alarm_info.msg1
+    padding_length = MAX_MSG_LEN - len(alarm_msg)
+    if padding_length > 0:
+        alarm_msg = alarm_msg + ('\x00' * padding_length)
+    return struct.pack(
+        f'@HBBll{MAX_MSG_LEN}s',
+        alarm_info.alarm_id,
+        alarm_info.alarm_level,
+        alarm_info.alarm_type,
+        alarm_info.timetamp.tv_sec,
+        alarm_info.timetamp.tv_usec,
+        alarm_msg.encode('utf-8'))

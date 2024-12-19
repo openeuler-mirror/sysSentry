@@ -21,6 +21,34 @@ import sys
 DEFAULT_INSPECT_DELAY = 3
 INSPECT_CONF_PATH = "/etc/sysSentry/inspect.conf"
 
+CONF_LOG = 'log'
+CONF_LOG_LEVEL = 'level'
+LogLevel = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL
+}
+
+
+def get_log_level(filename=INSPECT_CONF_PATH):
+    if not os.path.exists(filename):
+        return logging.INFO
+
+    try:
+        config = configparser.ConfigParser()
+        config.read(filename)
+        if not config.has_option(CONF_LOG, CONF_LOG_LEVEL):
+            return logging.INFO
+        log_level = config.get(CONF_LOG, CONF_LOG_LEVEL)
+
+        if log_level.lower() in LogLevel:
+            return LogLevel.get(log_level.lower())
+        return logging.INFO
+    except configparser.Error:
+        return logging.INFO
+
 
 class SentryConfig:
     """
@@ -103,14 +131,18 @@ class CpuPluginsParamsConfig:
         """read config file"""
         config_param_section_args = {}
         if os.path.exists(self.config_file):
-            self.config.read(self.config_file)
             try:
+                self.config.read(self.config_file)
                 config_param_section_args = dict(self.config[self.param_section_name])
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, configparser.InterpolationSyntaxError):
                 config_param_section_args = {}
+                logging.error("Failed to parse cpu_sentry.ini!")
         return config_param_section_args
 
     def join_cpu_start_cmd(self, cpu_param_dict: dict) -> str:
+        if not cpu_param_dict:
+            return ""
+
         cpu_list = cpu_param_dict.get("cpu_list", "default")
         if cpu_list == "default":
             cpu_list = CpuPluginsParamsConfig.get_cpu_info()

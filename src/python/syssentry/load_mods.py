@@ -24,6 +24,7 @@ from .task_map import TasksMap, ONESHOT_TYPE, PERIOD_TYPE
 from .cron_process import PeriodTask
 from .mod_status import set_task_status
 
+from xalarm.register_xalarm import MIN_ALARM_ID, MAX_ALARM_ID
 ONESHOT_CONF = 'oneshot'
 PERIOD_CONF = 'period'
 
@@ -41,6 +42,8 @@ CONF_TASK_RESTART = 'task_restart'
 CONF_ONSTART = 'onstart'
 CONF_ENV_FILE = 'env_file'
 CONF_CONFLICT = 'conflict'
+CONF_ALARM_ID = 'alarm_id'
+CONF_ALARM_CLEAR_TIME = 'alarm_clear_time'
 
 MOD_FILE_SUFFIX = '.mod'
 MOD_SUFFIX_LEN = 4
@@ -194,6 +197,18 @@ def parse_mod_conf(mod_name, mod_conf):
     task.heartbeat_interval = heartbeat_interval
     task.load_enabled = is_enabled
 
+    try:
+        task.alarm_id = mod_conf.get(CONF_TASK, CONF_ALARM_ID)
+    except configparser.NoOptionError:
+        task.alarm_id = None
+        logging.warning(f"{mod_name} alarm_id not set, alarm_id is None")
+
+    if task.alarm_id is not None:
+        try:
+            task.alarm_clear_time = mod_conf.get(CONF_TASK, CONF_ALARM_CLEAR_TIME)
+        except configparser.NoOptionError:
+            logging.warning(f"{mod_name} not set alarm_clear_time, use 15s as default")
+
     if CONF_ONSTART in mod_conf.options(CONF_TASK):
         is_onstart = (mod_conf.get(CONF_TASK, CONF_ONSTART) == 'yes')
         if task_type == PERIOD_CONF:
@@ -327,3 +342,4 @@ def reload_single_mod(mod_name):
     res, ret = reload_mod_by_name(mod_name)
 
     return res, ret
+

@@ -1,6 +1,7 @@
 import re
 import math
 import logging
+import socket
 from enum import Enum
 
 from .utils import execute_command
@@ -14,6 +15,12 @@ BIN_PREFIX_LEN = 2
 BINARY = 2
 MIN_DATA_LEN = 0
 MAX_DATA_LEN = 999
+
+PARAM_REP_LEN = 3
+PARAM_TYPE_LEN = 1
+PARAM_MODULE_LEN = 1
+PARAM_TRANS_TO_LEN = 2
+PARAM_DATA_LEN = 3
 
 
 class Type(Enum):
@@ -207,3 +214,38 @@ def check_fixed_param(data, expect):
             raise ValueError("expected str param is not valid")
         return data
     raise NotImplementedError("unexpected param type")
+
+
+def cpu_alarm_recv(server_socket: socket.socket):
+    try:
+        client_socket, _ = server_socket.accept()
+        logging.debug("cpu alarm fd listen ok")
+
+        data = client_socket.recv(PARAM_REP_LEN)
+        check_fixed_param(data, "REP")
+
+        data = client_socket.recv(PARAM_TYPE_LEN)
+        _type = check_fixed_param(data, Type)
+
+        data = client_socket.recv(PARAM_MODULE_LEN)
+        module = check_fixed_param(data, Module)
+
+        data = client_socket.recv(PARAM_TRANS_TO_LEN)
+        trans_to = check_fixed_param(data, TransTo)
+
+        data = client_socket.recv(PARAM_DATA_LEN)
+        data_len = check_fixed_param(data, (MIN_DATA_LEN, MAX_DATA_LEN))
+
+        data = client_socket.recv(data_len)
+
+        command, event_type, socket_id, core_id = parser_cpu_alarm_info(data)
+    except socket.error:
+        logging.error("socket error")
+        return
+    except (ValueError, OSError, UnicodeError, TypeError, NotImplementedError):
+        logging.error("server recv cpu alarm msg failed!")
+        client_socket.close()
+        return
+
+    upload_bmc(_type, module, command, event_type, socket_id, core_id)
+

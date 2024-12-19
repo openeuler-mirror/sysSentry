@@ -11,7 +11,7 @@
 #include <sys/time.h>
 #include <stdbool.h>
  
-#define ALARM_INFO_MAX_PARAS_LEN 512
+#define ALARM_INFO_MAX_PARAS_LEN 8192
 #define MAX_STRERROR_SIZE 1024
 #define MAX_ALARM_TYEPS 1024
 #define MIN_ALARM_ID 1001
@@ -19,11 +19,9 @@
 
 #define MEMORY_ALARM_ID 1001
 
-#define ALARM_LEVEL_FATAL 1
-#define ALARM_LEVEL_ERROR 2
-#define ALARM_LEVEL_WARNING 3
-#define ALARM_LEVEL_INFO 4
-#define ALARM_LEVEL_DEBUG 5
+#define MINOR_ALM 1
+#define MAJOR_ALM 2
+#define CRITICAL_ALM 3
 
 #define ALARM_TYPE_OCCUR 1
 #define ALARM_TYPE_RECOVER 2
