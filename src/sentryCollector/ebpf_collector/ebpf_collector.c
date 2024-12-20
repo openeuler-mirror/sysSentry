@@ -35,6 +35,7 @@
 #define BIO_RES_2    (map_fd[11])
 #define WBT_RES_2    (map_fd[12])
 #define TAG_RES_2    (map_fd[13])
+#define VERSION_RES  (map_fd[14])
 #define BPF_FILE   "/usr/lib/ebpf_collector.bpf.o"
 
 #define MAX_LINE_LENGTH 1024
@@ -188,7 +189,7 @@ static int print_map_res(struct bpf_map *map_res, char *stage, int *map_size, in
         int first_minor = counter.first_minor;
         dev_t dev = makedev(major, first_minor);    
         char *device_name = find_device_name(dev);
-        logMessage(LOG_LEVEL_DEBUG, "device_name: %s\n", device_name);
+        logMessage(LOG_LEVEL_DEBUG, "device_name: %s, stage: %s, io_type: %c\n", device_name, stage, io_type);
         if (device_name && io_type) {
             printf("%-7s %10llu %10llu %d %c %s\n",
                 stage, 
@@ -217,6 +218,19 @@ int init_map(int *map_fd, const char *map_name, int *map_size, DeviceInfo *devic
             logMessage(LOG_LEVEL_ERROR, "Failed to initialize map %s at index %d\n", map_name, i);
             return 1;
         }
+    }
+
+    return 0;
+}
+
+int init_version_map(int *map_fd, const char *map_name, int os_num) {
+    struct version_map_num init_data = {0};
+    init_data.num = os_num;
+
+    u32 key = 1;
+    if (bpf_map_update_elem(map_fd, &key, &init_data, BPF_ANY) != 0) {
+        logMessage(LOG_LEVEL_ERROR, "Failed to initialize map %s at index %d\n", map_name);
+        return 1;
     }
 
     return 0;
@@ -317,6 +331,94 @@ int check_for_device(const char *device_name) {
     return 0;
 }
 
+typedef struct {
+    const char *version;
+    int value;
+} VersionMap;
+
+const VersionMap version_map[] = {
+        {"v2401", 1},
+        {"v2101", 2}
+    };
+
+char *get_minor_version(int index, char *buffer) {
+    char *version_info = NULL;
+    char* token = strtok(buffer, " ");
+    int count = 0;
+    while (token != NULL) {
+        token = strtok(NULL, " ");
+        count++;
+        if (count == 2) {
+            char* version = strtok(token, ".");
+            int dot_count = 0;
+            while (version != NULL) {
+                version = strtok(NULL, ".");
+                dot_count++;
+                if (dot_count == index) {
+                    version_info = strdup(version);
+                    break;
+                }
+            }
+        }
+    }
+    return version_info;
+}
+
+int get_os_version() {
+    FILE* file;
+    char* distribution = NULL;
+    char buffer[BUFFER_SIZE];
+
+    file = fopen(OS_RELEASE_FILE, "r");
+    if (file == NULL) {
+        logMessage(LOG_LEVEL_ERROR, "Failed to open release file: %s\n", OS_RELEASE_FILE);
+        return -1;
+    }
+
+    while (fgets(buffer, BUFFER_SIZE, file)) {
+        if (strncmp(buffer, "ID=", 3) == 0) {
+            distribution = strdup(buffer + 4);
+            distribution[strcspn(distribution, "\"\n")] = '\0';
+            break;
+        }
+    }
+    fclose(file);
+    
+    char* version_info = NULL;
+    int value = -1;
+
+    file = fopen(PROC_VERSION_FILE, "r");
+    if (file == NULL) {
+        logMessage(LOG_LEVEL_ERROR, "Failed to open version file:  %s\n", PROC_VERSION_FILE);
+        return -1;
+    }
+
+    if (fgets(buffer, BUFFER_SIZE, file)) {
+        if (strcmp(distribution, "openEuler") == 0) {
+            free(distribution);
+            return 0;
+        } else if (strcmp(distribution, "kylin") == 0) {
+            version_info = get_minor_version(4, buffer);
+            if (!version_info) {
+                logMessage(LOG_LEVEL_ERROR, "get minor version failed.\n");
+                free(distribution);
+                return -1;
+            }
+        }
+    }
+    free(distribution);
+    fclose(file);
+
+    for (int i = 0; version_map[i].version != NULL; ++i) {
+        if (strcmp(version_map[i].version, version_info) == 0) {
+            value = version_map[i].value;
+            break;
+        }
+    }
+    free(version_info);
+    return value;
+}
+
 int main(int argc, char **argv) {
     struct partitions *partitions = NULL; 
     const struct partition *partition; 
@@ -353,6 +455,12 @@ int main(int argc, char **argv) {
     if (err) {
         logMessage(LOG_LEVEL_ERROR, "argp parse failed.\n");
         return err; 
+    }
+
+    int os_num = get_os_version();
+    if (os_num < 0) {
+        logMessage(LOG_LEVEL_INFO, "get os version failed.\n");
+        return 1;
     }
 
     snprintf(filename, sizeof(filename), BPF_FILE);
@@ -414,6 +522,11 @@ int main(int argc, char **argv) {
         logMessage(LOG_LEVEL_ERROR, "tag_res_map failed.\n");
         return 1;
     }
+    if (init_version_map(VERSION_RES, "version_res_map", os_num) != 0) {
+        logMessage(LOG_LEVEL_ERROR, "version_res_map failed.\n");
+        return 1;
+    }
+    
 
     for (;;) { 
        

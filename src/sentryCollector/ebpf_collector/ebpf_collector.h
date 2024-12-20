@@ -32,6 +32,11 @@ typedef unsigned int u32;
 #define REQ_OP_WRITE_SAME 7
 #define MAP_SIZE   15
 
+#define OS_RELEASE_FILE "/etc/os-release"
+#define PROC_VERSION_FILE "/proc/version"
+#define BUFFER_SIZE 1024
+#define VERSION_LEN 20
+
 enum stage_type {
     BIO=0,
     WBT,
@@ -71,6 +76,11 @@ struct update_params {
 struct time_range_io_count
 {
     u32 count[MAP_SIZE];
+};
+
+struct version_map_num
+{
+    int num;
 };
 
 #endif /* __EBPFCOLLECTOR_H */
