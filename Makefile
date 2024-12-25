@@ -28,7 +28,7 @@ PYDIR	= $(DESTDIR)$(PREFIX)/lib/$(PYNAME)/site-packages
 ifeq ($(shell uname -r | grep -q "4.19" && echo 1 || echo 0), 1)
 	KERNEL_IS_4_19 := 1
 else
-	KERNEL_IS_4_19 :=
+	KERNEL_IS_4_19 := 0
 endif
 
 all: lib sentry
@@ -119,6 +119,14 @@ clean: clean-install
 	systemctl daemon-reload
 
 test:
+	@if [[ -z "$(log)" ]]; then \
+		log="console";  \
+	fi
+	@if [[ -z "$t" ]]; then \
+		cd  $(CURTESTDIR) && sh ./test.sh "all" $(log); \
+	else \
+		cd  $(CURTESTDIR) && sh ./test.sh $t $(log); \
+	fi
 
 startup:
 	systemctl daemon-reload

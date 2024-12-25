@@ -2,13 +2,13 @@
 # Copyright (c), 2023-2024, Huawei Tech. Co., Ltd.
 
  
-ets_shopt=""
+syssentry_shopt=""
  
 function shopt_set() {
     local new_opt=$1
  
-    if [ -z "$ets_shopt" ]; then
-        ets_shopt="$-"
+    if [ -z "$syssentry_shopt" ]; then
+        syssentry_shopt="$-"
     fi
  
     set "$new_opt"
@@ -16,6 +16,6 @@ function shopt_set() {
  
 function shopt_recover() {
     set +$-
-    set -${ets_shopt}
-    unset ets_shopt
+    set -${syssentry_shopt}
+    unset syssentry_shopt
 }
