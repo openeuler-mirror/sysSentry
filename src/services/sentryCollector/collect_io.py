@@ -27,7 +27,7 @@ IO_CONFIG_DATA = []
 EBPF_GLOBAL_DATA = []
 EBPF_PROCESS = None
 EBPF_STAGE_LIST = ["wbt", "rq_driver", "bio", "gettag"]
-EBPF_SUPPORT_VERSION = ["4.19.90"]
+EBPF_SUPPORT_VERSION = ["6.6.0"]
 
 class IoStatus():
     TOTAL = 0
