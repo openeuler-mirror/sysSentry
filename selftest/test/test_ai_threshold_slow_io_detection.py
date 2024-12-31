@@ -12,9 +12,9 @@
 import unittest
 import numpy as np
 
-from sentryPlugins.ai_threshold_slow_io_detection.threshold import AbsoluteThreshold, BoxplotThreshold, NSigmaThreshold
-from sentryPlugins.ai_threshold_slow_io_detection.sliding_window import (NotContinuousSlidingWindow,
-                                                                         ContinuousSlidingWindow, MedianSlidingWindow)
+from sentryPlugins.ai_block_io.threshold import AbsoluteThreshold, BoxplotThreshold, NSigmaThreshold
+from sentryPlugins.ai_block_io.sliding_window import (NotContinuousSlidingWindow,
+                                                      ContinuousSlidingWindow, MedianSlidingWindow)
 
 
 def _get_boxplot_threshold(data_list: list, parameter):
@@ -98,11 +98,11 @@ class Test(unittest.TestCase):
         for data in data_list1:
             boxplot_threshold.push_latest_data_to_queue(data)
             result = not_continuous.is_slow_io_event(data)
-            self.assertFalse(result[0])
+            self.assertFalse(result[0][0])
         self.assertEqual(23.75, boxplot_threshold.get_threshold())
         boxplot_threshold.push_latest_data_to_queue(24)
         result = not_continuous.is_slow_io_event(24)
-        self.assertFalse(result[0])
+        self.assertFalse(result[0][0])
         boxplot_threshold.push_latest_data_to_queue(25)
         result = not_continuous.is_slow_io_event(25)
         self.assertTrue(result[0])
@@ -110,7 +110,7 @@ class Test(unittest.TestCase):
         for data in data_list2:
             boxplot_threshold.push_latest_data_to_queue(data)
             result = not_continuous.is_slow_io_event(data)
-            self.assertFalse(result[0])
+            self.assertFalse(result[0][0])
         self.assertEqual(25.625, boxplot_threshold.get_threshold())
 
     def test_continuous_sliding_window(self):
@@ -121,14 +121,14 @@ class Test(unittest.TestCase):
         for data in data_list:
             boxplot_threshold.push_latest_data_to_queue(data)
             result = continuous.is_slow_io_event(data)
-            self.assertFalse(result[0])
+            self.assertFalse(result[0][0])
         self.assertEqual(23.75, boxplot_threshold.get_threshold())
         # 没有三个异常点
-        self.assertFalse(continuous.is_slow_io_event(25)[0])
+        self.assertFalse(continuous.is_slow_io_event(25)[0][0])
         # 不连续的三个异常点
-        self.assertFalse(continuous.is_slow_io_event(25)[0])
+        self.assertFalse(continuous.is_slow_io_event(25)[0][0])
         # 连续的三个异常点
-        self.assertTrue(continuous.is_slow_io_event(25)[0])
+        self.assertTrue(continuous.is_slow_io_event(25)[0][0])
 
     def test_median_sliding_window(self):
         median = MedianSlidingWindow(5, 3)
@@ -137,7 +137,7 @@ class Test(unittest.TestCase):
         absolute_threshold.set_threshold(24.5)
         data_list = [24, 24, 24, 25, 25]
         for data in data_list:
-            self.assertFalse(median.is_slow_io_event(data)[0])
+            self.assertFalse(median.is_slow_io_event(data)[0][0])
         self.assertTrue(median.is_slow_io_event(25)[0])
 
     def test_parse_collect_data(self):
@@ -147,8 +147,8 @@ class Test(unittest.TestCase):
             "flush": [9.0, 10.0, 11.0, 12.0],
             "discard": [13.0, 14.0, 15.0, 16.0],
         }
-        from io_data import BaseData
-        from data_access import _get_io_stage_data
+        from sentryPlugins.ai_block_io.io_data import BaseData
+        from sentryPlugins.ai_block_io.data_access import _get_io_stage_data
 
         io_data = _get_io_stage_data(collect)
         self.assertEqual(
