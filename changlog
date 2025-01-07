@@ -1,0 +1,8 @@
+2025-01-07
+主要重构syssentry的目录结构：
+1、删除build目录
+2、libsentry按语言分为各个目录，目前是python和sh(shell)，各自不同的语言分别放置，pySentryCollector和pySentryNotify放到python中
+3、selftest目录下的mod和xlarm目录移动到test下，并且将mod目录下test_config.mod删除，并且将mod目录重命名为sysSentry
+4、src目录下新建一个services目录，将三个服务sentryCollector、syssentry和xalarm都移动到该services目录下重构后的目录结构
+5、service目录(服务的配置文件)移动到config目录下
+
