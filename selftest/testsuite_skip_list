@@ -1,0 +1,8 @@
+# USAGE:
+# if it's skipped on all of the arch:
+# testsuite
+#
+# if it's skipped on part of the arch:
+# testsuite:arch1
+# testsuite:arch2
+test_cpu_sentry:x86_64
