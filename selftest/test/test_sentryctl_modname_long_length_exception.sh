@@ -3,28 +3,30 @@
 
 source "libs/expect.sh"
 source "libs/lib.sh"
-source "test/common.sh"
+source "libs/common.sh"
 set +e
 
 tmp_log="tmp_log"
 
 # 测试子任务名过长的测试用例
 
-# length:256
-str="a"
-result1=""
-for i in {1..256}; do
-  result+="$str"
-done
-
 function pre_test() {
+    gcc test/sysSentry/test_task.c -o test/sysSentry/test_task
+    cp test/sysSentry/test_task /usr/bin
+
     syssentry &
     sleep 1
 }
 
 function do_test() {
+    # length:256
+    str="a"
+    result1=""
+    for i in {1..256}; do
+        result1+="$str"
+    done
 
-    sentryctl status $result 2>&1 | tee ${tmp_log} | cat 
+    sentryctl status $result1 2>&1 | tee ${tmp_log} | cat 
     expect_true "grep -E '(status: cannot find task by name)' ${tmp_log}"
 
 
@@ -32,7 +34,8 @@ function do_test() {
     for i in {1..251}; do
       result2+="$str"
     done
-    add_test_config "test_task" "pkill test_task" "oneshot" 60 3600 "$result2.mod"
+    add_test_config "test_task" "pkill test_task" "oneshot" 60 3600 "$result2"
+    expect_eq $? 0
 
     sentryctl reload $result2
     expect_eq $? 0
