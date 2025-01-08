@@ -3,7 +3,7 @@
 
 source "libs/expect.sh"
 source "libs/lib.sh"
-source "test/common.sh"
+source "libs/common.sh"
 set +e
 
 tmp_log="tmp_log"
@@ -19,10 +19,9 @@ function pre_test() {
     kill -9 `ps aux|grep syssentry|grep -v grep|awk '{print $2}'`
     kill -9 `ps aux|grep test_task|grep -v grep|awk '{print $2}'`
 
-    update_test_config "test_task" "pkill test_task" "oneshot" 60 3600
-    gcc mod/test_task.c -o test_task
-    cp test_task /usr/bin
-    cp mod/test_config.mod /etc/sysSentry/tasks/test_sentryctl_exception.mod
+    add_test_config "test_task" "pkill test_task" "oneshot" 60 3600 "test_sentryctl_exception"
+    gcc test/sysSentry/test_task.c -o test/sysSentry/test_task
+    cp test/sysSentry/test_task /usr/bin
 }
 
 function do_test() {
@@ -59,8 +58,8 @@ function do_test() {
     sentryctl aaa test_sentryctl_exception 2>&1 | tee ${tmp_log} | cat
     expect_true "grep -E '(sentryctl: error: argument cmd_type: invalid choice:)' ${tmp_log}"
 
-    update_test_config "test_task" "pkill test_task" "period" 60 3600
-    cp mod/test_config.mod /etc/sysSentry/tasks/test_sentryctl_exception.mod
+    add_test_config "test_task" "pkill test_task" "period" 60 3600 "test_sentryctl_exception"
+    expect_eq $? 0
     
     sentryctl reload test_sentryctl_exception 2>&1 | tee ${tmp_log} | cat
     expect_true "grep -E '(type of mod is different from old type, reload failed)' ${tmp_log}"
@@ -76,7 +75,7 @@ function post_test() {
         kill -9 `pgrep -w test_task`
         sleep 1
     done
-    rm -rf ${tmp_log} test_task 
+    rm -rf ${tmp_log} test/sysSentry/test_task
     rm -rf /usr/bin/test_task /etc/sysSentry/tasks/test_sentryctl_exception.mod
 }
 set -x

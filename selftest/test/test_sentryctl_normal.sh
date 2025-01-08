@@ -3,7 +3,7 @@
 
 source "libs/expect.sh"
 source "libs/lib.sh"
-source "test/common.sh"
+source "libs/common.sh"
 set +e
 
 tmp_log="tmp_log"
@@ -45,7 +45,7 @@ function post_test() {
         sleep 1
     done
     rm -rf ${tmp_log}
-    rm -rf test_task /usr/bin/test_task /etc/sysSentry/tasks/test_normal.mod
+    rm -rf test/sysSentry/test_task /usr/bin/test_task /etc/sysSentry/tasks/test_normal.mod
 }
 set -x
 run_testcase
