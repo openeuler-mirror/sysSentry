@@ -3,7 +3,7 @@
 
 source "libs/expect.sh"
 source "libs/lib.sh"
-source "test/common.sh"
+source "libs/common.sh"
 set +e
 
 tmp_log="tmp_log"
@@ -33,7 +33,7 @@ function post_test() {
         kill -9 `pgrep -w test_task`
         sleep 1
     done
-   rm -rf ${tmp_log} test_task 
+   rm -rf ${tmp_log} test/sysSentry/test_task 
    rm -rf /usr/bin/test_task /etc/sysSentry/tasks/test_start_exception.mod
 }
 set -x

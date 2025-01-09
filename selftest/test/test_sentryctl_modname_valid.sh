@@ -3,7 +3,7 @@
 
 source "libs/expect.sh"
 source "libs/lib.sh"
-source "test/common.sh"
+source "libs/common.sh"
 set +e
 
 tmp_log="tmp_log"
@@ -29,14 +29,14 @@ function do_test() {
 }
 
 function post_test() {
-	while [[ -n "`ps aux|grep -w syssentry|grep -v grep`" ]]; do
-		kill -9 `pgrep -w syssentry`
-		kill -9 `pgrep -w test_task`
-		sleep 1
-	done
+    while [[ -n "`ps aux|grep -w syssentry|grep -v grep`" ]]; do
+        kill -9 `pgrep -w syssentry`
+        kill -9 `pgrep -w test_task`
+        sleep 1
+    done
     rm -rf ${tmp_log}
-    rm -rf test_task /usr/bin/test_task /etc/sysSentry/tasks/"$result1".mod
-    rm -rf /etc/sysSentry/tasks/"$result2".mod
+    rm -rf test/sysSentry/test_task /usr/bin/test_task
+    rm -rf /etc/sysSentry/tasks/this*.mod
 }
 set -x
 run_testcase

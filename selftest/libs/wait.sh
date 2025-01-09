@@ -1,6 +1,8 @@
 #!/bin/bash
 # Copyright (c), 2023-2024, Huawei Tech. Co., Ltd.
 
+source "libs/shopt.sh"
+
 function wait_cmd_condition() {
     local cmd=$1
     local condition=$2

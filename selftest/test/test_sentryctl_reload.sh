@@ -3,7 +3,7 @@
 
 source "libs/expect.sh"
 source "libs/lib.sh"
-source "test/common.sh"
+source "libs/common.sh"
 set +e
 
 tmp_log="tmp_log"
@@ -22,14 +22,15 @@ function do_test() {
     sentryctl start test_sentryctl_reload
     expect_eq $? 0
 
-    update_test_config "test_task" "pkill test_task" "period" 60 5
-    cp mod/test_config.mod /etc/sysSentry/tasks/test_sentryctl_reload.mod
+    add_test_config "test_task" "pkill test_task" "period" 60 5 "test_sentryctl_reload"
+    expect_eq $? 0
 
     sentryctl reload test_sentryctl_reload
     expect_eq $? 0
 
     sentryctl stop test_sentryctl_reload
     expect_eq $? 0
+    sleep 1
 
     sentryctl start test_sentryctl_reload
     expect_eq $? 0
@@ -44,14 +45,15 @@ function do_test() {
         expect_true "grep -E '(status: FAILED)' ${tmp_log}"
     fi
 
-    update_test_config "test_task" "pkill test_task" "period" 20 3600
-    cp mod/test_config.mod /etc/sysSentry/tasks/test_sentryctl_reload.mod
+    add_test_config "test_task" "pkill test_task" "period" 20 3600 "test_sentryctl_reload"
+    expect_eq $? 0
 
     sentryctl reload test_sentryctl_reload
     expect_eq $? 0
 
     sentryctl stop test_sentryctl_reload
     expect_eq $? 0
+    sleep 1
 
     sentryctl start test_sentryctl_reload
     expect_eq $? 0
@@ -76,7 +78,7 @@ function post_test() {
 		kill -9 `pgrep -w test_task`
 		sleep 1
 	done
-   rm -rf ${tmp_log} test_task /usr/bin/test_task /etc/sysSentry/tasks/test_sentryctl_reload.mod
+   rm -rf ${tmp_log} test/sysSentry/test_task /usr/bin/test_task /etc/sysSentry/tasks/test_sentryctl_reload.mod
 }
 set -x
 run_testcase
