@@ -10,19 +10,19 @@ set +e
 #测试发送消息的场景，参数合法性校验以及关闭xalarmd之后的场景
 
 function pre_test() {
-    rm -rf ./checklog ./tmp_log xalarm/send_demo xalarm/reg_demo
-    gcc xalarm/send_demo.c -o xalarm/send_demo -lxalarm
-    gcc xalarm/reg_demo.c -o xalarm/reg_demo -lxalarm
+    rm -rf ./checklog ./tmp_log test/xalarm/send_demo test/xalarm/reg_demo
+    gcc test/xalarm/send_demo.c -o test/xalarm/send_demo -lxalarm
+    gcc test/xalarm/reg_demo.c -o test/xalarm/reg_demo -lxalarm
     systemctl start xalarmd.service
 }
 
 function do_test() {
-    ./xalarm/reg_demo >> checklog 2>&1 &
+    ./test/xalarm/reg_demo >> checklog 2>&1 &
     wait_cmd_ok "grep \"register success\" ./checklog" 1 3
     expect_eq $? 0 "xalarm register success"
 
     # 发送用户注册的alarm id消息
-    ./xalarm/send_demo 1001 1 2 "cpu usage high warning" >> checklog 2>&1 &
+    ./test/xalarm/send_demo 1001 1 2 "cpu usage high warning" >> checklog 2>&1 &
     wait_cmd_ok "grep \"id:1001\" ./checklog" 1 3
     expect_eq $? 0 "alarm id check"
 
@@ -37,27 +37,27 @@ function do_test() {
 	
     # 发送用户未注册的alarm id消息
     start_line=$(wc -l < ./checklog)
-    ./xalarm/send_demo 1007 1 2 "cpu usage high warning" >> checklog 2>&1 &
+    ./test/xalarm/send_demo 1007 1 2 "cpu usage high warning" >> checklog 2>&1 &
     end_line=$(wc -l < ./checklog)
     expect_eq $end_line $start_line "send unregistered alarm id to xalarm"
 
     # 验证不合法参数
     start_line=$(expr $(wc -l < ./checklog) + 1)
-    ./xalarm/send_demo 9000 2 1 "cpu usage high" >> checklog 2>&1 &
+    ./test/xalarm/send_demo 9000 2 1 "cpu usage high" >> checklog 2>&1 &
     end_line=$(wc -l < ./checklog)
     sed -n "${start_line}, ${end_line}p" ./checklog > ./tmp_log
     wait_cmd_ok "grep \"xalarm_Report: alarm info invalid\" ./tmp_log" 1 3
     expect_eq $? 0 "alarm id check"
  
     start_line=$(expr $(wc -l < ./checklog) + 1)
-    ./xalarm/send_demo 1002 7 -1 "cpu usage high" >> checklog 2>&1 &
+    ./test/xalarm/send_demo 1002 7 -1 "cpu usage high" >> checklog 2>&1 &
     end_line=$(wc -l < ./checklog)
     sed -n "${start_line}, ${end_line}p" ./checklog > ./tmp_log
     wait_cmd_ok "grep \"xalarm_Report: alarm info invalid\" ./tmp_log" 1 3
     expect_eq $? 0 "alarm type check"
  
     start_line=$(expr $(wc -l < ./checklog) + 1)
-    ./xalarm/send_demo 1002 2 -1 "cpu usage high" >> checklog 2>&1 &
+    ./test/xalarm/send_demo 1002 2 -1 "cpu usage high" >> checklog 2>&1 &
     end_line=$(wc -l < ./checklog)
     sed -n "${start_line}, ${end_line}p" ./checklog > ./tmp_log
     wait_cmd_ok "grep \"xalarm_Report: alarm info invalid\" ./tmp_log" 1 3
@@ -65,14 +65,14 @@ function do_test() {
 
     # 验证解注册
     sleep 10
-    ./xalarm/send_demo 1001 1 2 "cpu usage high warning" >> checklog 2>&1 &
+    ./test/xalarm/send_demo 1001 1 2 "cpu usage high warning" >> checklog 2>&1 &
     wait_cmd_ok "grep \"unregister xalarm success\" ./checklog" 1 3
     expect_eq $? 0 "check unregister xalarm"
 
     # 停止xalarmd服务后发消息
     systemctl stop xalarmd.service
 
-    ./xalarm/send_demo 1001 1 2 "cpu usage high warning" >> checklog 2>&1 &
+    ./test/xalarm/send_demo 1001 1 2 "cpu usage high warning" >> checklog 2>&1 &
     wait_cmd_ok "grep \"xalarm_Report: sendto failed errno: 2\" ./checklog" 1 3
     expect_eq $? 0 "xalarm send message while stop xalarmd service"
 }
@@ -80,7 +80,7 @@ function do_test() {
 function post_test() {
     kill -9 $(pgrep -w reg_demo)
     cat ./checklog
-    rm -rf ./checklog ./tmp_log xalarm/send_demo xalarm/reg_demo
+    rm -rf ./checklog ./tmp_log test/xalarm/send_demo test/xalarm/reg_demo
     systemctl stop xalarmd.service
 }
 
