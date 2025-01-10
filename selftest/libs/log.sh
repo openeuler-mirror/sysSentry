@@ -13,8 +13,3 @@ function log_warn() {
 function log_error() {
     echo -e "\033[31m[$(date +"%F %T")] [ ERROR ] $* \033[0m"
 }
-
-function log_debug() {
-    [ "$command_debug" == "yes" ] && echo "[$(date +"%F %T")] [ DEBUG ] $*"
-    echo -n ""
-}
