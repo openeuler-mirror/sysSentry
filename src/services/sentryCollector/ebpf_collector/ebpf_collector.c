@@ -12,31 +12,27 @@
 #include <stdlib.h> 
 #include <string.h> 
 #include <stdarg.h>
-#include <linux/sysinfo.h> 
-#include <sys/resource.h> 
+#include <dirent.h>
 #include <bpf/bpf.h>
-#include <string.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
-#include <dirent.h>
 #include <sys/sysmacros.h>
-#include <bpf_load.h>
-#include <dirent.h>
+#include <sys/sysinfo.h> 
 #include "ebpf_collector.h"
+#include "ebpf_collector.skel.h"
 
-#define BLK_MAP    (map_fd[0]) 
-#define BLK_RES    (map_fd[1]) 
-#define BIO_MAP    (map_fd[2]) 
-#define BIO_RES    (map_fd[3])
-#define WBT_MAP    (map_fd[4])
-#define WBT_RES    (map_fd[5]) 
-#define TAG_MAP    (map_fd[7])
-#define TAG_RES    (map_fd[8])
-#define BLK_RES_2    (map_fd[10])
-#define BIO_RES_2    (map_fd[11])
-#define WBT_RES_2    (map_fd[12])
-#define TAG_RES_2    (map_fd[13])
-#define VERSION_RES  (map_fd[14])
-#define BPF_FILE   "/usr/lib/ebpf_collector.bpf.o"
+#define BLK_MAP    (bpf_map__fd(skel->maps.blk_map))
+#define BLK_RES    (bpf_map__fd(skel->maps.blk_res)) 
+#define BIO_MAP    (bpf_map__fd(skel->maps.bio_map))
+#define BIO_RES    (bpf_map__fd(skel->maps.bio_res))
+#define WBT_MAP    (bpf_map__fd(skel->maps.wbt_map))
+#define WBT_RES    (bpf_map__fd(skel->maps.wbt_res))
+#define TAG_MAP    (bpf_map__fd(skel->maps.tag_map))
+#define TAG_RES    (bpf_map__fd(skel->maps.tag_res))
+#define BLK_RES_2    (bpf_map__fd(skel->maps.blk_res_2))
+#define BIO_RES_2    (bpf_map__fd(skel->maps.bio_res_2))
+#define WBT_RES_2    (bpf_map__fd(skel->maps.wbt_res_2))
+#define TAG_RES_2    (bpf_map__fd(skel->maps.tag_res_2))
 
 #define MAX_LINE_LENGTH 1024
 #define MAX_SECTION_NAME_LENGTH 256
@@ -57,7 +53,7 @@ typedef enum {
 
 LogLevel currentLogLevel = LOG_LEVEL_INFO;
 
-static volatile bool exiting; 
+static volatile bool exiting;
 
 const char argp_program_doc[] = 
 "Show block device I/O pattern.\n"
@@ -83,6 +79,15 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state) {
         return ARGP_ERR_UNKNOWN; 
     }
     return 0; 
+}
+
+void logMessage(LogLevel level, const char *format, ...){
+    if (level >= currentLogLevel) {
+        va_list args;
+        va_start(args, format);
+        vprintf(format, args);
+        va_end(args);
+    }
 }
 
 static void sig_handler(int sig)
@@ -133,7 +138,7 @@ char* find_device_name(dev_t dev) {
     return device_name;
 }
 
-static void update_io_dump(struct bpf_map *map_res, int *io_dump, int *map_size, char *stage) {
+static void update_io_dump(int fd, int *io_dump, int map_size, char *stage) {
     struct time_range_io_count time_count;
     u32 io_dump_key = 0;
     struct sysinfo info; 
@@ -142,7 +147,7 @@ static void update_io_dump(struct bpf_map *map_res, int *io_dump, int *map_size,
     u32 curr_time = info.uptime;
     while (count_time >= 0) {
         io_dump_key = curr_time - count_time;
-        int err = bpf_map_lookup_elem(map_res, &io_dump_key, &time_count);
+        int err = bpf_map_lookup_elem(fd, &io_dump_key, &time_count);
         if (err < 0) {
             count_time -= 1; 
             continue; 
@@ -156,21 +161,21 @@ static void update_io_dump(struct bpf_map *map_res, int *io_dump, int *map_size,
                 }
             }
             if (isempty || (curr_time - io_dump_key) > IO_DUMP_THRESHOLD) {
-                bpf_map_delete_elem(map_res, &io_dump_key);
+                bpf_map_delete_elem(fd, &io_dump_key);
             } 
         }
         count_time -= 1;
     }
 }
 
-static int print_map_res(struct bpf_map *map_res, char *stage, int *map_size, int *io_dump)
+static int print_map_res(int fd, char *stage, int map_size, int *io_dump)
 {
     struct stage_data counter; 
     int key = 0;
 
     logMessage(LOG_LEVEL_DEBUG, "print_map_res map_size: %d\n", map_size);
     for (key = 0; key < map_size; key++) {
-        int err = bpf_map_lookup_elem(map_res, &key, &counter); 
+        int err = bpf_map_lookup_elem(fd, &key, &counter); 
         if (err < 0) { 
             logMessage(LOG_LEVEL_ERROR, "failed to lookup %s map_res: %d\n", stage, err);
             return -1; 
@@ -183,7 +188,7 @@ static int print_map_res(struct bpf_map *map_res, char *stage, int *map_size, in
             io_type = counter.io_type[0];
         } else {
             logMessage(LOG_LEVEL_DEBUG, "io_type not value.\n");
-            io_type = NULL;
+            io_type = '\0';
         }
         int major = counter.major;
         int first_minor = counter.first_minor;
@@ -206,31 +211,18 @@ static int print_map_res(struct bpf_map *map_res, char *stage, int *map_size, in
     return 0; 
 }
 
-int init_map(int *map_fd, const char *map_name, int *map_size, DeviceInfo *devices) {
+int init_map(int fd, const char *map_name, int device_count, DeviceInfo *devices) {
     struct stage_data init_data = {0};
 
     memset(init_data.io_type, 0, sizeof(init_data.io_type));
 
-    for (int i = 0; i < map_size; i++) {
+    for (int i = 0; i < device_count; i++) {
         init_data.major = devices[i].major;
         init_data.first_minor = devices[i].minor;
-        if (bpf_map_update_elem(map_fd, &i, &init_data, BPF_ANY) != 0) {
+        if (bpf_map_update_elem(fd, &i, &init_data, BPF_ANY) != 0) {
             logMessage(LOG_LEVEL_ERROR, "Failed to initialize map %s at index %d\n", map_name, i);
             return 1;
         }
-    }
-
-    return 0;
-}
-
-int init_version_map(int *map_fd, const char *map_name, int os_num) {
-    struct version_map_num init_data = {0};
-    init_data.num = os_num;
-
-    u32 key = 1;
-    if (bpf_map_update_elem(map_fd, &key, &init_data, BPF_ANY) != 0) {
-        logMessage(LOG_LEVEL_ERROR, "Failed to initialize map %s at index %d\n", map_name);
-        return 1;
     }
 
     return 0;
@@ -299,15 +291,6 @@ void setLogLevel(const char *levelStr) {
     }
 }
 
-void logMessage(LogLevel level, const char *format, ...){
-    if (level >= currentLogLevel) {
-        va_list args;
-        va_start(args, format);
-        vprintf(format, args);
-        va_end(args);
-    }
-}
-
 int check_for_device(const char *device_name) {
     char path[256];
     snprintf(path, sizeof(path), "/sys/block/%s", device_name);
@@ -331,92 +314,11 @@ int check_for_device(const char *device_name) {
     return 0;
 }
 
-typedef struct {
-    const char *version;
-    int value;
-} VersionMap;
-
-const VersionMap version_map[] = {
-        {"v2401", 1},
-        {"v2101", 2}
-    };
-
-char *get_minor_version(int index, char *buffer) {
-    char *version_info = NULL;
-    char* token = strtok(buffer, " ");
-    int count = 0;
-    while (token != NULL) {
-        token = strtok(NULL, " ");
-        count++;
-        if (count == 2) {
-            char* version = strtok(token, ".");
-            int dot_count = 0;
-            while (version != NULL) {
-                version = strtok(NULL, ".");
-                dot_count++;
-                if (dot_count == index) {
-                    version_info = strdup(version);
-                    break;
-                }
-            }
-        }
-    }
-    return version_info;
-}
-
-int get_os_version() {
-    FILE* file;
-    char* distribution = NULL;
-    char buffer[BUFFER_SIZE];
-
-    file = fopen(OS_RELEASE_FILE, "r");
-    if (file == NULL) {
-        logMessage(LOG_LEVEL_ERROR, "Failed to open release file: %s\n", OS_RELEASE_FILE);
-        return -1;
-    }
-
-    while (fgets(buffer, BUFFER_SIZE, file)) {
-        if (strncmp(buffer, "ID=", 3) == 0) {
-            distribution = strdup(buffer + 4);
-            distribution[strcspn(distribution, "\"\n")] = '\0';
-            break;
-        }
-    }
-    fclose(file);
-    
-    char* version_info = NULL;
-    int value = -1;
-
-    file = fopen(PROC_VERSION_FILE, "r");
-    if (file == NULL) {
-        logMessage(LOG_LEVEL_ERROR, "Failed to open version file:  %s\n", PROC_VERSION_FILE);
-        return -1;
-    }
-
-    if (fgets(buffer, BUFFER_SIZE, file)) {
-        if (strcmp(distribution, "openEuler") == 0) {
-            free(distribution);
-            return 0;
-        } else if (strcmp(distribution, "kylin") == 0) {
-            version_info = get_minor_version(4, buffer);
-            if (!version_info) {
-                logMessage(LOG_LEVEL_ERROR, "get minor version failed.\n");
-                free(distribution);
-                return -1;
-            }
-        }
-    }
-    free(distribution);
-    fclose(file);
-
-    for (int i = 0; version_map[i].version != NULL; ++i) {
-        if (strcmp(version_map[i].version, version_info) == 0) {
-            value = version_map[i].value;
-            break;
-        }
-    }
-    free(version_info);
-    return value;
+// 处理事件的回调函数
+static int handle_event(void *ctx, void *data, size_t data_sz) {
+    struct event *e = (struct event *)data;
+    logMessage(LOG_LEVEL_ERROR, "kernelspace error happen, stage: %d, period: %d, error: %d\n", e->stage, e->period, e->err);
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -457,20 +359,8 @@ int main(int argc, char **argv) {
         return err; 
     }
 
-    int os_num = get_os_version();
-    if (os_num < 0) {
-        logMessage(LOG_LEVEL_INFO, "get os version failed.\n");
-        return 1;
-    }
-
-    snprintf(filename, sizeof(filename), BPF_FILE);
-
-    if (load_bpf_file(filename)) {
-        logMessage(LOG_LEVEL_ERROR, "load_bpf_file failed.\n");
-        return 1; 
-    }
-
     signal(SIGINT, sig_handler);
+    signal(SIGTERM, sig_handler);
 
     dir = opendir("/dev");
     if (dir == NULL) {
@@ -506,31 +396,63 @@ int main(int argc, char **argv) {
 
     closedir(dir);
 
-    if (init_map(BLK_RES, "blk_res_map", device_count, devices) != 0) {
-        logMessage(LOG_LEVEL_ERROR, "blk_res_map failed.\n");
+    struct ebpf_collector_bpf *skel = ebpf_collector_bpf__open();
+    if (!skel) {
+        logMessage(LOG_LEVEL_ERROR, "Failed to open and load BPF skeleton\n");
         return 1;
     }
+
+    // 加载 BPF 程序到内核中
+    err = ebpf_collector_bpf__load(skel);
+    if (err) {
+        logMessage(LOG_LEVEL_ERROR, "Failed to load BPF skeleton: %d\n", err);  
+        ebpf_collector_bpf__destroy(skel);
+        return 1;
+    }
+
+    // 附加 BPF 程序到 kprobe
+    err = ebpf_collector_bpf__attach(skel);
+    if (err) {
+        logMessage(LOG_LEVEL_ERROR, "Failed to attach BPF skeleton: %d\n", err);  
+        ebpf_collector_bpf__destroy(skel);
+        return 1;
+    }
+
+    // 初始化环形缓冲区读取器
+    struct ring_buffer *rb = NULL;
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.ringbuf), handle_event, NULL, NULL);
+    if (!rb) {
+        return 1;
+    }
+
+
+    if (init_map(BLK_RES, "blk_res_map", device_count, devices)) {
+        logMessage(LOG_LEVEL_ERROR, "blk_res_map failed.\n");
+        ebpf_collector_bpf__destroy(skel);
+        return 1;
+    }
+
     if (init_map(BIO_RES, "blo_res_map", device_count, devices) != 0) {
         logMessage(LOG_LEVEL_ERROR, "blo_res_map failed.\n");
+        ebpf_collector_bpf__destroy(skel);
         return 1;
     }
     if (init_map(WBT_RES, "wbt_res_map", device_count, devices) != 0) {
         logMessage(LOG_LEVEL_ERROR, "wbt_res_map failed.\n");
+        ebpf_collector_bpf__destroy(skel);
         return 1;
     }
     if (init_map(TAG_RES, "tag_res_map", device_count, devices) != 0) {
         logMessage(LOG_LEVEL_ERROR, "tag_res_map failed.\n");
+        ebpf_collector_bpf__destroy(skel);
         return 1;
     }
-    if (init_version_map(VERSION_RES, "version_res_map", os_num) != 0) {
-        logMessage(LOG_LEVEL_ERROR, "version_res_map failed.\n");
-        return 1;
-    }
-    
 
     for (;;) { 
        
         sleep(1); 
+
+        err = ring_buffer__poll(rb, 100);
 
         int io_dump_blk[MAP_SIZE] = {0}; 
         update_io_dump(BLK_RES_2, io_dump_blk, device_count,"rq_driver"); 
@@ -570,5 +492,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    return -err; 
+    ring_buffer__free(rb);
+    ebpf_collector_bpf__destroy(skel);
+    return -err;
 }

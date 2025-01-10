@@ -32,10 +32,29 @@ typedef unsigned int u32;
 #define REQ_OP_WRITE_SAME 7
 #define MAP_SIZE   15
 
-#define OS_RELEASE_FILE "/etc/os-release"
-#define PROC_VERSION_FILE "/proc/version"
-#define BUFFER_SIZE 1024
-#define VERSION_LEN 20
+#define RWBS_LEN    8
+#define MINORBITS    20
+#define MINORMASK    ((1U << MINORBITS) - 1)
+
+#define MAJOR(dev)    ((unsigned int) ((dev) >> MINORBITS))
+#define MINOR(dev)    ((unsigned int) ((dev) & MINORMASK))
+
+// 阶段
+#define STAGE_RQ_DRIVER 1
+#define STAGE_BIO       2
+#define STAGE_WBT       3
+#define STAGE_GET_TAG   4
+
+// 时期
+#define PERIOD_START    1
+#define PERIOD_END      2
+
+// 错误码
+#define ERROR_MAJOR_ZERO 1
+#define ERROR_KEY_OVERFLOW 2
+#define ERROR_KEY_EXIST 3
+#define ERROR_UPDATE_FAIL 4
+#define ERROR_KEY_NOEXIST 5
 
 enum stage_type {
     BIO=0,
@@ -78,9 +97,10 @@ struct time_range_io_count
     u32 count[MAP_SIZE];
 };
 
-struct version_map_num
-{
-    int num;
+struct event {
+    u32 stage;
+    u64 period;
+    u32 err; 
 };
 
 #endif /* __EBPFCOLLECTOR_H */
