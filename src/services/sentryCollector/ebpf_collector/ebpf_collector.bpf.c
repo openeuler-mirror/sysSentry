@@ -6,8 +6,6 @@
  */
 
 #include "vmlinux.h"
-#include <errno.h> 
-#include <sys/sysmacros.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
@@ -464,7 +462,7 @@ int kprobe_blk_mq_submit_bio(struct pt_regs *regs)
     }
 
     long err = bpf_map_update_elem(&bio_map, &bio, &zero, BPF_NOEXIST); 
-    if (err && err != -EEXIST) {
+    if (err) {
         log_event(STAGE_BIO, PERIOD_START, ERROR_UPDATE_FAIL);
         return 0;
     }
