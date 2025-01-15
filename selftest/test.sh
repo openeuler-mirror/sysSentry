@@ -27,8 +27,7 @@ test_timeout_status=137
 function read_skip_cases()
 {
     file=$1
-    while IFS= read -r line
-    do
+    while IFS= read -r line || [ -n "$line" ]; do
         # skip lines starting with '#'
         if [[ "$line" =~ ^# ]]; then
             continue
