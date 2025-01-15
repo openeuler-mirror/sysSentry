@@ -1,0 +1,12 @@
+[Unit]
+Description = Collection module added for sysSentry
+ 
+[Service]
+ExecStart=/usr/bin/python3 /usr/bin/sentryCollector
+ExecStop=/bin/kill $MAINPID
+KillMode=process
+Restart=on-failure
+RestartSec=10s
+ 
+[Install]
+WantedBy = multi-user.target
