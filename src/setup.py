@@ -17,7 +17,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="syssentry",
-    version="1.0.2",
+    version="1.0.3",
     description="System inspection framework tool set",
     packages=find_packages(),
     include_package_data=True,
@@ -26,15 +26,16 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
     ],
     entry_points={
         'console_scripts': [
-            'cpu_sentry=plugins.cpu_sentry.cpu_sentry:main',
             'syssentry=syssentry.syssentry:main',
             'xalarmd=xalarm.xalarm_daemon:alarm_process_create',
             'sentryCollector=sentryCollector.collectd:main',
-            'avg_block_io=plugins.avg_block_io.avg_block_io:main',
-            'ai_block_io=plugins.ai_block_io.ai_block_io:main'
+            'avg_block_io=sentryPlugins.avg_block_io.avg_block_io:main',
+            'ai_block_io=sentryPlugins.ai_block_io.ai_block_io:main'
         ]
     },
 )
