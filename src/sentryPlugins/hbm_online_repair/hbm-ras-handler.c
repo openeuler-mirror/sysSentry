@@ -1,26 +1,33 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
+ * Description: hbm ras handler
+ * Author: luckky
+ * Create: 2024-10-30
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
 #include <traceevent/kbuffer.h>
-#include "ras-non-standard-handler.h"
+#include "hbm-ras-handler.h"
 #include "logger.h"
 
-static int uuid_le(const char *uu, char* uuid)
+static int decode_uuid(const char *uu, char* uuid)
 {
     if (!uu) {
-        log(LOG_ERROR, "uuid_le failed: uu is empty");
+        log(LOG_ERROR, "decode_uuid failed: uu is empty\n");
         return -1;
     }
     size_t uu_len = strlen(uu);
     if (uu_len != SECTION_TYPE_UUID_LEN) {
-        log(LOG_ERROR, "uuid_le failed: uu len is incorrect");
+        log(LOG_ERROR, "decode_uuid failed: uu len is incorrect\n");
         return -1;
     }
     size_t uuid_len = strlen(uuid);
     if (uuid_len != strlen(UUID_STR_TYPE)) {
-        log(LOG_ERROR, "uuid_le failed: uuid len is incorrect");
+        log(LOG_ERROR, "decode_uuid failed: uuid len is incorrect\n");
         return -1;
     }
 
@@ -30,18 +37,12 @@ static int uuid_le(const char *uu, char* uuid)
 
     for (i = 0; i < 16; i++) {
         p += sprintf(p, "%.2x", (unsigned char) uu[le[i]]);
-        switch (i) {
-        case 3:
-        case 5:
-        case 7:
-        case 9:
+        if (i == 3 || i == 5 || i == 7 || i == 9) {
             *p++ = '-';
-            break;
         }
     }
 
     *p = 0;
-
     return 0;
 }
 
@@ -62,7 +63,7 @@ int ras_non_standard_event_handler(struct trace_seq *s,
 
     trace_seq_printf(s, "\n");
     char uuid[sizeof(UUID_STR_TYPE)] = UUID_STR_TYPE;
-    if (uuid_le(ev.sec_type, uuid) < 0) {
+    if (decode_uuid(ev.sec_type, uuid) < 0) {
         log(LOG_WARNING, "get uuid failed\n");
         return -1;
     }

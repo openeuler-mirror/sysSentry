@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
+ * Description: hbm non standard event decoding and processing
+ * Author: luckky
+ * Create: 2024-10-30
+ */
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -15,58 +22,38 @@
 
 #include <traceevent/kbuffer.h>
 #include <traceevent/event-parse.h>
-#include "ras-non-standard-handler.h"
+#include "hbm-ras-handler.h"
 #include "logger.h"
-
-/*
- * Polling time, if read() doesn't block. Currently, trace_pipe_raw never
- * blocks on read(). So, we need to sleep for a while, to avoid spending
- * too much CPU cycles. A fix for it is expected for 3.10.
- */
-#define POLLING_TIME 3
-
-/* Test for a little-endian machine */
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    #define ENDIAN KBUFFER_ENDIAN_LITTLE
-#else
-    #define ENDIAN KBUFFER_ENDIAN_BIG
-#endif
 
 static int get_debugfs_dir(char *debugfs_dir, size_t len)
 {
-    FILE *fp;
-    char line[MAX_PATH + 1 + 256];
-
-    fp = fopen("/proc/mounts","r");
+    FILE *fp = fopen("/proc/mounts", "r");
     if (!fp) {
-        log(LOG_INFO, "Can't open /proc/mounts");
+        log(LOG_INFO, "Can't open /proc/mounts: %s\n", strerror(errno));
         return errno;
     }
 
-    do {
-        char *p, *type, *dir;
-        if (!fgets(line, sizeof(line), fp))
-            break;
-
-        p = strtok(line, " \t");
+    char line[MAX_PATH + 1 + 256];
+    while (fgets(line, sizeof(line), fp)) {
+        char *p = strtok(line, " \t");
         if (!p)
             break;
 
-        dir = strtok(NULL, " \t");
+        char *dir = strtok(NULL, " \t");
         if (!dir)
             break;
 
-        type = strtok(NULL, " \t");
+        char *type = strtok(NULL, " \t");
         if (!type)
             break;
 
-        if (!strcmp(type, "debugfs")) {
-            fclose(fp);
+        if (strcmp(type, "debugfs") == 0) {
             strncpy(debugfs_dir, dir, len - 1);
             debugfs_dir[len - 1] = '\0';
+            fclose(fp);
             return 0;
         }
-    } while(1);
+    }
 
     fclose(fp);
     log(LOG_INFO, "Can't find debugfs\n");
@@ -121,17 +108,12 @@ struct ras_events *init_trace_instance(void)
     return ras;
 }
 
-/*
- * Tracing enable/disable code
- */
 int toggle_ras_event(char *trace_dir, char *group, char *event, int enable)
 {
     int fd, rc;
     char fname[MAX_PATH + 1];
 
-    snprintf(fname, sizeof(fname), "%s%s:%s\n",
-         enable ? "" : "!",
-         group, event);
+    snprintf(fname, sizeof(fname), "%s%s:%s\n", enable ? "" : "!", group, event);
 
     /* Enable RAS events */
     fd = open_trace(trace_dir, "set_event", O_RDWR | O_APPEND);
@@ -149,19 +131,17 @@ int toggle_ras_event(char *trace_dir, char *group, char *event, int enable)
         goto err;
     }
 
-    log(LOG_INFO, "%s:%s event %s\n",
-        group, event,
-        enable ? "enabled" : "disabled");
+    log(LOG_INFO, "%s:%s event %s\n", group, event, enable ? "enabled" : "disabled");
     return 0;
 err:
-    log(LOG_ERROR, "Can't %s %s:%s tracing\n",
-        enable ? "enable" : "disable", group, event);
+    log(LOG_ERROR, "Can't %s %s:%s tracing\n", enable ? "enable" : "disable", group, event);
     return rc;
 }
 
 static int parse_header_page(struct ras_events *ras, struct tep_handle *pevent)
 {
-    int fd, len, page_size = DEFAULT_PAGE_SIZE;
+    int fd, len;
+    int page_size = DEFAULT_PAGE_SIZE;
     char buf[page_size];
 
     fd = open_trace(ras->tracing, "events/header_page", O_RDONLY);
@@ -189,18 +169,16 @@ static void parse_ras_data(struct ras_events* ras, int cpu, struct kbuffer *kbuf
                void *data, unsigned long long time_stamp)
 {
     struct tep_record record;
-    struct trace_seq s;
-
-    record.ts = time_stamp;
-    record.size = kbuffer_event_size(kbuf);
     record.data = data;
-    record.offset = kbuffer_curr_offset(kbuf);
     record.cpu = cpu;
+    record.size = kbuffer_event_size(kbuf);
+    record.offset = kbuffer_curr_offset(kbuf);
+    record.ts = time_stamp;
 
-    /* note offset is just offset in subbuffer */
     record.missed_events = kbuffer_missed_events(kbuf);
     record.record_size = kbuffer_curr_size(kbuf);
 
+    struct trace_seq s;
     trace_seq_init(&s);
     tep_print_event(ras->pevent, &s, &record, "%s-%s-%d-%s",
                     TEP_PRINT_NAME, TEP_PRINT_COMM, TEP_PRINT_TIME, TEP_PRINT_INFO);
@@ -216,7 +194,7 @@ static int get_num_cpus()
 
 static int set_buffer_percent(struct ras_events *ras, int percent)
 {
-    int res = 0;
+    int ret = 0;
     int fd;
 
     fd = open_trace(ras->tracing, "buffer_percent", O_WRONLY);
@@ -227,66 +205,59 @@ static int set_buffer_percent(struct ras_events *ras, int percent)
         size = write(fd, buf, strlen(buf));
         if (size <= 0) {
             log(LOG_WARNING, "can't write to buffer_percent\n");
-            res = -1;
+            ret = -1;
         }
         close(fd);
     } else {
         log(LOG_WARNING, "Can't open buffer_percent\n");
-        res = -1;
+        ret = -1;
     }
 
-    return res;
+    return ret;
 }
 
 static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
 {
     ssize_t size;
     unsigned long long time_stamp;
-    void *data;
-    int ready, i, count_nready;
+    void *data, *ras_page;
+    int ready, i, count_nready, ret;
     struct kbuffer *kbuf;
-    void *page;
     struct pollfd fds[n_cpus + 1];
     struct signalfd_siginfo fdsiginfo;
     sigset_t mask;
     int warnonce[n_cpus];
-    char pipe_raw[PATH_MAX];
+    char trace_pipe_raw[PATH_MAX];
+
+    for (i = 0; i < (n_cpus + 1); i++) {
+        fds[i].fd = -1;
+    }
+
+    ret = set_buffer_percent(ras, 0);
+    if (ret < 0)
+        log(LOG_WARNING, "Set buffer_percent failed\n");
 
     memset(&warnonce, 0, sizeof(warnonce));
 
-    page = malloc(ras->page_size);
-    if (!page) {
-        log(LOG_ERROR, "Can't allocate page\n");
+    ras_page = malloc(ras->page_size);
+    if (!ras_page) {
+        log(LOG_ERROR, "allocate ras_page failed!\n");
         return -ENOMEM;
     }
 
     kbuf = kbuffer_alloc(KBUFFER_LSIZE_8, ENDIAN);
     if (!kbuf) {
-        log(LOG_ERROR, "Can't allocate kbuf\n");
-        free(page);
+        log(LOG_ERROR, "allocate kbuf failed!\n");
+        free(ras_page);
         return -ENOMEM;
     }
-
-    /* Fix for poll() on the per_cpu trace_pipe and trace_pipe_raw blocks
-     * indefinitely with the default buffer_percent in the kernel trace system,
-     * which is introduced by the following change in the kernel.
-     * https://lore.kernel.org/all/20221020231427.41be3f26@gandalf.local.home/T/#u.
-     * Set buffer_percent to 0 so that poll() will return immediately
-     * when the trace data is available in the ras per_cpu trace pipe_raw
-     */
-    if (set_buffer_percent(ras, 0))
-        log(LOG_WARNING, "Set buffer_percent failed\n");
-
-    for (i = 0; i < (n_cpus + 1); i++)
-        fds[i].fd = -1;
 
     for (i = 0; i < n_cpus; i++) {
         fds[i].events = POLLIN;
 
-        snprintf(pipe_raw, sizeof(pipe_raw),
-            "per_cpu/cpu%d/trace_pipe_raw", i);
+        snprintf(trace_pipe_raw, sizeof(trace_pipe_raw), "per_cpu/cpu%d/trace_pipe_raw", i);
 
-        fds[i].fd = open_trace(ras->tracing, pipe_raw, O_RDONLY);
+        fds[i].fd = open_trace(ras->tracing, trace_pipe_raw, O_RDONLY);
         if (fds[i].fd < 0) {
             log(LOG_ERROR, "Can't open trace_pipe_raw\n");
             goto error;
@@ -294,10 +265,11 @@ static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
     }
 
     sigemptyset(&mask);
-    sigaddset(&mask, SIGINT);
-    sigaddset(&mask, SIGTERM);
-    sigaddset(&mask, SIGHUP);
-    sigaddset(&mask, SIGQUIT);
+    int sig_list_len = 4;
+    int sig_list[sig_list_len] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT};
+    for (i = 0; i < sig_list_len; i++) {
+        sigaddset(&mask, sig_list[i]);
+    }
     if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1)
         log(LOG_WARNING, "sigprocmask\n");
     fds[n_cpus].events = POLLIN;
@@ -324,19 +296,14 @@ static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
                 continue;
             }
 
-            if (fdsiginfo.ssi_signo == SIGINT ||
-                fdsiginfo.ssi_signo == SIGTERM ||
-                fdsiginfo.ssi_signo == SIGHUP ||
-                fdsiginfo.ssi_signo == SIGQUIT) {
-                log(LOG_INFO, "Received signal=%d\n",
-                    fdsiginfo.ssi_signo);
-                goto error;
-            } else {
-                log(LOG_INFO,
-                    "Received unexpected signal=%d\n",
-                    fdsiginfo.ssi_signo);
-                continue;
+            for (i = 0; i < sig_list_len; i++) {
+                if (fdsiginfo.ssi_signo == sig_list[i]) {
+                    log(LOG_INFO, "Received signal=%d\n", fdsiginfo.ssi_signo);
+                    goto error;
+                }
             }
+            log(LOG_INFO, "Received unexpected signal=%d\n", fdsiginfo.ssi_signo);
+            continue;
         }
 
         count_nready = 0;
@@ -352,25 +319,20 @@ static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
                 count_nready++;
                 continue;
             }
-            size = read(fds[i].fd, page, ras->page_size);
+            size = read(fds[i].fd, ras_page, ras->page_size);
             if (size < 0) {
-                log(LOG_WARNING, "read\n");
+                log(LOG_WARNING, "read page failed on cpu %d\n", i);
                 goto error;
             } else if (size > 0) {
                 log(LOG_DEBUG, "cpu %d receive %ld bytes data\n", i, size);
-                kbuffer_load_subbuffer(kbuf, page);
+                kbuffer_load_subbuffer(kbuf, ras_page);
 
                 while ((data = kbuffer_read_event(kbuf, &time_stamp))) {
                     if (kbuffer_curr_size(kbuf) < 0) {
                         log(LOG_ERROR, "invalid kbuf data, discard\n");
                         break;
                     }
-
-                    log(LOG_DEBUG, "parse_ras_data\n");
                     parse_ras_data(ras, i, kbuf, data, time_stamp);
-
-                    /* increment to read next event */
-                    log(LOG_DEBUG, "kbuffer_next_event\n");
                     kbuffer_next_event(kbuf, NULL);
                 }
             } else {
@@ -378,10 +340,6 @@ static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
             }
         }
 
-        /*
-         * If count_nready == n_cpus, there is no cpu fd in POLLIN state,
-         * so we need to break the cycle
-         */
         if (count_nready == n_cpus) {
             log(LOG_ERROR, "no cpu fd in POLLIN state, stop running\n");
             break;
@@ -390,7 +348,7 @@ static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
 
 error:
     kbuffer_free(kbuf);
-    free(page);
+    free(ras_page);
     sigprocmask(SIG_UNBLOCK, &mask, NULL);
 
     for (i = 0; i < (n_cpus + 1); i++) {
@@ -485,7 +443,7 @@ int handle_ras_events(struct ras_events *ras)
 {
     int rc, i;
     unsigned cpus;
-    struct tep_handle *pevent = NULL;
+    struct tep_handle *pevent;
 
     pevent = tep_alloc();
     if (!pevent) {

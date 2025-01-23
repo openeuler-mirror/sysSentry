@@ -1,8 +1,15 @@
-#ifndef __RAS_NON_STANDARD_HANDLER_H
-#define __RAS_NON_STANDARD_HANDLER_H
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
+ * Description: hbm ras handler
+ * Author: luckky
+ * Create: 2024-10-30
+ */
+
+#ifndef __HBM_RAS_HANDLER_H
+#define __HBM_RAS_HANDLER_H
 
 #include <traceevent/event-parse.h>
-#include "ras-events.h"
+#include "hbm-ras-events.h"
 
 #define BIT(nr) (1UL << (nr))
 

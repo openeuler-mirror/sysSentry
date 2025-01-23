@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
+ * Description: hbm online repair main program
+ * Author: luckky
+ * Create: 2024-10-30
+ */
+
 #include <argp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,7 +12,7 @@
 #include <unistd.h>
 
 #include "logger.h"
-#include "ras-events.h"
+#include "hbm-ras-events.h"
 #include "non-standard-hbm-repair.h"
 
 #define DEFAULT_LOG_LEVEL LOG_INFO
