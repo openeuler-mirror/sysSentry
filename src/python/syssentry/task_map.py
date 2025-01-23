@@ -13,16 +13,16 @@
 tasks map class and initialize function.
 """
 import logging
+from typing import Dict
 
 ONESHOT_TYPE = "ONESHOT"
 PERIOD_TYPE = "PERIOD"
 
 TASKS_MAP = None
 
-
 class TasksMap:
     """task map class"""
-    tasks_dict = {}
+    tasks_dict: Dict[str, Dict] = {}
 
     @classmethod
     def init_task_map(cls):
@@ -65,3 +65,4 @@ class TasksMap:
                 logging.debug("getting task by name: %s", res)
                 break
         return res
+

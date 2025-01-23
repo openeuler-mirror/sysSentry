@@ -98,15 +98,15 @@ class Xalarm:
     def msg1(self, msg):
         """msg1 setter
         """
-        if len(msg) > 512:
-            raise ValueError("msg1 length must below 512")
+        if len(msg) > MAX_MSG_LEN:
+            raise ValueError(f"msg1 length must below {MAX_MSG_LEN}")
         self._msg1 = msg
 
 
 def alarm_bin2stu(bin_data):
     """alarm binary to struct
     """
-    struct_data = struct.unpack("@HBBll512s", bin_data)
+    struct_data = struct.unpack(f"@HBBll{MAX_MSG_LEN}s", bin_data)
 
     alarm_info = Xalarm(1001, 2, 1, 0, 0, "")
     alarm_info.alarm_id = struct_data[0]
