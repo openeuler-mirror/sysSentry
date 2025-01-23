@@ -14,13 +14,6 @@ struct ras_events {
     int               page_size;
 };
 
-struct pcpu_data {
-    struct tep_handle *pevent;
-    struct ras_events *ras;
-    int               cpu;
-};
-
-/* Function prototypes */
 int toggle_ras_event(char *trace_dir, char *group, char *event, int enable);
 int handle_ras_events(struct ras_events *ras);
 struct ras_events *init_trace_instance(void);

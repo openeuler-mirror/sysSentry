@@ -185,7 +185,7 @@ static int parse_header_page(struct ras_events *ras, struct tep_handle *pevent)
     return 0;
 }
 
-static void parse_ras_data(struct pcpu_data *pdata, struct kbuffer *kbuf,
+static void parse_ras_data(struct ras_events* ras, int cpu, struct kbuffer *kbuf,
                void *data, unsigned long long time_stamp)
 {
     struct tep_record record;
@@ -195,14 +195,14 @@ static void parse_ras_data(struct pcpu_data *pdata, struct kbuffer *kbuf,
     record.size = kbuffer_event_size(kbuf);
     record.data = data;
     record.offset = kbuffer_curr_offset(kbuf);
-    record.cpu = pdata->cpu;
+    record.cpu = cpu;
 
     /* note offset is just offset in subbuffer */
     record.missed_events = kbuffer_missed_events(kbuf);
     record.record_size = kbuffer_curr_size(kbuf);
 
     trace_seq_init(&s);
-    tep_print_event(pdata->ras->pevent, &s, &record, "%s-%s-%d-%s", 
+    tep_print_event(ras->pevent, &s, &record, "%s-%s-%d-%s",
                     TEP_PRINT_NAME, TEP_PRINT_COMM, TEP_PRINT_TIME, TEP_PRINT_INFO);
     trace_seq_do_printf(&s);
     fflush(stdout);
@@ -238,8 +238,7 @@ static int set_buffer_percent(struct ras_events *ras, int percent)
     return res;
 }
 
-static int read_ras_event_all_cpus(struct pcpu_data *pdata,
-                   unsigned n_cpus)
+static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
 {
     ssize_t size;
     unsigned long long time_stamp;
@@ -255,7 +254,7 @@ static int read_ras_event_all_cpus(struct pcpu_data *pdata,
 
     memset(&warnonce, 0, sizeof(warnonce));
 
-    page = malloc(pdata[0].ras->page_size);
+    page = malloc(ras->page_size);
     if (!page) {
         log(LOG_ERROR, "Can't allocate page\n");
         return -ENOMEM;
@@ -275,7 +274,7 @@ static int read_ras_event_all_cpus(struct pcpu_data *pdata,
      * Set buffer_percent to 0 so that poll() will return immediately
      * when the trace data is available in the ras per_cpu trace pipe_raw
      */
-    if (set_buffer_percent(pdata[0].ras, 0))
+    if (set_buffer_percent(ras, 0))
         log(LOG_WARNING, "Set buffer_percent failed\n");
 
     for (i = 0; i < (n_cpus + 1); i++)
@@ -287,7 +286,7 @@ static int read_ras_event_all_cpus(struct pcpu_data *pdata,
         snprintf(pipe_raw, sizeof(pipe_raw),
             "per_cpu/cpu%d/trace_pipe_raw", i);
 
-        fds[i].fd = open_trace(pdata[0].ras->tracing, pipe_raw, O_RDONLY);
+        fds[i].fd = open_trace(ras->tracing, pipe_raw, O_RDONLY);
         if (fds[i].fd < 0) {
             log(LOG_ERROR, "Can't open trace_pipe_raw\n");
             goto error;
@@ -353,7 +352,7 @@ static int read_ras_event_all_cpus(struct pcpu_data *pdata,
                 count_nready++;
                 continue;
             }
-            size = read(fds[i].fd, page, pdata[i].ras->page_size);
+            size = read(fds[i].fd, page, ras->page_size);
             if (size < 0) {
                 log(LOG_WARNING, "read\n");
                 goto error;
@@ -368,8 +367,7 @@ static int read_ras_event_all_cpus(struct pcpu_data *pdata,
                     }
 
                     log(LOG_DEBUG, "parse_ras_data\n");
-                    parse_ras_data(&pdata[i],
-                               kbuf, data, time_stamp);
+                    parse_ras_data(ras, i, kbuf, data, time_stamp);
 
                     /* increment to read next event */
                     log(LOG_DEBUG, "kbuffer_next_event\n");
@@ -488,7 +486,6 @@ int handle_ras_events(struct ras_events *ras)
     int rc, i;
     unsigned cpus;
     struct tep_handle *pevent = NULL;
-    struct pcpu_data *data = NULL;
 
     pevent = tep_alloc();
     if (!pevent) {
@@ -514,19 +511,9 @@ int handle_ras_events(struct ras_events *ras)
     log(LOG_INFO, "add_event_handler done\n");
 
     cpus = get_num_cpus();
-    data = calloc(sizeof(*data), cpus);
-    if (!data)
-        goto err;
-
-    for (i = 0; i < cpus; i++) {
-        data[i].ras = ras;
-        data[i].cpu = i;
-    }
-    rc = read_ras_event_all_cpus(data, cpus);
+    rc = read_ras_event_all_cpus(ras, cpus);
 
 err:
-    if (data)
-        free(data);
     if (pevent)
         tep_free(pevent);
     return rc;
