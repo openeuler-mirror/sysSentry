@@ -115,6 +115,7 @@ class AlarmRegister:
     def stop_thread(self) -> None:
         self.thread_should_stop = True
         self.thread.join()
+        self.socket.close()
 
 
 def xalarm_register(callback: callable, id_filter: list) -> int:
@@ -147,7 +148,7 @@ def xalarm_unregister(clientId: int) -> None:
     ALARM_REGISTER_INFO = None
 
 
-def xalarm_upgrade(clientId: int, id_filter: list) -> bool:
+def xalarm_upgrade(id_filter: list, clientId: int) -> bool:
     global ALARM_REGISTER_INFO
     if clientId < 0:
         sys.stderr.write("xalarm_upgrade: invalid client\n")
@@ -158,7 +159,7 @@ def xalarm_upgrade(clientId: int, id_filter: list) -> bool:
     if ALARM_REGISTER_INFO.thread_should_stop:
         sys.stderr.write("xalarm_upgrade: upgrade failed, alarm thread has stopped\n")
         return False
-     ALARM_REGISTER_INFO.id_filter = id_filter
+    ALARM_REGISTER_INFO.id_filter = id_filter
     return True
 
 
@@ -193,4 +194,3 @@ def xalarm_getdesc(alarm_info: Xalarm) -> str:
     except UnicodeError:
         desc_str = None
     return desc_str
-
