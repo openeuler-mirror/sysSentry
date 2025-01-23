@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
+ * Description: hbm online repair logger
+ * Author: luckky
+ * Create: 2024-10-30
+ */
+
 #ifndef __LOGGER_H
 #define __LOGGER_H
 

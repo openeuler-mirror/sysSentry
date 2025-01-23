@@ -1,7 +1,14 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
+ * Description: hbm online repair core functions
+ * Author: luckky
+ * Create: 2024-10-30
+ */
+
 #ifndef __NON_STANDARD_HBM_REPAIR
 #define __NON_STANDARD_HBM_REPAIR
 
-#include "ras-non-standard-handler.h"
+#include "hbm-ras-handler.h"
 
 #define DEFAULT_PAGE_SIZE_KB   4
 #define HBM_MEM_RAS_NAME   "HISI0521"
