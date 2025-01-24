@@ -25,6 +25,8 @@
 #include "hbm-ras-handler.h"
 #include "logger.h"
 
+#define SIG_LIST_LEN 4
+
 static int get_debugfs_dir(char *debugfs_dir, size_t len)
 {
     FILE *fp = fopen("/proc/mounts", "r");
@@ -265,9 +267,8 @@ static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
     }
 
     sigemptyset(&mask);
-    int sig_list_len = 4;
-    int sig_list[sig_list_len] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT};
-    for (i = 0; i < sig_list_len; i++) {
+    int sig_list[SIG_LIST_LEN] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT};
+    for (i = 0; i < SIG_LIST_LEN; i++) {
         sigaddset(&mask, sig_list[i]);
     }
     if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1)
@@ -296,7 +297,7 @@ static int read_ras_event_all_cpus(struct ras_events* ras, unsigned n_cpus)
                 continue;
             }
 
-            for (i = 0; i < sig_list_len; i++) {
+            for (i = 0; i < SIG_LIST_LEN; i++) {
                 if (fdsiginfo.ssi_signo == sig_list[i]) {
                     log(LOG_INFO, "Received signal=%d\n", fdsiginfo.ssi_signo);
                     goto error;
@@ -441,7 +442,7 @@ static int add_event_handler(struct ras_events *ras, struct tep_handle *pevent,
 
 int handle_ras_events(struct ras_events *ras)
 {
-    int rc, i;
+    int rc;
     unsigned cpus;
     struct tep_handle *pevent;
 

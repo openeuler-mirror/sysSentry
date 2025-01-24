@@ -78,7 +78,7 @@ int handle_driver(char* driver_name, bool load)
 
     snprintf(command, DRIVER_COMMAND_LEN, "%s %s 2>&1", load ? "modprobe" : "rmmod", driver_name);
     ret = execute_command(command);
-    log(ret < 0 ? LOG_ERROR : LOG_DEBUG, "%s %s %s\n", load ? "load" : "unload", driver_name, ret < 0 ? "failed" : "success");
+    log((ret < 0 ? LOG_ERROR : LOG_DEBUG), "%s %s %s\n", load ? "load" : "unload", driver_name, ret < 0 ? "failed" : "success");
     return ret;
 }
 
