@@ -39,6 +39,10 @@ typedef unsigned int u32;
 #define MAJOR(dev)    ((unsigned int) ((dev) >> MINORBITS))
 #define MINOR(dev)    ((unsigned int) ((dev) & MINORMASK))
 
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
 // 阶段
 #define STAGE_RQ_DRIVER 1
 #define STAGE_BIO       2
