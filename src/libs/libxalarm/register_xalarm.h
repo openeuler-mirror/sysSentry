@@ -19,6 +19,9 @@
 
 #define MEMORY_ALARM_ID 1001
 
+#define ALARM_REBOOT_EVENT 1003
+#define ALARM_REBOOT_ACK_EVENT 1004
+
 #define MINOR_ALM 1
 #define MAJOR_ALM 2
 #define CRITICAL_ALM 3
@@ -76,6 +79,22 @@ struct alarm_subscription_info {
     int id_list[MAX_NUM_OF_ALARM_ID];
     unsigned int len;
 };
+
+struct alarm_msg {
+    unsigned short usAlarmId;
+    struct timeval AlarmTime;
+    char pucParas[ALARM_INFO_MAX_PARAS_LEN];
+};
+ 
+struct alarm_register {
+    int register_fd;
+    char alarm_enable_bitmap[MAX_NUM_OF_ALARM_ID];
+};
+ 
+int xalarm_report_event(unsigned short usAlarmId, char *pucParas);
+int xalarm_register_event(struct alarm_register** register_info, struct alarm_subscription_info id_filter);
+int xalarm_get_event(struct alarm_msg* msg, struct alarm_register *register_info);
+void xalarm_unregister_event(struct alarm_register *register_info);
 
 int xalarm_Register(alarm_callback_func callback, struct alarm_subscription_info id_filter);
 void xalarm_UnRegister(int client_id);

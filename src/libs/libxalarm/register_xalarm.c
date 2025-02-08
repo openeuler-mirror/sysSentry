@@ -655,3 +655,157 @@ int report_result(const char *task_name, enum RESULT_LEVEL result_level, const c
     return RETURE_CODE_SUCCESS;
 }
 
+int xalarm_register_event(struct alarm_register **register_info, struct alarm_subscription_info id_filter)
+{
+    int i;
+    // check whether id_filter is valid
+    if (register_info == NULL || !alarm_subscription_verify(id_filter)) {
+        return -EINVAL;
+    }
+
+    *register_info = (struct alarm_register *)malloc(sizeof(struct alarm_register));
+    // failed to malloc memory for register_info struct
+    if (*register_info == NULL) {
+        return -ENOMEM;
+    }
+
+    // transform id_filter(eg:[1001, 1002]) into bitmap(eg:[true, true, false, ..., false])
+    memset((*register_info)->alarm_enable_bitmap, 0, MAX_NUM_OF_ALARM_ID * sizeof(char));
+    for (i = 0; i < id_filter.len; i++) {
+        (*register_info)->alarm_enable_bitmap[id_filter.id_list[i] - MIN_ALARM_ID] = ALARM_ENABLED;
+    }
+
+    // establish connection between xalarmd and this program
+    (*register_info)->register_fd = create_unix_socket(PATH_REG_ALARM);
+    if ((*register_info)->register_fd == -1) {
+        free(*register_info);
+        return -ENOTCONN;
+    }
+
+    return 0;
+}
+
+void xalarm_unregister_event(struct alarm_register *register_info)  
+{
+    if (register_info == NULL) {
+        return;
+    }
+    // close client fd socket connection resource
+    if (register_info->register_fd != -1) {
+        (void)close(register_info->register_fd);
+        register_info->register_fd = -1;
+    }
+
+    free(register_info);
+}
+
+int xalarm_get_event(struct alarm_msg* msg, struct alarm_register *register_info)
+{
+    struct alarm_info info;
+    
+    if (msg == NULL || register_info == NULL) {
+        return -EINVAL;
+    }
+
+    while (true) {
+        int recvlen = recv(register_info->register_fd, &info, sizeof(struct alarm_info), 0);
+
+        // recvlen < 0 means that we meet with error when recv.
+        if (recvlen < 0) {
+            // when recv EINTR or EAGAIN or EWOULDBLOCK signal, we should try again.
+            // EINTR means recv func interrupted by signal
+            // EAGIAN and EWOULDBLOCK means recv has been blocked(in nonblock mode)
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+                usleep(RECV_DELAY_MSEC * TIME_UNIT_MILLISECONDS);
+                continue;
+            } else {
+                // otherwise means we meet up with some unrecoverable error
+                // ECONNRESET means server closed the connection for some error
+                // EBADF means this filr descriptor is invalid
+                // ENOMEM means out of memory
+                // EFAULT means invalid buffer address
+                close(register_info->register_fd);
+                return -errno;
+            }
+        }
+        // recvlen == 0 means the connection has been properly closed, 
+        // and the remote end has no more data to send.
+        if (recvlen == 0) {
+            close(register_info->register_fd);
+            return -ENOTCONN;
+        }
+        // if recvlen == sizeof(alarm_info), that means we recieved data correctlly
+        // why use alarm_info rather than alarm_msg? alarm_info is used for old
+        // api, it's a communication protocol between xalarmd service and libxalarm.
+        // to be compatible with old api and reduce modification to xalarmd, use
+        // alarm_info for communication and return alarm_msg(alarm_msg is subset of
+        // alarm_info).
+        if (recvlen == (int)sizeof(struct alarm_info)) {
+            // filter alarm id, alarm id reciecved which is not registered by this program
+            // will be ignored and continue to wait for next msg
+            if (info.usAlarmId < MIN_ALARM_ID || info.usAlarmId > MAX_ALARM_ID || 
+                    register_info->alarm_enable_bitmap[info.usAlarmId - MIN_ALARM_ID] != ALARM_ENABLED) {
+                continue;
+            }
+            msg->usAlarmId = info.usAlarmId;
+            msg->AlarmTime = info.AlarmTime;
+            strncpy((char *)msg->pucParas, (char *)info.pucParas, MAX_PARAS_LEN - 1);
+            // no need to close fd because get_event() can be reused after recv one msg
+            return 0;
+        }
+        // if recvlen > 0 but not equal to sizeof alarm_info, loop to wait for msg
+    }
+}
+
+int xalarm_report_event(unsigned short usAlarmId, char *pucParas)
+{
+    int ret, fd;
+    struct alarm_info info;
+    struct sockaddr_un alarm_addr;
+
+    if (usAlarmId < MIN_ALARM_ID || usAlarmId > MAX_ALARM_ID) {
+        return -EINVAL;
+    }
+
+    if (pucParas == NULL || (int)strlen(pucParas) > MAX_PARAS_LEN) {
+        return -EINVAL;
+    }
+
+    memset(&info, 0, sizeof(struct alarm_info));
+    info.usAlarmId = usAlarmId;
+    info.ucAlarmLevel = MINOR_ALM;
+    info.ucAlarmType = ALARM_TYPE_OCCUR;
+    gettimeofday(&info.AlarmTime, NULL);
+    strncpy((char *)info.pucParas, (char *)pucParas, MAX_PARAS_LEN - 1);
+
+
+    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return -ENOTCONN;
+    }
+
+    ret = init_report_addr(&alarm_addr, PATH_REPORT_ALARM);
+    if (ret == -1) {
+        close(fd);
+        return -ENOTCONN;
+    }
+
+    while (true) {
+        ret = sendto(fd, &info, sizeof(struct alarm_info), 0, (struct sockaddr *)&alarm_addr,
+            sizeof(alarm_addr.sun_family) + strlen(alarm_addr.sun_path));
+        // if errno == EINTR means sendto has been interrupted by system, should retry
+        if (ret < 0 && errno == EINTR) {
+            continue;
+        }
+        break;
+    }
+
+    close(fd);
+
+    if (ret != (int)sizeof(struct alarm_info)) {
+        return -ECOMM;
+    }
+    return (ret > 0) ? 0 : -errno;
+}
+
+
