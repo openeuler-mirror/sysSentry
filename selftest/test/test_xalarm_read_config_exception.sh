@@ -12,7 +12,8 @@ set +e
 function pre_test() {
     cp /etc/sysSentry/xalarm.conf /etc/sysSentry/xalarm.conf.bak
     rm -f ./tmp_log
-    systemctl stop xalarmd.service
+    kill $(pgrep -w xalarmd)
+    sleep 1
 }
 
 function do_test() {
@@ -20,7 +21,7 @@ function do_test() {
     # 异常的alarm id
     start_line=$(expr $(wc -l < /var/log/sysSentry/xalarm.log) + 1)
     echo -e "[filter]\nid_mask = 999,9999,aaa,test-and-run,7869-2431" > /etc/sysSentry/xalarm.conf
-    systemctl start xalarmd.service
+    xalarmd
     end_line=$(wc -l < /var/log/sysSentry/xalarm.log)
     sed -n "${start_line}, ${end_line}p" /var/log/sysSentry/xalarm.log >> ./tmp_log
     wait_cmd_ok "grep \"invalid alarm id 999, ignored\" ./tmp_log" 1 3
@@ -41,7 +42,9 @@ function do_test() {
     rm -f /etc/sysSentry/xalarm.conf
     start_line=$(expr $(wc -l < /var/log/sysSentry/xalarm.log) + 1)
     echo -e "[no_filter]\nid_mask = 123" > /etc/sysSentry/xalarm.conf
-    systemctl restart xalarmd.service
+    kill $(pgrep -w xalarmd)
+    sleep 1
+    xalarmd
     end_line=$(wc -l < /var/log/sysSentry/xalarm.log)
     sed -n "${start_line}, ${end_line}p" /var/log/sysSentry/xalarm.log >> ./tmp_log
     wait_cmd_ok "grep \"no filter conf\" ./tmp_log" 1 3
@@ -50,7 +53,9 @@ function do_test() {
     rm -f /etc/sysSentry/xalarm.conf
     start_line=$(expr $(wc -l < /var/log/sysSentry/xalarm.log) + 1)
     echo -e "[filter]\nid_mask_number = 123" > /etc/sysSentry/xalarm.conf
-    systemctl restart xalarmd.service
+    kill $(pgrep -w xalarmd)
+    sleep 1
+    xalarmd
     end_line=$(wc -l < /var/log/sysSentry/xalarm.log)
     sed -n "${start_line}, ${end_line}p" /var/log/sysSentry/xalarm.log >> ./tmp_log
     wait_cmd_ok "grep \"no id_mask conf\" ./tmp_log" 1 3
@@ -62,7 +67,8 @@ function post_test() {
     cat ./tmp_log
     rm -f /etc/sysSentry/xalarm.conf ./tmp_log
     cp /etc/sysSentry/xalarm.conf.bak /etc/sysSentry/xalarm.conf
-    systemctl stop xalarmd.service
+    kill $(pgrep -w xalarmd)
+    sleep 1
 }
 
 run_testcase

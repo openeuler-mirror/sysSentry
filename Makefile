@@ -52,6 +52,7 @@ dirs:
 	mkdir -p $(SYSTEMDDIR)
 	mkdir -p $(LOGCRON)
 	mkdir -p $(LIBINSTALLDIR)
+	mkdir -p $(ETCDIR)/sysSentry/
 	install -d -m 700 $(ETCDIR)/sysSentry/
 	install -d -m 700 $(ETCDIR)/sysSentry/tasks/
 	install -d -m 700 $(ETCDIR)/sysSentry/plugins/
