@@ -16,6 +16,7 @@ Create: 2023-11-02
 
 import socket
 import logging
+import threading
 from time import sleep
 
 MIN_ID_NUMBER = 1001
@@ -23,6 +24,7 @@ MAX_ID_NUMBER = 1128
 MAX_CONNECTION_NUM = 100 
 TEST_CONNECT_BUFFER_SIZE = 32
 PEROID_SCANN_TIME = 60
+LOCK = threading.Lock()
 
 
 def check_filter(alarm_info, alarm_filter):
@@ -46,24 +48,25 @@ def cleanup_closed_connections(server_sock, epoll, fd_to_socket):
     :param fd_to_socket: dict instance, used to hold client connections and server connections
     """
     to_remove = []
-    for fileno, connection in fd_to_socket.items():
-        if connection is server_sock:
-            continue
-        try:
-            # test whether connection still alive, use MSG_DONTWAIT to avoid blocking thread
-            # use MSG_PEEK to avoid consuming buffer data
-            data = connection.recv(TEST_CONNECT_BUFFER_SIZE, socket.MSG_DONTWAIT | socket.MSG_PEEK)
-            if not data:
+    with LOCK:
+        for fileno, connection in fd_to_socket.items():
+            if connection is server_sock:
+                continue
+            try:
+                # test whether connection still alive, use MSG_DONTWAIT to avoid blocking thread
+                # use MSG_PEEK to avoid consuming buffer data
+                data = connection.recv(TEST_CONNECT_BUFFER_SIZE, socket.MSG_DONTWAIT | socket.MSG_PEEK)
+                if not data:
+                    to_remove.append(fileno)
+            except BlockingIOError:
+                pass
+            except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
                 to_remove.append(fileno)
-        except BlockingIOError:
-            pass
-        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-            to_remove.append(fileno)
-    
-    for fileno in to_remove:
-        fd_to_socket[fileno].close()
-        del fd_to_socket[fileno]
-        logging.info(f"cleaned up connection {fileno} for client lost connection.")
+        
+        for fileno in to_remove:
+            fd_to_socket[fileno].close()
+            del fd_to_socket[fileno]
+            logging.info(f"cleaned up connection {fileno} for client lost connection.")
 
 
 def peroid_task_to_cleanup_connections(server_sock, epoll, fd_to_socket, thread_should_stop):
@@ -96,6 +99,7 @@ def wait_for_connection(server_sock, epoll, fd_to_socket, thread_should_stop):
                         connection.close()
                         continue
                     fd_to_socket[connection.fileno()] = connection
+                    logging.info("connection %d registered event.")
         except socket.error as e: 
             logging.debug(f"socket error, reason is {e}")
             break
@@ -103,7 +107,7 @@ def wait_for_connection(server_sock, epoll, fd_to_socket, thread_should_stop):
             logging.debug(f"wait for connection failed {e}")
 
 
-def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data):
+def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data, alarm_str):
     """
     this function is to broadcast alarm data to client, if fail to send data, remove connections held by fd_to_socket
     :param server_sock: server socket instance of alarm
@@ -112,13 +116,22 @@ def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data):
     :param bin_data: binary instance, alarm info data in C-style struct format defined in xalarm_api.py
     """
     to_remove = []
-    for fileno, connection in fd_to_socket.items():
-        if connection is not server_sock:
-            try:
-                connection.sendall(bin_data)
-            except (BrokenPipeError, ConnectionResetError):
-                to_remove.append(fileno)
-    for fileno in to_remove:
-        fd_to_socket[fileno].close()
-        del fd_to_socket[fileno]
-        logging.info(f"cleaned up connection {fileno} for client lost connection.")
+
+    with LOCK:
+        for fileno, connection in fd_to_socket.items():
+            if connection is not server_sock:
+                try:
+                    connection.sendall(bin_data)
+                    logging.info("Broadcast msg success, alarm msg is %s", alarm_str)
+                except (BrokenPipeError, ConnectionResetError):
+                    to_remove.append(fileno)
+                except Exception as e:
+                    logging.info("Sending msg failed, fd is %d, alarm msg is %s, reason is: %s",
+                            fileno, alarm_str, str(e))
+        
+
+        for fileno in to_remove:
+            fd_to_socket[fileno].close()
+            del fd_to_socket[fileno]
+            logging.info(f"cleaned up connection {fileno} for client lost connection.")
+

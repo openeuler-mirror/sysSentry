@@ -16,6 +16,7 @@ Create: 2023-11-02
 """
 import dataclasses
 import struct
+from datetime import datetime
 
 
 ALARM_TYPES = (0, 1, 2)
@@ -24,6 +25,17 @@ ALARM_SOCK_PATH = "/var/run/xalarm/report"
 MIN_ALARM_ID = 1001
 MAX_ALARM_ID = 1128
 MAX_MSG_LEN = 8192
+TIME_UNIT_MILLISECONDS = 1000000
+ALARM_LEVEL_DICT = {
+    1: "MINOR_ALM",
+    2: "MAJOR_ALM",
+    3: "CRITICAL_ALM"
+}
+
+ALARM_TYPE_DICT = {
+    1: "ALARM_TYPE_OCCUR",
+    2: "ALARM_TYPE_RECOVER"
+}
 
 
 @dataclasses.dataclass
@@ -132,3 +144,26 @@ def alarm_stu2bin(alarm_info: Xalarm):
         alarm_info.timetamp.tv_sec,
         alarm_info.timetamp.tv_usec,
         alarm_msg.encode('utf-8'))
+
+
+def alarm_stu2str(alarm_info: Xalarm):
+    if not alarm_info:
+        return ""
+    
+    alarm_id = alarm_info.alarm_id
+    alarm_level = ALARM_LEVEL_DICT[alarm_info.alarm_level] if alarm_info.alarm_level in ALARM_LEVEL_DICT else "UNKNOWN"
+    alarm_type = ALARM_TYPE_DICT[alarm_info.alarm_type] if alarm_info.alarm_type in ALARM_TYPE_DICT else "UNKNOWN"
+    alarm_time = alarm_info.timetamp.tv_sec + alarm_info.timetamp.tv_usec / TIME_UNIT_MILLISECONDS
+    try:
+        alarm_msg = alarm_info.msg1.rstrip(b'\x00').decode('utf-8')
+    except (AttributeError, UnicodeDecodeError, TypeError):
+        alarm_msg = ""
+
+    try:
+        time_stamp = datetime.fromtimestamp(alarm_time).strftime('%Y-%m-%d %H:%M:%S')
+    except (OSError, ValueError):
+        time_stamp = "UNKNOWN_TIME"
+
+    return (f"alarm_id: {alarm_id}, alarm_level: {alarm_level}, alarm_type: {alarm_type}, "
+            f"alarm_time: {time_stamp}, alarm_msg_len: {len(alarm_msg)}")
+
