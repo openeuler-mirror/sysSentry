@@ -29,11 +29,15 @@ PKGVEREGG := syssentry-$(VERSION)-py$(PYTHON_VERSION).egg-info
 
 all: lib ebpf hbm_online_repair
 
-lib:libxalarm
+lib:libxalarm log
 
 libxalarm:
 	cd $(CURLIBDIR) && cmake . -DXD_INSTALL_BINDIR=$(LIBINSTALLDIR) -B build
 	cd $(CURLIBDIR)/build && make
+
+log:
+	cd $(CURSRCDIR)/libsentry/c/log && cmake . -B build
+	cd $(CURSRCDIR)/libsentry/c/log/build && make
 
 ebpf:
 	@if [ -d "$(CURSRCDIR)/services/sentryCollector/ebpf_collector/" ]; then \
@@ -134,6 +138,11 @@ isentry:
 
 	# pyxalarm
 	install -m 550 src/libs/pyxalarm/register_xalarm.py $(PYDIR)/xalarm
+	
+	# log utils
+	install -d -m 700 $(INCLUDEDIR)/libsentry
+	install -m 644 $(CURSRCDIR)/libsentry/c/log/log_utils.h $(INCLUDEDIR)/libsentry/
+	install -m 550 $(CURSRCDIR)/libsentry/c/log/build/libsentry_log.so $(LIBINSTALLDIR)
 
 ebpf_clean:
 	cd $(CURSRCDIR)/services/sentryCollector/ebpf_collector && make clean
@@ -144,6 +153,7 @@ hbm_clean:
 clean: ebpf_clean hbm_clean
 	rm -rf $(CURLIBDIR)/build
 	rm -rf $(CURSRCDIR)/build
+	rm -rf $(CURSRCDIR)/libsentry/c/log/build
 	rm -rf $(CURSRCDIR)/syssentry.egg-info
 	rm -rf $(CURSRCDIR)/SENTRY_FILES
 
@@ -156,6 +166,8 @@ uninstall:
 	rm -rf $(BINDIR)/ebpf_collector
 	rm -rf $(LIBINSTALLDIR)/libxalarm.so
 	rm -rf $(INCLUDEDIR)/xalarm
+	rm -rf $(LIBINSTALLDIR)/libsentry_log.so
+	rm -rf $(INCLUDEDIR)/libsentry
 	rm -rf $(ETCDIR)/sysSentry
 	rm -rf $(ETCDIR)/hbm_online_repair.env
 	rm -rf $(LOGSAVEDIR)/sysSentry
