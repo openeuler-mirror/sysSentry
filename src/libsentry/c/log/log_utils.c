@@ -17,6 +17,7 @@ void logMessage(LogLevel level, char* file, int line, const char *format, ...)
         va_start(args, format);
         vfprintf(LOG_FD(level), format, args);
         va_end(args);
+        fflush(LOG_FD(level));
     }
 }
 
