@@ -20,7 +20,7 @@ import logging
 import select
 import threading
 
-from .xalarm_api import alarm_bin2stu
+from .xalarm_api import alarm_bin2stu, alarm_stu2str
 from .xalarm_transfer import (
     check_filter,
     transmit_alarm,
@@ -88,10 +88,11 @@ def server_loop(alarm_config):
                                 len(data))
                 continue
             alarm_info = alarm_bin2stu(data)
-            logging.debug("server bin2stu msg")
+            alarm_str = alarm_stu2str(alarm_info)
+            logging.info("server recieve report msg, %s", alarm_str)
             if not check_filter(alarm_info, alarm_config):
                 continue
-            transmit_alarm(alarm_sock, epoll, fd_to_socket, data)
+            transmit_alarm(alarm_sock, epoll, fd_to_socket, data, alarm_str)
         except Exception as e:
             logging.error(f"Error server:{e}")
             
@@ -105,4 +106,5 @@ def server_loop(alarm_config):
     os.unlink(USER_RECV_SOCK)
 
     sock.close()
+
 
