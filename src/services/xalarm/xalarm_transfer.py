@@ -98,8 +98,9 @@ def wait_for_connection(server_sock, epoll, fd_to_socket, thread_should_stop):
                         logging.info(f"connection reach max num of {MAX_CONNECTION_NUM}, closed current connection!")
                         connection.close()
                         continue
-                    fd_to_socket[connection.fileno()] = connection
-                    logging.info("connection %d registered event.")
+                    with LOCK:
+                        fd_to_socket[connection.fileno()] = connection
+                    logging.info("connection fd %d registered event.", connection.fileno())
         except socket.error as e: 
             logging.debug(f"socket error, reason is {e}")
             break
@@ -122,7 +123,8 @@ def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data, alarm_str):
             if connection is not server_sock:
                 try:
                     connection.sendall(bin_data)
-                    logging.info("Broadcast msg success, alarm msg is %s", alarm_str)
+                    logging.info("Broadcast msg success, fd is %d, alarm msg is %s",
+                            fileno, alarm_str)
                 except (BrokenPipeError, ConnectionResetError):
                     to_remove.append(fileno)
                 except Exception as e:
