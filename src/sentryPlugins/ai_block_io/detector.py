@@ -55,11 +55,12 @@ class Detector:
         detection_result = self._slidingWindow.is_slow_io_event(metric_value)
         # 检测到慢周期，由Detector负责打印info级别日志
         if detection_result[0][1]:
+            ai_threshold = "None" if detection_result[2] is None else round(detection_result[2], 3)
             logging.info(f'[abnormal_period]: disk: {self._metric_name.disk_name}, '
                          f'stage: {self._metric_name.stage_name}, '
                          f'iotype: {self._metric_name.io_access_type_name}, '
                          f'type: {self._metric_name.metric_name}, '
-                         f'ai_threshold: {round(detection_result[2], 3)}, '
+                         f'ai_threshold: {ai_threshold}, '
                          f'curr_val: {metric_value}')
         else:
             logging.debug(f'Detection result: {str(detection_result)}')

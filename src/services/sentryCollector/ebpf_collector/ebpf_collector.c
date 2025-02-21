@@ -155,7 +155,7 @@ static void update_io_dump(int fd, int *io_dump, int map_size, char *stage) {
         if ((curr_time - io_dump_key) >= 2) {
             int isempty = 1;
             for (int key = 0; key < map_size; key++) {
-                if (time_count.count[key] > 0) {
+                if (time_count.count[key] > IO_DUMP_DIFF) {
                     io_dump[key] += time_count.count[key];
                     isempty = 0;
                 }

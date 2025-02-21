@@ -59,6 +59,10 @@ typedef unsigned int u32;
 #define ERROR_KEY_EXIST 3
 #define ERROR_UPDATE_FAIL 4
 #define ERROR_KEY_NOEXIST 5
+#define ERROR_DELETE_FAIL 6
+
+#define BATCH_COUT 100
+#define IO_DUMP_DIFF 3
 
 enum stage_type {
     BIO=0,
@@ -98,13 +102,13 @@ struct update_params {
 
 struct time_range_io_count
 {
-    u32 count[MAP_SIZE];
+    int count[MAP_SIZE];
 };
 
 struct event {
-    u32 stage;
-    u64 period;
-    u32 err; 
+    int stage;
+    int period;
+    int err; 
 };
 
 #endif /* __EBPFCOLLECTOR_H */
