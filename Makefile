@@ -27,7 +27,7 @@ PYTHON_VERSION := $(shell $(PYBIN) --version 2>&1 | awk '{print $$2}' | cut -d '
 PKGVER := syssentry-$(VERSION)-py$(PYTHON_VERSION)
 PKGVEREGG := syssentry-$(VERSION)-py$(PYTHON_VERSION).egg-info
 
-all: lib ebpf hbm_online_repair
+all: lib ebpf hbm_online_repair sentry_msg_monitor
 
 lib:libxalarm log
 
@@ -46,6 +46,9 @@ ebpf:
 
 hbm_online_repair:
 	cd $(CURSRCDIR)/sentryPlugins/hbm_online_repair/ && make
+
+sentry_msg_monitor: lib
+	cd $(CURSRCDIR)/sentryPlugins/sentry_msg_monitor/ && make
 
 install: all dirs isentry
 
@@ -123,6 +126,11 @@ isentry:
 	install -m 600 $(CURCONFIGDIR)/env/hbm_online_repair.env $(ETCDIR)/sysconfig/
 	install -m 600 $(CURCONFIGDIR)/tasks/hbm_online_repair.mod $(ETCDIR)/sysSentry/tasks/
 
+	# sentry_msg_monitor
+	install -m 550 $(CURSRCDIR)/sentryPlugins/sentry_msg_monitor/sentry_msg_monitor $(BINDIR)
+	install -m 600 $(CURCONFIGDIR)/env/sentry_msg_monitor.env $(ETCDIR)/sysconfig/
+	install -m 600 $(CURCONFIGDIR)/tasks/sentry_msg_monitor.mod $(ETCDIR)/sysSentry/tasks/
+
 	# pysentry_notify
 	install -m 550 src/libsentry/python/pySentryNotify/sentry_notify.py $(PYDIR)/xalarm
 
@@ -138,7 +146,7 @@ isentry:
 
 	# pyxalarm
 	install -m 550 src/libs/pyxalarm/register_xalarm.py $(PYDIR)/xalarm
-	
+
 	# log utils
 	install -d -m 700 $(INCLUDEDIR)/libsentry
 	install -m 644 $(CURSRCDIR)/libsentry/c/log/log_utils.h $(INCLUDEDIR)/libsentry/
@@ -150,7 +158,10 @@ ebpf_clean:
 hbm_clean:
 	cd $(CURSRCDIR)/sentryPlugins/hbm_online_repair && make clean
 
-clean: ebpf_clean hbm_clean
+smm_clean:
+	cd $(CURSRCDIR)/sentryPlugins/sentry_msg_monitor && make clean
+
+clean: ebpf_clean hbm_clean smm_clean
 	rm -rf $(CURLIBDIR)/build
 	rm -rf $(CURSRCDIR)/build
 	rm -rf $(CURSRCDIR)/libsentry/c/log/build
@@ -163,6 +174,7 @@ uninstall:
 	rm -rf $(BINDIR)/xalarmd
 	rm -rf $(BINDIR)/sentryCollector
 	rm -rf $(BINDIR)/hbm_online_repair
+	rm -rf $(BINDIR)/sentry_msg_monitor
 	rm -rf $(BINDIR)/ebpf_collector
 	rm -rf $(LIBINSTALLDIR)/libxalarm.so
 	rm -rf $(INCLUDEDIR)/xalarm
@@ -170,6 +182,7 @@ uninstall:
 	rm -rf $(INCLUDEDIR)/libsentry
 	rm -rf $(ETCDIR)/sysSentry
 	rm -rf $(ETCDIR)/hbm_online_repair.env
+	rm -rf $(ETCDIR)/sentry_msg_monitor.env
 	rm -rf $(LOGSAVEDIR)/sysSentry
 	rm -rf $(PYDIR)/syssentry
 	rm -rf $(PYDIR)/xalarm
