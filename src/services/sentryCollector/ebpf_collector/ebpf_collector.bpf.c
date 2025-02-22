@@ -115,7 +115,7 @@ struct {
 } ringbuf SEC(".maps");
 
 
-static void log_event(u32 stage, u32 period, u32 err) {
+static void log_event(int stage, int period, int err) {
     struct event *e;
     void *data = bpf_ringbuf_reserve(&ringbuf, sizeof(struct event), 0);
     if (!data)
@@ -338,6 +338,105 @@ int kprobe_blk_mq_start_request(struct pt_regs *regs) {
     return 0;
 }
 
+SEC("kprobe/blk_mq_end_request_batch")
+int kprobe_blk_mq_end_request_batch(struct pt_regs *regs) {
+    struct io_comp_batch *iob = (struct io_comp_batch *)PT_REGS_PARM1(regs);
+    struct request *rq;
+    struct request_queue *q;
+    struct gendisk *curr_rq_disk;
+    int major, first_minor;
+    unsigned int cmd_flags;
+    struct io_counter *counterp;
+    struct stage_data *curr_data;
+    rq = BPF_CORE_READ(iob, req_list);
+
+    for (int i = 0; i <= BATCH_COUT; i++) {
+        bpf_core_read(&q, sizeof(q), &rq->q);
+        bpf_core_read(&curr_rq_disk, sizeof(curr_rq_disk), &q->disk);
+        bpf_core_read(&major, sizeof(major), &curr_rq_disk->major);
+        bpf_core_read(&first_minor, sizeof(first_minor), &curr_rq_disk->first_minor);
+        bpf_core_read(&cmd_flags, sizeof(cmd_flags), &rq->cmd_flags);
+
+        if (major == 0) {
+            log_event(STAGE_RQ_DRIVER, PERIOD_END, ERROR_MAJOR_ZERO);
+            continue;
+        }
+
+        u32 key = find_matching_key_rq_driver(major, first_minor);
+        if (key >= MAP_SIZE) {
+            continue;
+        }
+
+        counterp = bpf_map_lookup_elem(&blk_map, &rq);
+        if (!counterp) {
+            continue;
+        }
+
+        u64 duration = bpf_ktime_get_ns() - counterp->start_time;
+        u64 curr_start_range = counterp->start_time / THRESHOLD;
+
+        struct update_params params = {
+            .major = major,
+            .first_minor = first_minor,
+            .cmd_flags = cmd_flags,
+            .curr_start_range = curr_start_range,
+        };
+
+        curr_data = bpf_map_lookup_elem(&blk_res, &key);
+        if (curr_data == NULL && duration > DURATION_THRESHOLD) { 
+            struct stage_data new_data = {
+                .start_count = 1,
+                .finish_count = 1,
+                .finish_over_time = 1,
+                .duration = 0,
+                .major = major,
+                .first_minor = first_minor,
+                .io_type = "",
+            };
+            blk_fill_rwbs(new_data.io_type, cmd_flags);
+            bpf_map_update_elem(&blk_res, &key, &new_data, 0);
+        } else if (curr_data == NULL) { 
+            struct stage_data new_data = {
+                .start_count = 1,
+                .finish_count = 1,
+                .finish_over_time = 0,
+                .duration = 0,
+                .major = major,
+                .first_minor = first_minor,
+                .io_type = "",
+            };
+            blk_fill_rwbs(new_data.io_type, cmd_flags);
+            bpf_map_update_elem(&blk_res, &key, &new_data, 0); 
+        } else {
+            curr_data->duration += duration; 
+            update_curr_data_in_finish(curr_data, &params, duration);
+        }
+
+        struct time_range_io_count *curr_data_time_range;
+        curr_data_time_range = bpf_map_lookup_elem(&blk_res_2, &curr_start_range);
+        if (curr_data_time_range == NULL) { 
+            struct time_range_io_count new_data = {.count = 0};
+            bpf_map_update_elem(&blk_res_2, &curr_start_range, &new_data, 0);
+        } else {
+            if (key < MAP_SIZE && key >= 0) {
+                __sync_fetch_and_add(&curr_data_time_range->count[key], -1);
+            }
+        }
+        struct request *rq_next = BPF_CORE_READ(rq, rq_next);
+        bpf_map_delete_elem(&blk_map, &rq); 
+        rq = rq_next;
+        
+        if (!rq) {
+            break;
+        }
+
+        if (i >= BATCH_COUT) {
+            log_event(STAGE_RQ_DRIVER, PERIOD_END, i);
+        }
+    }
+    return 0;
+}
+
 // finish rq_driver
 SEC("kprobe/blk_mq_free_request")
 int kprobe_blk_mq_free_request(struct pt_regs *regs)
@@ -418,7 +517,7 @@ int kprobe_blk_mq_free_request(struct pt_regs *regs)
         struct time_range_io_count new_data = { .count = {0} };
         bpf_map_update_elem(&blk_res_2, &curr_start_range, &new_data, 0);
     } else {
-        if (key < MAP_SIZE && curr_data_time_range->count[key] > 0) {
+        if (key < MAP_SIZE && key >= 0) {
             __sync_fetch_and_add(&curr_data_time_range->count[key], -1);
         }
     }
@@ -463,7 +562,6 @@ int kprobe_blk_mq_submit_bio(struct pt_regs *regs)
 
     long err = bpf_map_update_elem(&bio_map, &bio, &zero, BPF_NOEXIST); 
     if (err) {
-        log_event(STAGE_BIO, PERIOD_START, ERROR_UPDATE_FAIL);
         return 0;
     }
 
@@ -594,361 +692,6 @@ int kprobe_bio_endio(struct pt_regs *regs)
         }
     }
     bpf_map_delete_elem(delete_map, &bio);
-    return 0; 
-}
-
-// start get_tag 
-SEC("kprobe/blk_mq_get_tag") 
-int kprobe_blk_mq_get_tag(struct pt_regs *regs) 
-{
-    u64 tagkey = bpf_get_current_task();
-    u64 value = (u64)PT_REGS_PARM1(regs);
-    (void)bpf_map_update_elem(&tag_args, &tagkey, &value, BPF_ANY);
-
-    struct blk_mq_alloc_data *bd;
-    struct request_queue *q;
-    struct gendisk *curr_rq_disk;
-    int major, first_minor;
-    unsigned int cmd_flags = 0;
-
-    bd = (struct blk_mq_alloc_data *)value;
-    bpf_core_read(&q, sizeof(q), &bd->q);
-    bpf_core_read(&curr_rq_disk, sizeof(curr_rq_disk), &q->disk);
-    bpf_core_read(&major, sizeof(major), &curr_rq_disk->major);
-    bpf_core_read(&first_minor, sizeof(first_minor), &curr_rq_disk->first_minor);
-
-    if (major == 0) {
-        log_event(STAGE_GET_TAG, PERIOD_START, ERROR_MAJOR_ZERO);
-        return 0;
-    }
-
-    u32 key = find_matching_key_get_tag(major, first_minor);
-    if (key >= MAP_SIZE) {
-        return 0;
-    }
-
-    struct io_counter *counterp, zero = {}; 
-    init_io_counter(&zero, major, first_minor);
-    counterp = bpf_map_lookup_elem(&tag_map, &tagkey);
-    if (counterp) {
-        return 0;
-    }
-    long err = bpf_map_update_elem(&tag_map, &tagkey, &zero, BPF_NOEXIST); 
-    if (err) {
-        log_event(STAGE_GET_TAG, PERIOD_START, ERROR_UPDATE_FAIL);
-        return 0;
-    }
-
-    u64 curr_start_range = zero.start_time / THRESHOLD;
-
-    struct update_params params = {
-        .major = major,
-        .first_minor = first_minor,
-        .cmd_flags = cmd_flags,
-        .curr_start_range = curr_start_range,
-    };
-
-    struct stage_data *curr_data; 
-    curr_data = bpf_map_lookup_elem(&tag_res, &key);
-    if (!curr_data) { 
-        struct stage_data new_data = {
-            .start_count = 1,
-            .finish_count = 0,
-            .finish_over_time = 0,
-            .duration = 0,
-            .major = major,
-            .first_minor = first_minor,
-            .io_type = "",
-        };
-        blk_fill_rwbs(new_data.io_type, cmd_flags);
-        bpf_map_update_elem(&tag_res, &key, &new_data, 0);
-    } else { 
-        update_curr_data_in_start(curr_data, &params);
-    }
-
-    struct time_range_io_count *curr_data_time_range;
-    curr_data_time_range = bpf_map_lookup_elem(&tag_res_2, &curr_start_range);
-    if (curr_data_time_range == NULL) {
-        struct time_range_io_count new_data = { .count = {0} };
-        bpf_map_update_elem(&tag_res_2, &curr_start_range, &new_data, 0); 
-    } else {
-        if (key < MAP_SIZE && key >= 0) {
-            __sync_fetch_and_add(&curr_data_time_range->count[key], 1);
-        }
-    }
-    return 0; 
-}
-
-// finish get_tag 
-SEC("kretprobe/blk_mq_get_tag") 
-int kretprobe_blk_mq_get_tag(struct pt_regs *regs) 
-{
-    u64 tagkey = bpf_get_current_task();
-    u64 *tagargs = (u64 *)bpf_map_lookup_elem(&tag_args, &tagkey);
-    if (tagargs == NULL) {
-        bpf_map_delete_elem(&tag_args, &tagkey);
-        return 0;
-    }
-
-    struct blk_mq_alloc_data *bd;
-    struct request_queue *q;
-    struct gendisk *curr_rq_disk;
-    int major, first_minor;
-    unsigned int cmd_flags = 0;
-
-    bd = (struct blk_mq_alloc_data *)*tagargs;
-    bpf_core_read(&q, sizeof(q), &bd->q);
-    bpf_core_read(&curr_rq_disk, sizeof(curr_rq_disk), &q->disk);
-    bpf_core_read(&major, sizeof(major), &curr_rq_disk->major);
-    bpf_core_read(&first_minor, sizeof(first_minor), &curr_rq_disk->first_minor);
-
-    if (major == 0) {
-        log_event(STAGE_GET_TAG, PERIOD_END, ERROR_MAJOR_ZERO);
-        return 0;
-    }
-
-    u32 key = find_matching_key_get_tag(major, first_minor);
-    if (key >= MAP_SIZE) {
-        return 0;
-    }
-
-    struct io_counter *counterp = bpf_map_lookup_elem(&tag_map, &tagkey);
-    if (!counterp) {
-        return 0;
-    }
-
-    u64 duration = bpf_ktime_get_ns() - counterp->start_time; 
-    u64 curr_start_range = counterp->start_time / THRESHOLD;
-
-    struct update_params params = {
-        .major = major,
-        .first_minor = first_minor,
-        .cmd_flags = cmd_flags,
-        .curr_start_range = curr_start_range,
-    };
-
-    struct stage_data *curr_data; 
-    curr_data = bpf_map_lookup_elem(&tag_res, &key); 
-    if (curr_data == NULL && duration > DURATION_THRESHOLD) { 
-        struct stage_data new_data = {
-            .start_count = 1,
-            .finish_count = 1,
-            .finish_over_time = 1,
-            .duration = 0,
-            .major = major,
-            .first_minor = first_minor,
-            .io_type = "",
-        };
-        blk_fill_rwbs(new_data.io_type, cmd_flags);
-        bpf_map_update_elem(&tag_res, &key, &new_data, 0); 
-    } else if (curr_data == NULL) { 
-        struct stage_data new_data = {
-            .start_count = 1,
-            .finish_count = 1,
-            .finish_over_time = 0,
-            .duration = 0,
-            .major = major,
-            .first_minor = first_minor,
-            .io_type = "",
-        };
-        blk_fill_rwbs(new_data.io_type, cmd_flags);
-        bpf_map_update_elem(&tag_res, &key, &new_data, 0); 
-    } else {
-        curr_data->duration += duration; 
-        update_curr_data_in_finish(curr_data, &params, duration);
-    }
-
-    struct time_range_io_count *curr_data_time_range;
-    curr_data_time_range = bpf_map_lookup_elem(&tag_res_2, &curr_start_range);
-    if (curr_data_time_range == NULL) { 
-        struct time_range_io_count new_data = { .count = {0} };
-        bpf_map_update_elem(&tag_res_2, &curr_start_range, &new_data, 0);
-    } else {
-        if (key < MAP_SIZE && curr_data_time_range->count[key] > 0) {
-            __sync_fetch_and_add(&curr_data_time_range->count[key], -1);
-        }
-    }
-
-    bpf_map_delete_elem(&tag_map, &tagkey); 
-    bpf_map_delete_elem(&tag_args, &tagkey);
-    return 0; 
-}
-
-// start wbt
-SEC("kprobe/wbt_wait") 
-int kprobe_wbt_wait(struct pt_regs *regs) 
-{
-    u64 wbtkey = bpf_get_current_task();
-    u64 value = (u64)PT_REGS_PARM2(regs);
-    (void)bpf_map_update_elem(&wbt_args, &wbtkey, &value, BPF_ANY);
-    
-    struct bio *bio;
-    struct block_device *bd;
-    struct gendisk *curr_rq_disk;
-    int major, first_minor;
-    unsigned int cmd_flags;
-
-    bio = (struct bio *)value;
-    bpf_core_read(&bd, sizeof(bd), &bio->bi_bdev);
-    bpf_core_read(&curr_rq_disk, sizeof(curr_rq_disk), &bd->bd_disk);
-    bpf_core_read(&major, sizeof(major), &curr_rq_disk->major);
-    bpf_core_read(&first_minor, sizeof(first_minor), &curr_rq_disk->first_minor);
-    bpf_core_read(&cmd_flags, sizeof(cmd_flags), &bio->bi_opf);
-
-    if (major == 0) {
-        log_event(STAGE_WBT, PERIOD_START, ERROR_MAJOR_ZERO);
-        return 0;
-    }
-
-    u32 key = find_matching_key_wbt(major, first_minor);
-    if (key >= MAP_SIZE) {
-        return 0;
-    }
-
-    struct io_counter *counterp, zero = {}; 
-    init_io_counter(&zero, major, first_minor);
-    counterp = bpf_map_lookup_elem(&wbt_map, &wbtkey);
-    if (counterp) {
-        return 0;
-    }
-    long err = bpf_map_update_elem(&wbt_map, &wbtkey, &zero, BPF_NOEXIST); 
-    if (err) {
-        log_event(STAGE_WBT, PERIOD_START, ERROR_UPDATE_FAIL);
-        return 0;
-    }
-
-    u64 curr_start_range = zero.start_time / THRESHOLD;
-
-    struct update_params params = {
-        .major = major,
-        .first_minor = first_minor,
-        .cmd_flags = cmd_flags,
-        .curr_start_range = curr_start_range,
-    }; 
-
-    struct stage_data *curr_data; 
-    curr_data = bpf_map_lookup_elem(&wbt_res, &key);
-    if (!curr_data) { 
-        struct stage_data new_data = {
-            .start_count = 1,
-            .finish_count = 0,
-            .finish_over_time = 0,
-            .duration = 0,
-            .major = major,
-            .first_minor = first_minor,
-            .io_type = "",
-        };
-        blk_fill_rwbs(new_data.io_type, cmd_flags);
-        bpf_map_update_elem(&wbt_res, &key, &new_data, 0);
-    } else {
-        update_curr_data_in_start(curr_data, &params);
-    }
-
-    struct time_range_io_count *curr_data_time_range;
-    curr_data_time_range = bpf_map_lookup_elem(&wbt_res_2, &curr_start_range);
-    if (curr_data_time_range == NULL) {
-        struct time_range_io_count new_data = { .count = {0} };
-        bpf_map_update_elem(&wbt_res_2, &curr_start_range, &new_data, 0); 
-    } else {
-        if (key < MAP_SIZE && key >= 0) {
-            __sync_fetch_and_add(&curr_data_time_range->count[key], 1);
-        }
-    }
-    return 0; 
-}
-
-// finish wbt
-SEC("kretprobe/wbt_wait") 
-int kretprobe_wbt_wait(struct pt_regs *regs) 
-{
-    u64 wbtkey = bpf_get_current_task();
-    u64 *wbtargs = (u64 *)bpf_map_lookup_elem(&wbt_args, &wbtkey);
-    if (wbtargs == NULL) {
-        bpf_map_delete_elem(&wbt_args, &wbtkey);
-        return 0;
-    }
-    
-    struct bio *bio;
-    struct block_device *bd;
-    struct gendisk *curr_rq_disk;
-    int major, first_minor;
-    unsigned int cmd_flags;
-
-    bio = (struct bio *)(*wbtargs);
-    bpf_core_read(&bd, sizeof(bd), &bio->bi_bdev);
-    bpf_core_read(&curr_rq_disk, sizeof(curr_rq_disk), &bd->bd_disk);
-    bpf_core_read(&major, sizeof(major), &curr_rq_disk->major);
-    bpf_core_read(&first_minor, sizeof(first_minor), &curr_rq_disk->first_minor);
-    bpf_core_read(&cmd_flags, sizeof(cmd_flags), &bio->bi_opf);
-
-    if (major == 0) {
-        log_event(STAGE_WBT, PERIOD_END, ERROR_MAJOR_ZERO);
-        return 0;
-    }
-
-    u32 key = find_matching_key_wbt(major, first_minor);
-    if (key >= MAP_SIZE) {
-        return 0;
-    }
-
-    struct io_counter *counterp = bpf_map_lookup_elem(&wbt_map, &wbtkey); 
-    if (!counterp) {
-        return 0;
-    }
-
-    u64 duration = bpf_ktime_get_ns() - counterp->start_time; 
-    u64 curr_start_range = counterp->start_time / THRESHOLD;
-
-    struct update_params params = {
-        .major = major,
-        .first_minor = first_minor,
-        .cmd_flags = cmd_flags,
-        .curr_start_range = curr_start_range,
-    }; 
-
-    struct stage_data *curr_data; 
-    curr_data = bpf_map_lookup_elem(&wbt_res, &key);
-    if (curr_data == NULL && duration > DURATION_THRESHOLD) { 
-       struct stage_data new_data = {
-            .start_count = 1,
-            .finish_count = 1,
-            .finish_over_time = 1,
-            .duration = 0,
-            .major = major,
-            .first_minor = first_minor,
-            .io_type = "",
-        };
-        blk_fill_rwbs(new_data.io_type, cmd_flags);
-        bpf_map_update_elem(&wbt_res, &key, &new_data, 0); 
-    } else if (curr_data == NULL) { 
-        struct stage_data new_data = {
-            .start_count = 1,
-            .finish_count = 1,
-            .finish_over_time = 0,
-            .duration = 0,
-            .io_type = "",
-            .major = major,
-            .first_minor = first_minor,
-        };
-        blk_fill_rwbs(new_data.io_type, cmd_flags);
-        bpf_map_update_elem(&wbt_res, &key, &new_data, 0); 
-    } else {
-        curr_data->duration += duration; 
-        update_curr_data_in_finish(curr_data, &params, duration);
-    }
-
-    struct time_range_io_count *curr_data_time_range;
-    curr_data_time_range = bpf_map_lookup_elem(&wbt_res_2, &curr_start_range);
-    if (curr_data_time_range == NULL) { 
-        struct time_range_io_count new_data = { .count = {0} };
-        bpf_map_update_elem(&wbt_res_2, &curr_start_range, &new_data, 0);
-    } else {
-        if (key < MAP_SIZE && curr_data_time_range->count[key] > 0) {
-            __sync_fetch_and_add(&curr_data_time_range->count[key], -1);
-        }
-    }
-    bpf_map_delete_elem(&wbt_map, &wbtkey);
-    bpf_map_delete_elem(&wbt_args, &wbtkey);
     return 0; 
 }
 
