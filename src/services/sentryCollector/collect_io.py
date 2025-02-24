@@ -405,10 +405,17 @@ class CollectIo():
         self
     ) -> None:
         global EBPF_PROCESS
-        if EBPF_PROCESS:
+        if not EBPF_PROCESS:
+            logging.debug("No eBPF process to stop")
+            return
+        try:
             EBPF_PROCESS.terminate()
+            EBPF_PROCESS.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            logging.debug("eBPF process did not exit within timeout. Forcing kill.")
+            EBPF_PROCESS.kill()
             EBPF_PROCESS.wait()
-            logging.info("ebpf collector thread exit")
+        logging.info("ebpf collector thread exit")
 
     def main_loop(self):
         global IO_GLOBAL_DATA
