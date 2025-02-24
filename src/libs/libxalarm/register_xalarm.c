@@ -32,7 +32,7 @@
 #define PATH_REG_ALARM "/var/run/xalarm/alarm"
 #define PATH_REPORT_ALARM "/var/run/xalarm/report"
 #define ALARM_DIR_PERMISSION 0750
-#define ALARM_SOCKET_PERMISSION 0700
+#define ALARM_SOCKET_PERMISSION 0600
 #define TIME_UNIT_MILLISECONDS 1000
 
 #define MAX_PARAS_LEN 8191
