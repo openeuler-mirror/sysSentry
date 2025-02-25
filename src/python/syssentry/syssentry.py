@@ -477,17 +477,19 @@ def main_loop():
         return
     fd_list.append(heartbeat_fd)
 
-    cpu_alarm_fd = cpu_alarm_fd_create()
-    if not cpu_alarm_fd:
-        close_all_fd()
-        return
-    fd_list.append(cpu_alarm_fd)
+    if CPU_EXIST:
+        cpu_alarm_fd = cpu_alarm_fd_create()
+        if not cpu_alarm_fd:
+            close_all_fd()
+            return
+        fd_list.append(cpu_alarm_fd)
 
-    bmc_fd = bmc_fd_create()
-    if not bmc_fd:
-        close_all_fd()
-        return
-    fd_list.append(bmc_fd)
+    if BMC_EXIST:
+        bmc_fd = bmc_fd_create()
+        if not bmc_fd:
+            close_all_fd()
+            return
+        fd_list.append(bmc_fd)
 
     epoll_fd = select.epoll()
     for fd in fd_list:
