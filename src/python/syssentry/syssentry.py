@@ -424,18 +424,20 @@ def main_loop():
         server_result_fd.close()
         return
 
-    cpu_alarm_fd = cpu_alarm_fd_create()
-    if not cpu_alarm_fd:
-        server_fd.close()
-        heartbeat_fd.close()
-        server_result_fd.close()
-        return
+    if CPU_EXIST:
+        cpu_alarm_fd = cpu_alarm_fd_create()
+        if not cpu_alarm_fd:
+            server_fd.close()
+            heartbeat_fd.close()
+            server_result_fd.close()
+            return
 
     epoll_fd = select.epoll()
     epoll_fd.register(server_fd.fileno(), select.EPOLLIN)
     epoll_fd.register(server_result_fd.fileno(), select.EPOLLIN)
     epoll_fd.register(heartbeat_fd.fileno(), select.EPOLLIN)
-    epoll_fd.register(cpu_alarm_fd.fileno(), select.EPOLLIN)
+    if CPU_EXIST:
+        epoll_fd.register(cpu_alarm_fd.fileno(), select.EPOLLIN)
 
     logging.debug("start main loop")
     # onstart_tasks_handle()
