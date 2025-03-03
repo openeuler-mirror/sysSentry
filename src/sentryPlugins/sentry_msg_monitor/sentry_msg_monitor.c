@@ -16,7 +16,7 @@
 #define SMH_DEV_PATH "/dev/sentry_msg_helper"
 #define PID_FILE_PATH "/var/run/"TOOL_NAME".pid"
 #define ID_LIST_LENGTH SMH_MESSAGE_MAX
-#define MSG_STR_MAX_LEN 128
+#define MSG_STR_MAX_LEN 1024
 #define DEFAULT_LOG_LEVEL LOG_INFO
 #define MAX_RETRY_NUM 3
 #define RETRY_PERIOD 1
@@ -93,12 +93,43 @@ static int smh_dev_get_fd(void)
 
 static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* str)
 {
-    char msgid_str[32];
-    snprintf(msgid_str, sizeof(msgid_str), "%lu", smh_msg->msgid);
-
-    int res = snprintf(str, MSG_STR_MAX_LEN, "%s", msgid_str);
-    if ((size_t)res >= MSG_STR_MAX_LEN) {
-        logging_warn("msg str size exceeds the max value\n");
+    int res;
+    char nid_str[MSG_STR_MAX_LEN];
+    size_t offset = 0;
+    switch (smh_msg->type) {
+    case SMH_MESSAGE_POWER_OFF:
+        res = snprintf(str, MSG_STR_MAX_LEN, "%lu", smh_msg->msgid);
+        if ((size_t)res >= MSG_STR_MAX_LEN) {
+            logging_warn("msg str size exceeds the max value\n");
+            return -1;
+        }
+        break;
+    case SMH_MESSAGE_OOM:
+        for (int i = 0; i < MAX_NUMA_NODES; i++) {
+            res = snprintf(nid_str + offset, MSG_STR_MAX_LEN - offset, "%d%s", 
+                        smh_msg->oom_info.nid[i], (i < MAX_NUMA_NODES - 1) ? "," : "");
+            if ((size_t)res >= MSG_STR_MAX_LEN) {
+                logging_warn("msg str size exceeds the max value\n");
+                return -1;
+            }
+            offset += res;
+        }
+        res = snprintf(str, MSG_STR_MAX_LEN,
+            "%lu_{nr_nid:%d,nid:[%s],sync:%d,timeout:%d,reason:%d}",
+            smh_msg->msgid,
+            smh_msg->oom_info.nr_nid,
+            nid_str,
+            smh_msg->oom_info.sync,
+            smh_msg->oom_info.timeout,
+            smh_msg->oom_info.reason
+        );
+        if ((size_t)res >= MSG_STR_MAX_LEN) {
+            logging_warn("msg str size exceeds the max value\n");
+            return -1;
+        }
+        break;
+    default:
+        logging_warn("Unknown msg type: %d\n", smh_msg->type);
         return -1;
     }
     return 0;
@@ -106,26 +137,31 @@ static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* s
 
 static int convert_str_to_smh_msg(char* str, struct sentry_msg_helper_msg* smh_msg)
 {
-    if (!(sscanf(str, "%lu_%d", &(smh_msg->msgid), &(smh_msg->res)) == XALARM_MSG_ITEM_CNT)) {
+    int n;
+    if (!(sscanf(str, "%lu_%lu%n", &(smh_msg->msgid), &(smh_msg->res), &n) == XALARM_MSG_ITEM_CNT)
+        || strlen(str) != n) {
         logging_warn("Invalid msg str format, str is %s\n", str);
         return -1;
     }
     return 0;
 }
 
-static unsigned short get_xalarm_us_alarm_id(enum sentry_msg_helper_msg_type msg_type)
+static unsigned short convert_msg_type_to_xalarm_type(enum sentry_msg_helper_msg_type msg_type)
 {
-    unsigned short alarm_id = 0;
+    unsigned short xalarm_type = 0;
     switch (msg_type)
     {
     case SMH_MESSAGE_POWER_OFF:
-        alarm_id = ALARM_REBOOT_EVENT;
+        xalarm_type = ALARM_REBOOT_EVENT;
+        break;
+    case SMH_MESSAGE_OOM:
+        xalarm_type = ALARM_OOM_EVENT;
         break;
     default:
         logging_warn("Unknown msg type: %d\n", msg_type);
         break;
     }
-    return alarm_id;
+    return xalarm_type;
 }
 
 static void sender_cleanup(void* arg)
@@ -171,7 +207,7 @@ static void* sender_thread(void* arg) {
         if (ret < 0) {
             continue;
         }
-        unsigned short al_type = get_xalarm_us_alarm_id(smh_msg.type);
+        unsigned short al_type = convert_msg_type_to_xalarm_type(smh_msg.type);
         if (al_type == 0) {
             logging_warn("Send msg to xalarmd failed: Get unknown type msg, skip it\n");
             continue;
@@ -246,6 +282,7 @@ re_register:
         .len = ID_LIST_LENGTH
     };
     id_filter.id_list[0] = ALARM_REBOOT_ACK_EVENT;
+    id_filter.id_list[1] = ALARM_OOM_ACK_EVENT;
 
     for (int i = 0; i < MAX_RETRY_NUM; i++) {
         ret = xalarm_register_event(&register_info, id_filter);

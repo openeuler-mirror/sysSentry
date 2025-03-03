@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define SMH_TYPE ('}')
+#define MAX_NUMA_NODES 8
 
 enum {
 	SMH_CMD_MSG_ACK = 0x10,
@@ -13,13 +14,22 @@ enum {
 
 enum sentry_msg_helper_msg_type {
 	SMH_MESSAGE_POWER_OFF,
+	SMH_MESSAGE_OOM,
 	SMH_MESSAGE_MAX,
 };
 
 struct sentry_msg_helper_msg {
 	enum sentry_msg_helper_msg_type type;
 	uint64_t msgid;
-	int res;
+	// reboot_info is empty
+	struct {
+		int nr_nid;
+		int nid[MAX_NUMA_NODES];
+		int sync;
+		int timeout;
+		int reason;
+	} oom_info;
+	unsigned long res;
 };
 
 #endif
