@@ -322,6 +322,8 @@ class CollectIo():
                         if curr_io_dump > 0:
                             logging.info(f"ebpf io_dump info : {disk_name}, {stage}, {io_type}, {curr_io_dump}")
                         IO_GLOBAL_DATA[disk_name][stage][io_type].insert(0, [curr_lat, curr_io_dump, curr_io_length, curr_iops])
+                        if curr_lat > 0:
+                            logging.info(f"ebpf info : {disk_name}, {stage}, {io_type}, {curr_lat}, {curr_iops}")
 
             elapsed_time = time.time() - start_time
             sleep_time = self.period_time - elapsed_time
@@ -405,10 +407,17 @@ class CollectIo():
         self
     ) -> None:
         global EBPF_PROCESS
-        if EBPF_PROCESS:
+        if not EBPF_PROCESS:
+            logging.debug("No eBPF process to stop")
+            return
+        try:
             EBPF_PROCESS.terminate()
+            EBPF_PROCESS.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            logging.debug("eBPF process did not exit within timeout. Forcing kill.")
+            EBPF_PROCESS.kill()
             EBPF_PROCESS.wait()
-            logging.info("ebpf collector thread exit")
+        logging.info("ebpf collector thread exit")
 
     def main_loop(self):
         global IO_GLOBAL_DATA
