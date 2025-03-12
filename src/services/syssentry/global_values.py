@@ -116,7 +116,7 @@ class InspectTask:
             try:
                 child = subprocess.Popen(cmd_list, stdout=logfile, stderr=subprocess.STDOUT, close_fds=True, env=self.environ_conf)
             except OSError:
-                logging.error("task %s start Popen error, invalid cmd")
+                logging.error("task %s start Popen error, invalid cmd", cmd_list)
                 self.result_info["result"] = ResultLevel.FAIL.name
                 self.result_info["error_msg"] = RESULT_LEVEL_ERR_MSG_DICT.get(ResultLevel.FAIL.name)
                 self.runtime_status = "FAILED"
