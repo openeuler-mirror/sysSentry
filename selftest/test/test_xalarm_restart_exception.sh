@@ -11,7 +11,8 @@ set +e
 
 function pre_test() {
     rm -f ./tmp_log
-    systemctl stop xalarmd
+    kill $(pgrep -w xalarmd)
+    sleep 1
 }
 
 function do_test() {
@@ -21,7 +22,7 @@ function do_test() {
     /usr/bin/xalarmd
     end_line=$(wc -l < /var/log/sysSentry/xalarm.log)
 
-    process_num=$(ps -ef | grep xalarmd | grep -v grep | wc -l)
+    process_num=$(ps -ef | grep xalarmd | grep -v grep | grep -v defunct| wc -l)
     echo "xalarm process num is $process_num" >> ./tmp_log
     expect_eq $process_num 1 "check xalarmd can launch multiple times"
 
@@ -35,6 +36,7 @@ function do_test() {
 function post_test() {
     rm -f ./tmp_log
     kill $(pgrep -w xalarmd)
+    sleep 1
 }
 
 run_testcase

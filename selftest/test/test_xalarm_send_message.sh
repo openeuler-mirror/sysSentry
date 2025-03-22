@@ -13,7 +13,9 @@ function pre_test() {
     rm -rf ./checklog ./tmp_log test/xalarm/send_demo test/xalarm/reg_demo
     gcc test/xalarm/send_demo.c -o test/xalarm/send_demo -lxalarm
     gcc test/xalarm/reg_demo.c -o test/xalarm/reg_demo -lxalarm
-    systemctl start xalarmd.service
+    kill $(pgrep -w xalarmd)
+    sleep 1
+    xalarmd &
 }
 
 function do_test() {
@@ -70,7 +72,8 @@ function do_test() {
     expect_eq $? 0 "check unregister xalarm"
 
     # 停止xalarmd服务后发消息
-    systemctl stop xalarmd.service
+    kill $(pgrep -w xalarmd)
+    sleep 1
 
     ./test/xalarm/send_demo 1001 1 2 "cpu usage high warning" >> checklog 2>&1 &
     wait_cmd_ok "grep \"xalarm_Report: sendto failed errno: 2\" ./checklog" 1 3
@@ -78,10 +81,12 @@ function do_test() {
 }
 
 function post_test() {
-    kill -9 $(pgrep -w reg_demo)
+    kill $(pgrep -w xalarmd)
+    sleep 1
     cat ./checklog
     rm -rf ./checklog ./tmp_log test/xalarm/send_demo test/xalarm/reg_demo
-    systemctl stop xalarmd.service
+    kill $(pgrep -w xalarmd)
+    sleep 1
 }
 
 run_testcase
