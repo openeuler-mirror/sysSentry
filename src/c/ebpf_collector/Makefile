@@ -8,7 +8,7 @@ ARCH ?= $(shell uname -m | sed 's/x86_64/x86/' \
 			 | sed 's/riscv64/riscv/' \
 			 | sed 's/loongarch64/loongarch/')
 
-KERNEL_VERSION ?= $(shell rpm -qa | grep "kernel-source-4.19" | cut -d' ' -f1 | sed 's/kernel-source-//')
+KERNEL_VERSION ?= $(shell rpm -qa | grep "kernel-4.19" | cut -d '.' -f1,2 | sed 's/kernel-//')
 KERNEL_SRC := /usr/src/kernels/$(KERNEL_VERSION)
 KERNEL_PATH := /usr/src/linux-$(KERNEL_VERSION)
 GCC_ARCH ?= $(shell gcc -dumpmachine)
