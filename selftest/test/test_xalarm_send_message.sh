@@ -16,6 +16,7 @@ function pre_test() {
     kill $(pgrep -w xalarmd)
     sleep 1
     xalarmd &
+    sleep 1
 }
 
 function do_test() {

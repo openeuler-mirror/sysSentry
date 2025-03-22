@@ -22,6 +22,7 @@ function do_test() {
     start_line=$(expr $(wc -l < /var/log/sysSentry/xalarm.log) + 1)
     echo -e "[filter]\nid_mask = 999,9999,aaa,test-and-run,7869-2431" > /etc/sysSentry/xalarm.conf
     xalarmd &
+    sleep 1
     end_line=$(wc -l < /var/log/sysSentry/xalarm.log)
     sed -n "${start_line}, ${end_line}p" /var/log/sysSentry/xalarm.log >> ./tmp_log
     wait_cmd_ok "grep \"invalid alarm id 999, ignored\" ./tmp_log" 1 3
@@ -45,6 +46,7 @@ function do_test() {
     kill $(pgrep -w xalarmd)
     sleep 1
     xalarmd &
+    sleep 1
     end_line=$(wc -l < /var/log/sysSentry/xalarm.log)
     sed -n "${start_line}, ${end_line}p" /var/log/sysSentry/xalarm.log >> ./tmp_log
     wait_cmd_ok "grep \"no filter conf\" ./tmp_log" 1 3
@@ -56,6 +58,7 @@ function do_test() {
     kill $(pgrep -w xalarmd)
     sleep 1
     xalarmd &
+    sleep 1
     end_line=$(wc -l < /var/log/sysSentry/xalarm.log)
     sed -n "${start_line}, ${end_line}p" /var/log/sysSentry/xalarm.log >> ./tmp_log
     wait_cmd_ok "grep \"no id_mask conf\" ./tmp_log" 1 3
