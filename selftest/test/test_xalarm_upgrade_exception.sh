@@ -14,6 +14,7 @@ function pre_test() {
     gcc test/xalarm/upgrade_demo.c -o test/xalarm/upgrade_demo -lxalarm
     gcc test/xalarm/send_demo.c -o test/xalarm/send_demo -lxalarm
     xalarmd &
+    sleep 1
 }
 
 function do_test() {
