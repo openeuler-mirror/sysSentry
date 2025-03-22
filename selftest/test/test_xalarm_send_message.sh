@@ -16,6 +16,7 @@ function pre_test() {
     kill $(pgrep -w xalarmd)
     sleep 1
     xalarmd &
+    sleep 1
 }
 
 function do_test() {
@@ -81,7 +82,7 @@ function do_test() {
 }
 
 function post_test() {
-    kill  $(pgrep -w reg_demo)
+    kill $(pgrep -w xalarmd)
     sleep 1
     cat ./checklog
     rm -rf ./checklog ./tmp_log test/xalarm/send_demo test/xalarm/reg_demo

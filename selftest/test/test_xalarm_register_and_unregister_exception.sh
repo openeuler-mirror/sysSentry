@@ -14,6 +14,7 @@ function pre_test() {
     gcc test/xalarm/reg_demo.c -o test/xalarm/reg_demo -lxalarm
     gcc test/xalarm/unreg_demo.c -o test/xalarm/unreg_demo -lxalarm
     xalarmd &
+    sleep 1
 }
 
 function do_test() {
