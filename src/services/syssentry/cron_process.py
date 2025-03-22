@@ -59,7 +59,6 @@ class PeriodTask(InspectTask):
         self.result_info["details"] = {}
         if not self.period_enabled:
             self.period_enabled = True
-            self.upgrade_period_timestamp()
 
         if self.conflict != 'up':
             ret = self.check_conflict()
@@ -87,6 +86,7 @@ class PeriodTask(InspectTask):
             self.runtime_status = FAILED_STATUS
             return False, "period task start popen failed, invalid command"
         finally:
+            self.upgrade_period_timestamp()
             if isinstance(logfile, io.TextIOWrapper) and not logfile.closed:
                 logfile.close()
 
@@ -127,7 +127,6 @@ class PeriodTask(InspectTask):
         res, _ = self.start()
         if res:
             set_runtime_status(self.name, RUNNING_STATUS)
-        self.upgrade_period_timestamp()
 
 
 def period_tasks_handle():
@@ -142,7 +141,7 @@ def period_tasks_handle():
             logging.debug("period not enabled")
             continue
 
-        if not task.onstart:
+        if not task.onstart and task.last_exec_timestamp == 0:
             logging.debug("period onstart not enabled, task: %s", task.name)
             task.runtime_status = EXITED_STATUS
             continue
@@ -153,4 +152,3 @@ def period_tasks_handle():
             res, _ = task.start()
             if res:
                 set_runtime_status(task.name, RUNNING_STATUS)
-            task.upgrade_period_timestamp()
