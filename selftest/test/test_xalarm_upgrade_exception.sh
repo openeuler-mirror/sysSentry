@@ -13,11 +13,12 @@ function pre_test() {
     rm -rf ./checklog test/xalarm/upgrade_demo test/xalarm/send_demo
     gcc test/xalarm/upgrade_demo.c -o test/xalarm/upgrade_demo -lxalarm
     gcc test/xalarm/send_demo.c -o test/xalarm/send_demo -lxalarm
-    systemctl start xalarmd.service
+    xalarmd &
 }
 
 function do_test() {
     ./test/xalarm/upgrade_demo 4 0 1001 1002 1003 1004 >> checklog 2>&1 &
+    sleep 2
     ./test/xalarm/send_demo 1004 1 2 "cpu usage high warning"
     wait_cmd_ok "grep \"id:1004\" ./checklog" 1 3
     expect_eq $? 0 "check upgrade take effect"
@@ -39,9 +40,11 @@ function do_test() {
 
 function post_test() {
     kill -9 $(pgrep -w upgrade_demo)
+    sleep 1
     cat ./checklog
     rm -rf ./checklog test/xalarm/upgrade_demo test/xalarm/send_demo
-    systemctl stop xalarmd.service
+    kill $(pgrep -w xalarmd)
+    sleep 1
 }
 
 run_testcase
