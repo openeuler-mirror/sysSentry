@@ -17,14 +17,14 @@ Create: 2023-11-02
 import socket
 import logging
 import threading
+import errno
 from time import sleep
 
 MIN_ID_NUMBER = 1001
 MAX_ID_NUMBER = 1128
 MAX_CONNECTION_NUM = 100 
 TEST_CONNECT_BUFFER_SIZE = 32
-PEROID_SCANN_TIME = 60
-LOCK = threading.Lock()
+MAX_RETRY_TIMES = 3
 
 
 def check_filter(alarm_info, alarm_filter):
@@ -40,7 +40,7 @@ def check_filter(alarm_info, alarm_filter):
     return True
 
 
-def cleanup_closed_connections(server_sock, epoll, fd_to_socket):
+def cleanup_closed_connections(server_sock, epoll, fd_to_socket, fd_to_socket_lock):
     """
     clean invalid client socket connections saved in 'fd_to_socket'
     :param server_sock: server socket instance of alarm
@@ -48,7 +48,7 @@ def cleanup_closed_connections(server_sock, epoll, fd_to_socket):
     :param fd_to_socket: dict instance, used to hold client connections and server connections
     """
     to_remove = []
-    with LOCK:
+    with fd_to_socket_lock:
         for fileno, connection in fd_to_socket.items():
             if connection is server_sock:
                 continue
@@ -69,46 +69,40 @@ def cleanup_closed_connections(server_sock, epoll, fd_to_socket):
             logging.info(f"cleaned up connection {fileno} for client lost connection.")
 
 
-def peroid_task_to_cleanup_connections(server_sock, epoll, fd_to_socket, thread_should_stop):
-    while not thread_should_stop:
-        sleep(PEROID_SCANN_TIME)
-        cleanup_closed_connections(server_sock, epoll, fd_to_socket)
-
-
-def wait_for_connection(server_sock, epoll, fd_to_socket, thread_should_stop):
+def wait_for_connection(server_sock, epoll, fd_to_socket, conn_thread_should_stop, fd_to_socket_lock):
     """
     thread function for catch and save client connection
     :param server_sock: server socket instance of alarm
     :param epoll: epoll instance, used to unregister invalid client connections
     :param fd_to_socket: dict instance, used to hold client connections and server connections
-    :param thread_should_stop: bool instance
+    :param conn_thread_should_stop: bool instance
     """
-    while not thread_should_stop:
+    logging.info("wait for connection thread is running")
+    while not conn_thread_should_stop.is_set():
         try:
             events = epoll.poll(1)
-            
+
             for fileno, event in events:
                 if fileno == server_sock.fileno():
                     connection, client_address = server_sock.accept()
                     # if reach max connection, cleanup closed connections
                     if len(fd_to_socket) - 1 >= MAX_CONNECTION_NUM:
-                        cleanup_closed_connections(server_sock, epoll, fd_to_socket)
+                        cleanup_closed_connections(server_sock, epoll, fd_to_socket, fd_to_socket_lock)
                     # if connections still reach max num, close this connection automatically
                     if len(fd_to_socket) - 1 >= MAX_CONNECTION_NUM:
                         logging.info(f"connection reach max num of {MAX_CONNECTION_NUM}, closed current connection!")
                         connection.close()
                         continue
-                    with LOCK:
+                    with fd_to_socket_lock:
                         fd_to_socket[connection.fileno()] = connection
                     logging.info("connection fd %d registered event.", connection.fileno())
         except socket.error as e: 
             logging.debug(f"socket error, reason is {e}")
-            break
         except (KeyError, OSError, ValueError) as e:
             logging.debug(f"wait for connection failed {e}")
 
 
-def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data, alarm_str):
+def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data, alarm_str, fd_to_socket_lock):
     """
     this function is to broadcast alarm data to client, if fail to send data, remove connections held by fd_to_socket
     :param server_sock: server socket instance of alarm
@@ -117,8 +111,9 @@ def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data, alarm_str):
     :param bin_data: binary instance, alarm info data in C-style struct format defined in xalarm_api.py
     """
     to_remove = []
+    to_retry = []
 
-    with LOCK:
+    with fd_to_socket_lock:
         for fileno, connection in fd_to_socket.items():
             if connection is not server_sock:
                 try:
@@ -127,13 +122,29 @@ def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data, alarm_str):
                             fileno, alarm_str)
                 except (BrokenPipeError, ConnectionResetError):
                     to_remove.append(fileno)
+                except socket.error as e:
+                    if e.errno == errno.EAGAIN:
+                        to_retry.append(connection)
+                    else:
+                        logging.info("Sending msg failed, fd is %d, alarm msg is %s, reason is: %s",
+                            fileno, alarm_str, str(e))
                 except Exception as e:
                     logging.info("Sending msg failed, fd is %d, alarm msg is %s, reason is: %s",
                             fileno, alarm_str, str(e))
         
+        for connection in to_retry:
+            for i in range(MAX_RETRY_TIMES):
+                try:
+                    connection.sendall(bin_data)
+                    break
+                except Exception as e:
+                    sleep(0.1)
+                    logging.info("Sending msg failed for %d times, fd is %d, alarm msg is %s, reason is: %s",
+                            i, connection.fileno(), alarm_str, str(e))
 
         for fileno in to_remove:
             fd_to_socket[fileno].close()
             del fd_to_socket[fileno]
             logging.info(f"cleaned up connection {fileno} for client lost connection.")
+
 
