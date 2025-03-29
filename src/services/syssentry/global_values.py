@@ -76,7 +76,7 @@ class InspectTask:
         # ccnfig env_file
         self.env_file = ""
         # env conf to popen arg
-        self.environ_conf = {}
+        self.environ_conf = None
         # start mode
         self.conflict = "up"
         # alarm id
