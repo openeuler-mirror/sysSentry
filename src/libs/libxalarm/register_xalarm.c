@@ -604,13 +604,14 @@ static bool is_valid_task_name(const char *task_name)
  */
 int report_result(const char *task_name, enum RESULT_LEVEL result_level, const char *report_data)
 {
+    int ret = RETURE_CODE_FAIL;
     if (result_level < 0 || result_level >= RESULT_LEVEL_NUM) {
-        fprintf(stderr, "result_level (%u) is invalid, it must be in [0-5]\n", result_level);
-        return RETURE_CODE_FAIL;
+        fprintf(stderr, "result_level (%d) is invalid, it must be in [0-5]\n", result_level);
+        return ret;
     }
 
     if (!is_valid_task_name(task_name)) {
-        return RETURE_CODE_FAIL;
+        return ret;
     }
 
     json_object *send_data = json_object_new_object();
@@ -624,35 +625,36 @@ int report_result(const char *task_name, enum RESULT_LEVEL result_level, const c
     const char *result_json_string = json_object_to_json_string(send_data);
     if (result_json_string == NULL) {
         fprintf(stderr, "%s: json_object_to_json_string return NULL", __func__);
-        json_object_put(send_data);
-        return RETURE_CODE_FAIL;
+        goto free_json;
     }
 
     int send_data_len = strlen(result_json_string);
     if (send_data_len > RESULT_INFO_MAX_LEN) {
-        fprintf(stderr, "%s: failed to send result message (%s) to sysSentry! send data is too long (%zu) > (%d)\n",
+        fprintf(stderr, "%s: failed to send result message (%s) to sysSentry! send data is too long (%d) > (%d)\n",
                 __func__, result_json_string, send_data_len, RESULT_INFO_MAX_LEN);
-        json_object_put(send_data);
-        return RETURE_CODE_FAIL;
+        goto free_json;
     }
 
-    char message[RESULT_INFO_HEAD_LEN + RESULT_INFO_MAX_LEN];
-    if (memset(message, 0, RESULT_INFO_HEAD_LEN + RESULT_INFO_MAX_LEN) == NULL) {
-        fprintf(stderr, "%s: memset message failed", __func__);
-        json_object_put(send_data);
-        return RETURE_CODE_FAIL;
+    char *message = (char *)calloc(RESULT_INFO_HEAD_LEN + RESULT_INFO_MAX_LEN, sizeof(char));
+    if (!message) {
+        fprintf(stderr, "Failed to allocate memory!");
+        goto free_json;
     }
 
     sprintf(message, "%s%04d%s", RESULT_INFO_HEAD_MAGIC, send_data_len, result_json_string);
 
     if (send_data_to_socket(RESULT_REPORT_SOCKET, message)) {
         fprintf(stderr, "%s: failed to send result message (%s) to sysSentry!\n", __func__, message);
-        json_object_put(send_data);
-        return RETURE_CODE_FAIL;
+        goto free_msg;
     }
 
+    ret = RETURE_CODE_SUCCESS;
+free_msg:
+    free(message);
+    message = NULL;
+free_json:
     json_object_put(send_data);
-    return RETURE_CODE_SUCCESS;
+    return ret;
 }
 
 int xalarm_register_event(struct alarm_register **register_info, struct alarm_subscription_info id_filter)
