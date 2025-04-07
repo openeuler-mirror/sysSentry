@@ -35,7 +35,7 @@ else
 	KERNEL_IS_5_10 := 0
 endif
 
-all: lib sentry
+all: lib sentry hbm_online_repair cpu_patrol
 
 
 install: dirs ilib isentry
@@ -94,6 +94,18 @@ isentry:
 	install -m 600 $(CURCONFIGDIR)/plugins/ai_block_io.ini $(ETCDIR)/sysSentry/plugins
 	install -m 600 $(CURCONFIGDIR)/tasks/ai_block_io.mod $(ETCDIR)/sysSentry/tasks
 
+	# cpu_patrol
+	install -m 550 $(CURSRCDIR)/c/catcli/catlib/build/cat-cli $(BINDIR)
+	install -m 550 $(CURSRCDIR)/c/catcli/catlib/build/plugin/cpu_patrol/libcpu_patrol.so $(LIBINSTALLDIR)
+	install -m 600 $(CURCONFIGDIR)/plugins/cpu_sentry.ini $(ETCDIR)/sysSentry/plugins
+	install -m 600 $(CURCONFIGDIR)/tasks/cpu_sentry.mod $(ETCDIR)/sysSentry/tasks
+
+	# hbm_online_repair
+	install -d -m 700 $(ETCDIR)/sysconfig
+	install -m 550 $(CURSRCDIR)/c/hbm_online_repair/hbm_online_repair $(BINDIR)
+	install -m 550 $(CURSRCDIR)/c/hbm_online_repair/hbm_online_repair.env $(ETCDIR)/sysconfig
+	install -m 600 $(CURCONFIGDIR)/tasks/hbm_online_repair.mod $(ETCDIR)/sysSentry/tasks
+
 lib:
 	cd $(CURSRCDIR)/libso && cmake . -DXD_INSTALL_BINDIR=$(LIBINSTALLDIR) -B build
 	cd $(CURSRCDIR)/libso/build && make
@@ -103,6 +115,12 @@ ilib:
 	install -d -m 644 $(INCLUDEDIR)/xalarm
 	install -m 644 $(CURSRCDIR)/libso/xalarm/register_xalarm.h $(INCLUDEDIR)/xalarm/
 
+cpu_patrol:
+	cd $(CURSRCDIR)/c/catcli/catlib/ && cmake -B ./build/ -S . -DCMAKE_INSTALL_PREFIX=/usr/local
+	cd $(CURSRCDIR)/c/catcli/catlib/build && make
+
+hbm_online_repair:
+	cd $(CURSRCDIR)/c/hbm_online_repair/ && make
 
 clean-install:
 	rm -rf $(CURLIBDIR)/build
@@ -131,6 +149,15 @@ clean: clean-install
 	rm -rf $(SYSTEMDDIR)/sysSentry.service
 	rm -rf $(SYSTEMDDIR)/xalarmd.service
 	rm -rf $(SYSTEMDDIR)/sentryCollector.service
+
+	# clean cpu_patrol
+	rm -rf $(BINDIR)/cat-cli
+	rm -rf $(LIBINSTALLDIR)/libcpu_patrol.so
+
+	# clean hbm_online_repair
+	rm -rf $(BINDIR)/hbm_online_repair
+	rm -rf $(ETCDIR)/sysconfig/hbm_online_repair.env
+	
 	systemctl daemon-reload
 
 test:
