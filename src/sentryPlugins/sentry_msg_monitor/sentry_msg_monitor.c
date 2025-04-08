@@ -94,7 +94,7 @@ static int smh_dev_get_fd(void)
 static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* str)
 {
     int res;
-    char nid_str[MSG_STR_MAX_LEN];
+    char *nid_str = NULL;
     size_t offset = 0;
     switch (smh_msg->type) {
     case SMH_MESSAGE_POWER_OFF:
@@ -105,11 +105,18 @@ static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* s
         }
         break;
     case SMH_MESSAGE_OOM:
+        nid_str = (char *) calloc (MSG_STR_MAX_LEN, sizeof(char));
+        if (!nid_str) {
+            logging_error("Failed to allocate memory!");
+            return -1;
+        }
         for (int i = 0; i < MAX_NUMA_NODES; i++) {
             res = snprintf(nid_str + offset, MSG_STR_MAX_LEN - offset, "%d%s", 
                         smh_msg->oom_info.nid[i], (i < MAX_NUMA_NODES - 1) ? "," : "");
             if ((size_t)res >= MSG_STR_MAX_LEN) {
                 logging_warn("msg str size exceeds the max value\n");
+                free(nid_str);
+                nid_str = NULL;
                 return -1;
             }
             offset += res;
@@ -123,6 +130,8 @@ static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* s
             smh_msg->oom_info.timeout,
             smh_msg->oom_info.reason
         );
+        free(nid_str);
+        nid_str = NULL;
         if ((size_t)res >= MSG_STR_MAX_LEN) {
             logging_warn("msg str size exceeds the max value\n");
             return -1;
@@ -183,7 +192,12 @@ static void* sender_thread(void* arg) {
     pthread_cleanup_push(sender_cleanup, &fd);
 
     pthread_t partner_t;
-    char str[MSG_STR_MAX_LEN];
+    char *str = (char *) calloc (MSG_STR_MAX_LEN, sizeof(char));
+    if (!str) {
+        logging_error("Failed to allocate memory!");
+        close(fd);
+        goto close_recv;
+    }
 
     while (1) {
         struct sentry_msg_helper_msg smh_msg;
@@ -236,6 +250,8 @@ static void* sender_thread(void* arg) {
 
 sender_err:
     close(fd);
+    free(str);
+    str = NULL;
 close_recv:
     partner_t = *(pthread_t*)arg;
     if (partner_t)
