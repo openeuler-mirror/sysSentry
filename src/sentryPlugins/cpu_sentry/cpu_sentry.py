@@ -142,6 +142,12 @@ class CpuSentry:
             self.send_result["details"]["code"] = 1002
             self.send_result["result"] = ResultLevel.MINOR_ALM
             self.send_result["details"]["msg"] = "Some CPUs are faulty. The faulty cores are isolated successfully."
+        else:
+            found_fault_cores_set = set(found_fault_cores_list)
+            isolated_cpu_set = set(CpuSentry.cpu_format_convert_to_list(self.send_result["details"]["isolated_cpu_list"]))
+            self.send_result["details"]["code"] = 1002
+            self.send_result["result"] = ResultLevel.MINOR_ALM
+            self.send_result["details"]["msg"] = "Some cores are isolated successfully and some cores ({}) fail to be isolated.".format(list(found_fault_cores_set - isolated_cpu_set))
 
     def cpu_report_result(self):
         """report result to sysSentry"""
