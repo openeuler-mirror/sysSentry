@@ -1,0 +1,14 @@
+label: sysSentry 用户指南
+isManual: true
+description: 故障巡检框架
+sections: 
+  - label: 简介
+    href: ./syssentry_introduction.md
+  - label: CPU故障巡检插件
+    href: ./cpu_fault_inspection_plugin.md
+  - label: 安装sysSentry
+    href: ./installation_and_usage.md
+  - label: HBM ACLS/SPPR 在线修复插件
+    href: ./online_repair_plugin.md
+  - label: 巡检插件
+    href: ./plugins.md
