@@ -10,6 +10,7 @@
 #include <sys/un.h>
 #include <linux/fs.h>
 #include <sys/stat.h>
+#include <ctype.h>
 
 #include "logger.h"
 #include "non-standard-hbm-repair.h"
@@ -510,10 +511,54 @@ static int notice_BMC(const struct hisi_common_error_section *err, uint8_t repai
     return 0;
 }
 
-static int hbmc_hbm_page_isolate(const struct hisi_common_error_section *err)
+static int query_numa_node(unsigned long long phys_addr)
+{
+    FILE *fp = popen("lsmem --output-all --raw 2>/dev/null", "r");
+    if (!fp) {
+        log(LOG_ERROR, "lsmem --output-all popen failed");
+        return -1;
+    }
+
+    char line[1024];
+    int found = 0, node;
+    
+    // skip title
+    fgets(line, sizeof(line), fp);
+    
+    while (fgets(line, sizeof(line), fp)) {
+        unsigned long start, end;
+        char range[64], node_str[16];
+        
+        if (sscanf(line, "%63s %*s %*s %*s %*s %15s", range, node_str) != 2)
+            continue;
+        
+        if (sscanf(range, "%lx-%lx", &start, &end) != 2)
+            continue;
+
+        if (sscanf(node_str, "%d", &node) != 1)
+            continue;
+        
+        if (phys_addr >= start && phys_addr <= end) {
+            log(LOG_DEBUG, "Physical Address 0x%llX -> NUMA Node: %d\n", phys_addr, node);
+            found = 1;
+            break;
+        }
+    }
+    pclose(fp);
+
+    if (!found) {
+        log(LOG_WARNING, "NUMA node not found for address 0x%llX\n", phys_addr);
+        return -1;
+    }
+
+    return node;
+}
+
+static int hbmc_hbm_page_isolate(const struct hisi_common_error_section *err, int *node_arr, int *out_count)
 {
     unsigned long long paddr;
-    int ret;
+    int ret, node;
+    int local_count = 0;
     bool is_acls = err->reg_array[HBM_REPAIR_REQ_TYPE] & (HBM_CE_ACLS | HBM_PSUE_ACLS);
     int required_isolate_size = (is_acls ? HBM_ACLS_ADDR_NUM : HBM_SPPR_ADDR_NUM) * DEFAULT_PAGE_SIZE_KB;
     int hardware_corrupted_size = get_hardware_corrupted_size();
@@ -533,6 +578,11 @@ static int hbmc_hbm_page_isolate(const struct hisi_common_error_section *err)
         paddr <<= TYPE_UINT32_WIDTH;
         paddr += err->reg_array[HBM_ADDL];
 
+        node = query_numa_node(paddr);
+        if (node < 0) {
+            return -1;
+        }
+        node_arr[local_count++] = node;
         ret = write_file("/sys/kernel/page_eject", "offline_page", paddr);
         if (ret < 0) {
             notice_BMC(err, ISOLATE_FAILED_OTHER_REASON);
@@ -547,6 +597,20 @@ static int hbmc_hbm_page_isolate(const struct hisi_common_error_section *err)
             paddr = err->reg_array[2 * i + HBM_ADDH];
             paddr <<= TYPE_UINT32_WIDTH;
             paddr += err->reg_array[2 * i + HBM_ADDL];
+            node = query_numa_node(paddr);
+            if (node < 0) {
+                continue;
+            }
+            int exists = 0;
+            for (int j = 0; j < local_count; j++) {
+                if (node_arr[j] == node) {
+                    exists = 1;
+                    break;
+                }
+            }
+            if (!exists) {
+                node_arr[local_count++] = node;
+            }
             ret = write_file("/sys/kernel/page_eject", "offline_page", paddr);
             if (ret < 0) {
                 all_success = false;
@@ -559,6 +623,7 @@ static int hbmc_hbm_page_isolate(const struct hisi_common_error_section *err)
             ret = -1;
         }
     }
+    *out_count = local_count;
     return ret < 0 ? ret : 0;
 }
 
@@ -676,6 +741,72 @@ err:
     return type;
 }
 
+static int open_hugepages(int node, FILE **hugefp)
+{
+    char path[256];
+    snprintf(path, sizeof(path), "/sys/devices/system/node/node%d/hugepages/hugepages-2048kB/nr_hugepages", node);
+
+    *hugefp = fopen(path, "r+");
+    if (!*hugefp) {
+        log(LOG_ERROR, "failed to open %s hugepages file\n", path);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int read_hugepages_value(int node)
+{
+    FILE *hugefp = NULL;
+    int res = open_hugepages(node, &hugefp);
+    if (res < 0) {
+        return -1;
+    }
+
+    char buffer[64];
+    if (fgets(buffer, sizeof(buffer), hugefp) == NULL) {
+        log(LOG_ERROR, "Failed to read\n");
+        fclose(hugefp);
+        return -1;
+    }
+
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len - 1] == '\n') {
+        buffer[len - 1] = '\0';
+    }
+
+    long nr_hugepages = strtol(buffer, NULL, 10);
+    if (nr_hugepages < 0) {
+        log(LOG_ERROR, "Invalid value in %s, errno: %d(%s)\n", buffer, errno, strerror(errno));
+        fclose(hugefp);
+        return -1;
+    }
+
+    fclose(hugefp);
+    return nr_hugepages;
+}
+
+static int write_hugepages_value(int node, int nr_hugepages)
+{
+    FILE *hugefp = NULL;
+    int res = open_hugepages(node, &hugefp);
+    if (res < 0) {
+        return -1;
+    }
+
+    int ret = fprintf(hugefp, "%d\n", nr_hugepages);
+    fclose(hugefp);
+
+    if (ret <= 0) {
+        log(LOG_ERROR, "Failed to write value %d\n", nr_hugepages);
+        return -1;
+    }
+
+    log(LOG_DEBUG, "Successfully wrote hugepages value %d to node %d\n", nr_hugepages, node);
+    return 0;
+}
+
+
 static void hbm_repair_handler(const struct hisi_common_error_section *err)
 {
     log(LOG_DEBUG, "Received ACLS/SPPR flat mode repair request, try to repair\n");
@@ -686,9 +817,20 @@ static void hbm_repair_handler(const struct hisi_common_error_section *err)
     int ret;
     bool find_device = false, find_hbm_mem = false, addr_in_hbm_device = false;
 
-    ret = hbmc_hbm_page_isolate(err);
+    int node_arr[HBM_SPPR_ADDR_NUM];
+    int out_count, node, original_nr_hugepages, repair_nr_hugepages, aggregated_nr_hugepages;
+    ret = hbmc_hbm_page_isolate(err, node_arr, &out_count);
     if (ret < 0) {
         return;
+    }
+
+    for (int i = 0; i < out_count; i++) {
+        node = node_arr[i];
+        original_nr_hugepages = read_hugepages_value(node);
+        if (original_nr_hugepages < 0) {
+            return;
+        }
+        log(LOG_INFO, "original hugepages on %d node is: %d\n", node, original_nr_hugepages);
     }
 
     dir = opendir(sys_dev_path);
@@ -728,6 +870,26 @@ static void hbm_repair_handler(const struct hisi_common_error_section *err)
         log(LOG_ERROR, "Err addr is not in device, skip error, error_type is %u\n",
                 err->reg_array[HBM_REPAIR_REQ_TYPE] & HBM_ERROR_MASK);
         notice_BMC(err, REPAIR_FAILED_INVALID_PARAM);
+    }
+
+    for (int i = 0; i < out_count; i++) {
+        node = node_arr[i];
+        repair_nr_hugepages = read_hugepages_value(node);
+        if (repair_nr_hugepages < 0) {
+            return;
+        }
+        log(LOG_INFO, "repair hugepages on %d node is: %d\n", node, repair_nr_hugepages);
+
+        ret = write_hugepages_value(node, repair_nr_hugepages);
+        if (ret < 0) {
+            return;
+        }
+
+        aggregated_nr_hugepages = read_hugepages_value(node);
+        if (aggregated_nr_hugepages < 0) {
+            return;
+        }
+        log(LOG_INFO, "aggregated hugepages on %d node is: %d\n", node, aggregated_nr_hugepages);
     }
 
     closedir(dir);
