@@ -13,3 +13,11 @@ sections:
         href: ./cpu_fault_inspection_plugin.md
       - label: HBM ACLS/SPPR 在线修复插件
         href: ./online_repair_plugin.md
+      - label: AI阈值慢盘检测插件
+        href: ./ai_block_io_plugin.md
+      - label: 平均阈值慢盘检测插件
+        href: ./avg_block_io_plugin.md
+  - label: 常见问题与解决方法
+    href: ./question_and_answer.md
+  - label: 二次开发指南
+    href: ./developer_guide.md
