@@ -326,9 +326,9 @@ def get_disk_type(disk):
         try:
             with open(disk_file, 'r') as file:
                 num = int(file.read())
-                if num == 1:
+                if num == 0:
                     result['message'] = str(DiskType.TYPE_SATA_SSD)
-                elif num == 0:
+                elif num == 1:
                     result['message'] = str(DiskType.TYPE_SATA_HDD)
                 else:
                     logging.error("disk %s is not support, num = %d", disk, num)

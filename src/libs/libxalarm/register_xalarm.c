@@ -31,8 +31,8 @@
 #define DIR_XALARM "/var/run/xalarm"
 #define PATH_REG_ALARM "/var/run/xalarm/alarm"
 #define PATH_REPORT_ALARM "/var/run/xalarm/report"
-#define ALARM_DIR_PERMISSION 0750
-#define ALARM_SOCKET_PERMISSION 0600
+#define ALARM_DIR_PERMISSION 0755
+#define ALARM_SOCKET_PERMISSION 0666
 #define TIME_UNIT_MILLISECONDS 1000
 
 #define MAX_PARAS_LEN 8191
@@ -119,10 +119,6 @@ static int create_unix_socket(const char *path)
 
     if (connect(fd, (struct sockaddr*)&alarm_addr, sizeof(alarm_addr)) == -1) {
         printf("create_unix_socket:  connect alarm_addr failed, ret: %d\n", ret);
-        goto release_socket;
-    }
-    if (chmod(path, ALARM_SOCKET_PERMISSION) < 0) {
-        printf("chmod %s failed: %s\n", path, strerror(errno));
         goto release_socket;
     }
 

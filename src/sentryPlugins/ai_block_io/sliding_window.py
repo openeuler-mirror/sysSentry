@@ -33,10 +33,13 @@ class SlidingWindow:
     def is_abnormal(self, data):
         if self._avg_lim is not None and data < self._avg_lim:
             return False
-        if self._ai_threshold is not None and data > self._ai_threshold:
-            return True
+        if self._avg_lim is not None and self._ai_threshold is not None:
+            threshold = max(self._avg_lim, self._ai_threshold)
+            if data > threshold:
+                return True
         if self._abs_threshold is not None and data > self._abs_threshold:
             return True
+        return False
 
     def push(self, data: float):
         if len(self._io_data_queue) == self._queue_length:
