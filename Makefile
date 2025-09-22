@@ -73,7 +73,7 @@ isentry:
 	install -d -m 700 $(LOGSAVEDIR)/sysSentry
 	install -d -m 700 $(VARLIB)/logrotate-syssentry
 	install -d -m 700 $(PYDIR)/syssentry
-	install -d -m 700 $(PYDIR)/xalarm
+	install -d -m 755 $(PYDIR)/xalarm
 	install -d -m 700 $(PYDIR)/sentryCollector
 	install -d -m 700 $(PYDIR)/$(PKGVEREGG)
 	install -d -m 700 $(ETCDIR)/sysconfig
@@ -94,7 +94,7 @@ isentry:
 	
 	## 安装python源代码文件到相应的目录
 	install -m 550 src/build/usr/lib/$(PYNAME)/site-packages/services/syssentry/* $(PYDIR)/syssentry
-	install -m 550 src/build/usr/lib/$(PYNAME)/site-packages/services/xalarm/* $(PYDIR)/xalarm
+	install -m 555 src/build/usr/lib/$(PYNAME)/site-packages/services/xalarm/* $(PYDIR)/xalarm
 	install -m 550 src/build/usr/lib/$(PYNAME)/site-packages/services/sentryCollector/* $(PYDIR)/sentryCollector
 	install -m 550 src/build/usr/lib/$(PYNAME)/site-packages/$(PKGVEREGG)/* $(PYDIR)/$(PKGVEREGG)
 	
@@ -138,14 +138,14 @@ isentry:
 	install -m 550 src/libsentry/python/pySentryCollector/collect_plugin.py $(PYDIR)/sentryCollector
 
 	# libxalarm
-	install -m 550 $(CURLIBDIR)/build/libxalarm/libxalarm.so $(LIBINSTALLDIR)
+	install -m 555 $(CURLIBDIR)/build/libxalarm/libxalarm.so $(LIBINSTALLDIR)
 
 	# libxalarm-devel
-	install -d -m 700 $(INCLUDEDIR)/xalarm
+	install -d -m 755 $(INCLUDEDIR)/xalarm
 	install -m 644 $(CURLIBDIR)/libxalarm/register_xalarm.h $(INCLUDEDIR)/xalarm/
 
 	# pyxalarm
-	install -m 550 src/libs/pyxalarm/register_xalarm.py $(PYDIR)/xalarm
+	install -m 555 src/libs/pyxalarm/register_xalarm.py $(PYDIR)/xalarm
 
 	# log utils
 	install -d -m 700 $(INCLUDEDIR)/libsentry

@@ -91,7 +91,7 @@ class Test(unittest.TestCase):
         self.assertEqual(_get_n_sigma_threshold(data_list, 3), n_sigma_threshold)
 
     def test_not_continuous_sliding_window(self):
-        not_continuous = NotContinuousSlidingWindow(5, 3)
+        not_continuous = NotContinuousSlidingWindow(5, 3, 40, 15)
         boxplot_threshold = BoxplotThreshold(1.5, 10, 8)
         boxplot_threshold.attach_observer(not_continuous)
         data_list1 = [19, 20, 20, 20, 20, 20, 22, 24, 23, 20]
@@ -114,7 +114,7 @@ class Test(unittest.TestCase):
         self.assertEqual(25.625, boxplot_threshold.get_threshold())
 
     def test_continuous_sliding_window(self):
-        continuous = ContinuousSlidingWindow(5, 3)
+        continuous = ContinuousSlidingWindow(5, 3, 40, 15)
         boxplot_threshold = BoxplotThreshold(1.5, 10, 8)
         boxplot_threshold.attach_observer(continuous)
         data_list = [19, 20, 20, 20, 20, 20, 22, 24, 23, 20]
@@ -131,7 +131,7 @@ class Test(unittest.TestCase):
         self.assertTrue(continuous.is_slow_io_event(25)[0][0])
 
     def test_median_sliding_window(self):
-        median = MedianSlidingWindow(5, 3)
+        median = MedianSlidingWindow(5, 3, 40, 15)
         absolute_threshold = AbsoluteThreshold(10, 8)
         absolute_threshold.attach_observer(median)
         absolute_threshold.set_threshold(24.5)
