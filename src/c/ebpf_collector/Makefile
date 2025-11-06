@@ -39,7 +39,7 @@ KBUILD_HOSTCFLAGS += -I$(KERNEL_PATH)/tools/lib/ -I$(KERNEL_PATH)/tools/include
 KBUILD_HOSTCFLAGS += -I$(KERNEL_PATH)/tools/perf
 NOSTDINC_FLAGS := -nostdinc
 EXTRA_CFLAGS := -isystem /usr/lib/gcc/$(GCC_ARCH)/$(GCC_VERSION)/include
-CFLAGS := -g -Wall -w
+CFLAGS := -g -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -Wl,-z,relro,-z,now -Wall -w
 
 CLANG_BPF_SYS_INCLUDES ?= $(shell $(CLANG) -v -E - </dev/null 2>&1 \
 	| sed -n '/<...> search starts here:/,/End of search list./{ s| \(/.*\)|-idirafter \1|p }')
