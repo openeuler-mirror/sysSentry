@@ -35,8 +35,18 @@ else
 	KERNEL_IS_5_10 := 0
 endif
 
-all: lib sentry hbm_online_repair cpu_patrol
+all: lib sentry hbm_online_repair cpu_patrol soc_ring_sentry
 
+lib: log
+	cd $(CURSRCDIR)/libso && cmake . -DXD_INSTALL_BINDIR=$(LIBINSTALLDIR) -B build
+	cd $(CURSRCDIR)/libso/build && make
+
+log:
+	cd $(CURSRCDIR)/libso/log && cmake . -B build
+	cd $(CURSRCDIR)/libso/log/build && make
+
+soc_ring_sentry: lib
+	cd $(CURSRCDIR)/c/soc_ring_sentry/ && make
 
 install: dirs ilib isentry
 
@@ -57,7 +67,7 @@ sentry:
 	@if [ $(KERNEL_IS_5_10) -eq 1 ]; then \
 		cd $(CURSRCDIR)/c/ebpf_collector/ && make; \
 	else \
-        	echo "Kernel is not 5.10, skipping building ebpf_collector"; \
+		echo "Kernel is not 5.10, skipping building ebpf_collector"; \
 	fi
 
 isentry:
@@ -106,9 +116,15 @@ isentry:
 	install -m 550 $(CURSRCDIR)/c/hbm_online_repair/hbm_online_repair.env $(ETCDIR)/sysconfig
 	install -m 600 $(CURCONFIGDIR)/tasks/hbm_online_repair.mod $(ETCDIR)/sysSentry/tasks
 
-lib:
-	cd $(CURSRCDIR)/libso && cmake . -DXD_INSTALL_BINDIR=$(LIBINSTALLDIR) -B build
-	cd $(CURSRCDIR)/libso/build && make
+	# soc_ring_sentry
+	install -m 550 $(CURSRCDIR)/c/soc_ring_sentry/soc_ring_sentry $(BINDIR)
+	install -m 600 $(CURCONFIGDIR)/env/soc_ring_sentry.env $(ETCDIR)/sysconfig/
+	install -m 600 $(CURCONFIGDIR)/tasks/soc_ring_sentry.mod $(ETCDIR)/sysSentry/tasks
+
+	# log utils
+	install -d -m 700 $(INCLUDEDIR)/libsentry
+	install -m 644 $(CURSRCDIR)/libso/log/log_utils.h $(INCLUDEDIR)/libsentry/
+	install -m 550 $(CURSRCDIR)/libso/log/build/libsentry_log.so $(LIBINSTALLDIR)
 
 ilib:
 	cd $(CURSRCDIR)/libso/build && make install
@@ -130,12 +146,18 @@ clean-install:
 	rm -rf $(CURSRCDIR)/syssentry.egg-info
 	rm -rf $(CURSRCDIR)/SENTRY_FILES
 
-clean: clean-install
+srs_clean:
+	cd $(CURSRCDIR)/c/soc_ring_sentry && make clean
+
+clean: clean-install srs_clean
 	rm -rf $(BINDIR)/sentryctl
 	rm -rf $(BINDIR)/syssentry
 	rm -rf $(BINDIR)/xalarmd
 	rm -rf $(BINDIR)/sentryCollector
 	rm -rf $(BINDIR)/ebpf_collector
+	rm -rf $(BINDIR)/soc_ring_sentry
+	rm -rf $(ETCDIR)/soc_ring_sentry.env
+	rm -rf $(LIBINSTALLDIR)/libsentry_log.so
 	rm -rf $(LIBINSTALLDIR)/libxalarm.so
 	rm -rf $(INCLUDEDIR)/xalarm
 	rm -rf $(ETCDIR)/sysSentry
@@ -157,7 +179,7 @@ clean: clean-install
 	# clean hbm_online_repair
 	rm -rf $(BINDIR)/hbm_online_repair
 	rm -rf $(ETCDIR)/sysconfig/hbm_online_repair.env
-	
+
 	systemctl daemon-reload
 
 test:
