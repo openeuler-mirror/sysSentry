@@ -4,7 +4,7 @@ Description=EulerOS System Inspection Frame
 [Service]
 ExecStart=/usr/bin/syssentry
 ExecStop=/bin/kill $MAINPID
-KillMode=process
+KillMode=mixed
 Restart=on-failure
 RestartSec=10s
 
