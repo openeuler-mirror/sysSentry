@@ -30,6 +30,7 @@ from .global_values import SENTRY_RUN_DIR, CTL_SOCKET_PATH, SENTRY_RUN_DIR_PERM
 from .cron_process import period_tasks_handle
 from .callbacks import mod_list_show, task_start, task_get_status, task_stop, task_get_result, task_get_alarm
 from .mod_status import get_task_by_pid, set_runtime_status
+from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS, WAITING_STATUS
 from .load_mods import load_tasks, reload_single_mod
 from .heartbeat import (heartbeat_timeout_chk, heartbeat_fd_create,
     heartbeat_recv, THB_SOCKET_PATH)
@@ -560,25 +561,30 @@ def sigchld_handler(signum, _f):
     """
     while True:
         try:
-            child_pid, child_exit_code = os.waitpid(-1, os.WNOHANG)
+            child_pid, child_status = os.waitpid(-1, os.WNOHANG)
             logging.debug("sigchld pid :%d", child_pid)
             task = get_task_by_pid(child_pid)
             if not task:
                 logging.debug("pid %d cannot find task, ignore", child_pid)
                 break
             logging.debug("task name %s", task.name)
-            if os.WIFEXITED(child_exit_code):
+            if os.WIFEXITED(child_status):
                 # exit normally with exit() syscall
+                logging.info("task %s exit with status %d", task.name, os.WEXITSTATUS(child_status))
                 if task.type == "PERIOD" and task.period_enabled:
-                    set_runtime_status(task.name, "WAITING")
+                    set_runtime_status(task.name, WAITING_STATUS)
                 else:
-                    set_runtime_status(task.name, "EXITED")
+                    if os.WEXITSTATUS(child_status):
+                        set_runtime_status(task.name, NONZERO_EXITED_STATUS)
+                    else:
+                        set_runtime_status(task.name, EXITED_STATUS)
             else:
                 # exit abnormally
-                if not task.period_enabled:
-                    set_runtime_status(task.name, "EXITED")
+                logging.info("task %s terminated", task.name)
+                if task.type == "PERIOD" and task.period_enabled:
+                    set_runtime_status(task.name, WAITING_STATUS)
                 else:
-                    set_runtime_status(task.name, "FAILED")
+                    set_runtime_status(task.name, FAILED_STATUS)
             task.result_info["end_time"] = get_current_time_string()
         except:
             break
