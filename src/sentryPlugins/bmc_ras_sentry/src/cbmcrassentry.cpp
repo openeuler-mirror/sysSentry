@@ -1139,7 +1139,7 @@ void CBMCRasSentry::ReportAlarm(const IPMIEvent& event)
 
 void CBMCRasSentry::SetHardwareInfo(json_object* jObject, const std::string& eventId, const IPMIEvent& event)
 {
-    const std::string eventType = eventId.substr(2);
+    const std::string eventType = eventId.substr(0, 2);
     if (eventType == "01") {
         std::string diskSN = GetDiskSNByIPMI(event);
         std::string blockNameStr = "";
