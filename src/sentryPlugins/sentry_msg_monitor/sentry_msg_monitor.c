@@ -562,6 +562,7 @@ re_register:
     rcd.register_info = &register_info;
 
     while (1) {
+        usleep(1);
         ret = xalarm_get_event(al_msg, register_info);
         if (ret == -ENOTCONN || ret == -ECONNRESET || ret == -EBADF) {
             logging_warn("Failed to get msg: (%d) Xalarmd service exception, try to re-register\n", ret);
