@@ -14,6 +14,8 @@
 #include <thread>
 #include <cstring>
 #include <sys/stat.h>
+#include <sys/fcntl.h>
+#include <cstdio>
 #include "cbmcrassentry.h"
 #include "configure.h"
 #include "logger.h"
@@ -22,6 +24,9 @@
 std::atomic<bool> g_exit(false);
 std::mutex g_mutex;
 std::condition_variable g_cv;
+
+const std::string TOOL_NAME = "bmc_ras_sentry";
+const std::string PID_FILE_PATH = "/var/run/" + TOOL_NAME + ".pid";
 
 void HandleSignal(int sig)
 {
@@ -51,12 +56,74 @@ void SetSignalHandler()
     }
 }
 
+static int handle_file_lock(int fd, bool lock)
+{
+    int ret;
+    struct flock fl;
+    fl.l_type   = lock ? F_WRLCK : F_UNLCK;
+    fl.l_whence = SEEK_SET;
+    fl.l_start  = 0;
+    fl.l_len    = 0;
+
+    ret = fcntl(fd, F_SETLK, &fl);
+    if (ret < 0) {
+        BMC_LOG_ERROR << "fcntl failed, error msg is " << strerror(errno);
+    } else {
+        BMC_LOG_DEBUG << "fcntl success, lock ret code is " << ret;
+    }
+    return ret;
+}
+
+static int check_and_set_pid_file(void)
+{
+    int ret, fd;
+    fd = open(PID_FILE_PATH.c_str(), O_CREAT | O_RDWR, 0600);
+    if (fd < 0) {
+        BMC_LOG_ERROR << "open file " << PID_FILE_PATH << " failed!";
+        return -1;
+    }
+
+    ret = handle_file_lock(fd, true);
+    if (ret < 0) {
+        BMC_LOG_ERROR << TOOL_NAME << " is already running";
+        close(fd);
+        return ret;
+    }
+
+    return fd;
+}
+
+static int release_pid_file(int fd)
+{
+    int ret;
+    ret = handle_file_lock(fd, false);
+    if (ret < 0) {
+        close(fd);
+        BMC_LOG_ERROR << "release pid file " << PID_FILE_PATH << " lock failed, error msg is " << strerror(errno);
+        return ret;
+    }
+
+    close(fd);
+    ret = remove(PID_FILE_PATH.c_str());
+    if (ret < 0) {
+        BMC_LOG_ERROR << "remove " << PID_FILE_PATH << " failed, error msg is " << strerror(errno);
+    }
+    return ret;
+}
+
 int main(int argc, char* argv[])
 {
+    int pid_fd;
+
     if (!BMCRasSentryPlu::Logger::GetInstance().Initialize(BMCRasSentryPlu::BMCPLU_LOG_PATH)) {
         std::cerr << "Failed to initialize logger." << std::endl;
     }
     SetSignalHandler();
+
+    pid_fd = check_and_set_pid_file();
+    if (pid_fd < 0) {
+        return pid_fd;
+    }
 
     BMCRasSentryPlu::CBMCRasSentry ras_sentry;
     PluConfig config;
@@ -130,5 +197,7 @@ int main(int argc, char* argv[])
     if (configMonitor.joinable()) {
         configMonitor.join();
     }
+
+    release_pid_file(pid_fd);
     return 0;
 }
