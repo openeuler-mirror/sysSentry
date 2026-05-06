@@ -29,7 +29,7 @@ PKGVEREGG := syssentry-$(VERSION)-py$(PYTHON_VERSION).egg-info
 
 ARCH := $(shell uname -m)
 
-all: lib ebpf hbm_online_repair sentry_msg_monitor bmc_ras_sentry soc_ring_sentry
+all: lib ebpf hbm_online_repair sentry_msg_monitor bmc_ras_sentry soc_ring_sentry cpu_patrol
 
 lib:libxalarm log
 
@@ -45,6 +45,10 @@ ebpf:
 	@if [ -d "$(CURSRCDIR)/services/sentryCollector/ebpf_collector/" ]; then \
 		cd $(CURSRCDIR)/services/sentryCollector/ebpf_collector/ && make;	\
 	fi
+
+cpu_patrol: libxalarm
+	cd $(CURSRCDIR)/sentryPlugins/cpu_sentry/catlib/ && cmake -B ./build/ -S . -DCMAKE_INSTALL_PREFIX=/usr/local
+	cd $(CURSRCDIR)/sentryPlugins/cpu_sentry/catlib/build && make
 
 hbm_online_repair:
 	cd $(CURSRCDIR)/sentryPlugins/hbm_online_repair/ && make
@@ -141,6 +145,17 @@ isentry:
 	install -m 600 $(CURCONFIGDIR)/plugins/ai_block_io.ini $(ETCDIR)/sysSentry/plugins/
 	install -m 600 $(CURCONFIGDIR)/tasks/ai_block_io.mod $(ETCDIR)/sysSentry/tasks/
 
+	# cpu_patrol
+	install -d -m 755 $(PYDIR)/sentryPlugins/cpu_sentry
+	install -d -m 755 $(PYDIR)/sentryPlugins/cpu_sentry/__pycache__
+	install -m 550 $(CURSRCDIR)/build/usr/bin/cpu_sentry $(BINDIR)
+	install -m 644 src/build/usr/lib/$(PYNAME)/site-packages/sentryPlugins/cpu_sentry/*.py  $(PYDIR)/sentryPlugins/cpu_sentry/
+	install -m 644 src/build/usr/lib/$(PYNAME)/site-packages/sentryPlugins/cpu_sentry/__pycache__/* $(PYDIR)/sentryPlugins/cpu_sentry/__pycache__/
+	install -m 550 $(CURSRCDIR)/sentryPlugins/cpu_sentry/catlib/build/cat-cli $(BINDIR)
+	install -m 550 $(CURSRCDIR)/sentryPlugins/cpu_sentry/catlib/build/plugin/cpu_patrol/libcpu_patrol.so $(LIBINSTALLDIR)
+	install -m 600 $(CURCONFIGDIR)/plugins/cpu_sentry.ini $(ETCDIR)/sysSentry/plugins
+	install -m 600 $(CURCONFIGDIR)/tasks/cpu_sentry.mod $(ETCDIR)/sysSentry/tasks
+
 	# hbm_online_repair
 	install -m 550 $(CURSRCDIR)/sentryPlugins/hbm_online_repair/hbm_online_repair $(BINDIR)
 	install -m 600 $(CURCONFIGDIR)/env/hbm_online_repair.env $(ETCDIR)/sysconfig/
@@ -205,6 +220,7 @@ clean: ebpf_clean hbm_clean smm_clean bmc_clean srs_clean
 	rm -rf $(CURSRCDIR)/build
 	rm -rf $(CURSRCDIR)/libsentry/c/log/build
 	rm -rf $(CURSRCDIR)/sentryPlugins/bmc_ras_sentry/build/
+	rm -rf $(CURSRCDIR)/sentryPlugins/cpu_sentry/catlib/build/
 	rm -rf $(CURSRCDIR)/syssentry.egg-info
 	rm -rf $(CURSRCDIR)/SENTRY_FILES
 
@@ -233,6 +249,12 @@ uninstall:
 	rm -rf $(PYDIR)/sentryCollector
 	rm -rf $(PYDIR)/$(PKGVEREGG)
 	rm -rf $(PYDIR)/xalarm
+
+	# clean cpu_sentry
+	rm -rf $(BINDIR)/cpu_sentry
+	rm -rf $(BINDIR)/cat-cli
+	rm -rf $(LIBINSTALLDIR)/libcpu_patrol.so
+
 	rm -rf $(SYSTEMDDIR)/sysSentry.service
 	rm -rf $(SYSTEMDDIR)/sysSentry.socket
 	rm -rf $(SYSTEMDDIR)/xalarmd.service

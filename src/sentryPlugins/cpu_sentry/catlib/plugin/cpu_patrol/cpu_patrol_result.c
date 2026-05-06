@@ -7,8 +7,8 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <limits.h>
-#include <xalarm/register_xalarm.h>
 
+#include "register_xalarm.h"
 #include "cat_structs.h"
 #include "cpu_patrol_result.h"
 
