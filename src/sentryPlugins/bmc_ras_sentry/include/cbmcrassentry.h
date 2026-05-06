@@ -52,7 +52,7 @@ public:
     void Stop();
     void SetPatrolInterval(int seconds);
     bool IsRunning();
-    void PraseBMCEvents(const std::string& bmc_events_value);
+    void SetBMCEvents(const std::vector<std::string>& bmc_events_value);
 private:
     void GetDiskPassthroughInfo();
     std::pair<std::string, std::vector<PhysicalDiskAddress> > GetStorcliVDInfo(
@@ -96,6 +96,7 @@ private:
     std::string m_bmcIp;
     std::vector<DiskSNToBlockName> m_diskSNToBlockNames;
     std::map<uint32_t, std::string> m_BMCOpenEvents;
+    std::mutex m_BMCOpenEventsMutex;
     std::map<std::string, BMCEventMap> m_BMCEvents;
     std::map<uint8_t, bool> m_BMCBlockIoChange = {
         {0x00, false},

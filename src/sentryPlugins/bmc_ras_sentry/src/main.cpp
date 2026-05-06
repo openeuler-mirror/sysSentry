@@ -128,11 +128,13 @@ int main(int argc, char* argv[])
     BMCRasSentryPlu::CBMCRasSentry ras_sentry;
     PluConfig config;
     if (BMCRasSentryPlu::ParseConfig(BMCRasSentryPlu::BMCPLU_CONFIG_PATH, config)) {
-        BMC_LOG_ERROR << "Parse config failed, use default configuration.";
+        BMC_LOG_ERROR << "Parse config failed, plugin exit.";
+        release_pid_file(pid_fd);
+        return -1;
     } else {
         BMCRasSentryPlu::Logger::GetInstance().SetLevel(config.logLevel);
         ras_sentry.SetPatrolInterval(config.patrolSeconds);
-        ras_sentry.PraseBMCEvents(config.BMCEvents);
+        ras_sentry.SetBMCEvents(config.BMCEvents);
     }
 
     std::thread configMonitor([&] {
@@ -173,13 +175,16 @@ int main(int argc, char* argv[])
                     }
                     if (newConfig.BMCEvents != config.BMCEvents) {
                         config.BMCEvents = newConfig.BMCEvents;
-                        BMC_LOG_INFO << "BMC Events update to " << config.BMCEvents;
-                        ras_sentry.PraseBMCEvents(config.BMCEvents);
+                        for (const auto& event : config.BMCEvents) {
+                            BMC_LOG_INFO << "BMC Event update to " << event;
+                        }
+                        ras_sentry.SetBMCEvents(config.BMCEvents);
                     }
                 }
             }
         }
     });
+
     ras_sentry.Start();
     while (!g_exit) {
         {
