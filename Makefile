@@ -255,6 +255,10 @@ uninstall:
 	rm -rf $(BINDIR)/cat-cli
 	rm -rf $(LIBINSTALLDIR)/libcpu_patrol.so
 
+        # clean slow io binary
+	rm -rf $(BINDIR)/avg_block_io
+	rm -rf $(BINDIR)/ai_block_io
+
 	rm -rf $(SYSTEMDDIR)/sysSentry.service
 	rm -rf $(SYSTEMDDIR)/sysSentry.socket
 	rm -rf $(SYSTEMDDIR)/xalarmd.service
