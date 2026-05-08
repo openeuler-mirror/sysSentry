@@ -30,13 +30,13 @@ function do_test() {
 
         sentryctl start bmc_ras_sentry
         sleep 1
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_task_status_eq "bmc_ras_sentry" "WAITING"
 
         sentryctl stop bmc_ras_sentry
         expect_task_status_eq "bmc_ras_sentry" "EXITED"
 
         wait_cmd_ok "grep \"Invalid log_level value\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
-        wait_cmd_ok "grep \"Parse config failed, use default configuration.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
+        wait_cmd_ok "grep \"Parse config failed, plugin exit.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
     done
 
     # check patrol_second config
@@ -48,13 +48,13 @@ function do_test() {
 
         sentryctl start bmc_ras_sentry
         sleep 1
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_task_status_eq "bmc_ras_sentry" "WAITING"
 
         sentryctl stop bmc_ras_sentry
         expect_task_status_eq "bmc_ras_sentry" "EXITED"
 
         wait_cmd_ok "grep \"Invalid patrol_second value\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
-        wait_cmd_ok "grep \"Parse config failed, use default configuration.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
+        wait_cmd_ok "grep \"Parse config failed, plugin exit.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
     done
 
     # check bmc_events config -- input type error
@@ -66,13 +66,13 @@ function do_test() {
 
         sentryctl start bmc_ras_sentry
         sleep 1
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_task_status_eq "bmc_ras_sentry" "WAITING"
 
         sentryctl stop bmc_ras_sentry
         expect_task_status_eq "bmc_ras_sentry" "EXITED"
 
         wait_cmd_ok "grep \"Invalid bmc_events value\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
-        wait_cmd_ok "grep \"Parse config failed, use default configuration.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
+        wait_cmd_ok "grep \"Parse config failed, plugin exit.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
     done
 
     # check bmc_events config -- input event type id error
@@ -85,13 +85,13 @@ function do_test() {
 
         sentryctl start bmc_ras_sentry
         sleep 1
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_task_status_eq "bmc_ras_sentry" "WAITING"
 
         sentryctl stop bmc_ras_sentry
         expect_task_status_eq "bmc_ras_sentry" "EXITED"
 
         wait_cmd_ok "grep \"BMC Event Id not find, Event id:\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
-        wait_cmd_ok "grep \"Parse config failed, use default configuration.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
+        wait_cmd_ok "grep \"Parse config failed, plugin exit.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
     done
 
     # check bmc_events config -- input event type id error
@@ -104,13 +104,13 @@ function do_test() {
 
         sentryctl start bmc_ras_sentry
         sleep 1
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_task_status_eq "bmc_ras_sentry" "WAITING"
 
         sentryctl stop bmc_ras_sentry
         expect_task_status_eq "bmc_ras_sentry" "EXITED"
 
         wait_cmd_ok "grep \"BMC Event Id not find, Event id:\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
-        wait_cmd_ok "grep \"Parse config failed, use default configuration.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
+        wait_cmd_ok "grep \"Parse config failed, plugin exit.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
     done
 
     # check bmc_events config -- input event type id error
@@ -123,13 +123,13 @@ function do_test() {
 
         sentryctl start bmc_ras_sentry
         sleep 1
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_task_status_eq "bmc_ras_sentry" "WAITING"
 
         sentryctl stop bmc_ras_sentry
         expect_task_status_eq "bmc_ras_sentry" "EXITED"
 
         wait_cmd_ok "grep \"BMC Event Id not find, Event id:\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
-        wait_cmd_ok "grep \"Parse config failed, use default configuration.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
+        wait_cmd_ok "grep \"Parse config failed, plugin exit.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
     done
 
     # check bmc_events config -- input event type id error
@@ -142,13 +142,13 @@ function do_test() {
 
         sentryctl start bmc_ras_sentry
         sleep 1
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_task_status_eq "bmc_ras_sentry" "WAITING"
 
         sentryctl stop bmc_ras_sentry
         expect_task_status_eq "bmc_ras_sentry" "EXITED"
 
         wait_cmd_ok "grep \"BMC Event Id not find, Event id:\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
-        wait_cmd_ok "grep \"Parse config failed, use default configuration.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
+        wait_cmd_ok "grep \"Parse config failed, plugin exit.\" /var/log/sysSentry/bmc_ras_sentry.log" 1 3
     done
 }
 
