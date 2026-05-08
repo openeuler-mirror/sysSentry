@@ -12,7 +12,6 @@
 #include <climits>
 #include <sstream>
 #include <algorithm>
-#include <regex>
 extern "C" {
 #include "register_xalarm.h"
 }
@@ -544,26 +543,19 @@ void CBMCRasSentry::OpenBMCEvents(const std::string& event_id)
     }
 }
 
-void CBMCRasSentry::PraseBMCEvents(const std::string& bmc_events_value)
+void CBMCRasSentry::SetBMCEvents(const std::vector<std::string>& bmc_events_value)
 {
-    const std::regex event_id_regex("^\\d{4}$");
-    auto result = SplitString(bmc_events_value, ",");
+    {
+        std::lock_guard<std::mutex> lock(m_BMCOpenEventsMutex);
+        m_BMCOpenEvents.clear();
 
-    for (const auto& event_id : result) {
-        if (!std::regex_match(event_id, event_id_regex)) {
-            BMC_LOG_ERROR << "BMC Events prase error, value: " << bmc_events_value << ", event id: " << event_id;
-            return;
-        }
-    }
-
-    m_BMCOpenEvents.clear();
-
-    for (const auto& event_id : result) {
-        if (event_id == ALL_BMC_EVENTS) {
-            OpenAllBMCEvents();
-            break;
-        } else {
-            OpenBMCEvents(event_id);
+        for (const auto& event_id : bmc_events_value) {
+            if (event_id == ALL_BMC_EVENTS) {
+                OpenAllBMCEvents();
+                break;
+            } else {
+                OpenBMCEvents(event_id);
+            }
         }
     }
  
@@ -1115,14 +1107,18 @@ void CBMCRasSentry::ReportAlarm(const IPMIEvent& event)
 {
     uint8_t ucAlarmLevel = MINOR_ALM;
     uint8_t ucAlarmType = ALARM_TYPE_OCCUR;
+    std::string event_id;
 
-    auto it = m_BMCOpenEvents.find(event.alarmTypeCode);
-    if (it == m_BMCOpenEvents.end()) {
-        BMC_LOG_DEBUG << "Skipping closed ipmi id: 0x"
-                      << std::hex << event.alarmTypeCode;
-        return;
+    {
+        std::lock_guard<std::mutex> lock(m_BMCOpenEventsMutex);
+        auto it = m_BMCOpenEvents.find(event.alarmTypeCode);
+        if (it == m_BMCOpenEvents.end()) {
+            BMC_LOG_DEBUG << "Skipping closed ipmi id: 0x"
+                        << std::hex << event.alarmTypeCode;
+            return;
+        }
+        event_id = it->second;
     }
-    std::string event_id = it->second;
 
     json_object* jObject = json_object_new_object();
     std::string bmcId = Uint32ToHexString(event.alarmTypeCode);

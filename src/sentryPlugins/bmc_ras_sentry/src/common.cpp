@@ -84,7 +84,16 @@ int ParseConfig(const std::string& path, PluConfig& config)
     }};
 
     configMap["bmc_events"] = {true, false, [&](const std::string& value) {
-        config.BMCEvents = value;
+        const std::regex event_id_regex("^\\d{4}$");
+        auto result = SplitString(value, ",");
+
+        for (const auto& event_id : result) {
+            if (!std::regex_match(event_id, event_id_regex)) {
+                BMC_LOG_ERROR << "BMC Events prase error, value: " << value << ", event id: " << event_id;
+                return false;
+            }
+        }
+        config.BMCEvents = result;
         return true;
     }};
 
