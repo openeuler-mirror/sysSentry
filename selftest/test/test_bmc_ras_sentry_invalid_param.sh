@@ -156,6 +156,7 @@ function post_test() {
     systemctl stop xalarmd.service
     systemctl stop sysSentry.service
 
+    rm -rf /etc/sysSentry/plugins/bmc_ras_sentry.ini
     mv /etc/sysSentry/plugins/bmc_ras_sentry.ini_bak /etc/sysSentry/plugins/bmc_ras_sentry.ini
 }
 

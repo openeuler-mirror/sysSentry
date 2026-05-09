@@ -30,6 +30,7 @@ SYSSENTRY_CONF_PATH = "/etc/sysSentry"
 INSPECT_CONF_PATH = "/etc/sysSentry/inspect.conf"
 TASK_LOG_DIR = "/var/log/sysSentry"
 DEFAULT_ALARM_CLEAR_TIME = 15
+DEFAULT_CONFLICT = "up"
 
 SENTRY_RUN_DIR_PERM = 0o750
 
@@ -82,7 +83,7 @@ class InspectTask:
         # env conf to popen arg
         self.environ_conf = None
         # start mode
-        self.conflict = "up"
+        self.conflict = DEFAULT_CONFLICT
         # alarm id
         self.alarm_id = -1
         self.alarm_clear_time = DEFAULT_ALARM_CLEAR_TIME
@@ -243,14 +244,6 @@ class InspectTask:
         return True
 
     def load_env_file(self):
-        if not os.path.exists(self.env_file):
-            logging.warning("env_file: %s is not exist, use default environ", self.env_file)
-            return
-
-        if not os.access(self.env_file, os.R_OK):
-            logging.warning("env_file: %s is not be read, use default environ", self.env_file)
-            return
-
         # read config
         self.environ_conf = dict(os.environ)
         with open(self.env_file, 'r') as file:

@@ -59,6 +59,8 @@ function do_test() {
         sentryctl stop test_type_period
         expect_eq $? 0
 
+        sleep 1
+
         sentryctl status test_type_period | grep -w "status: FAILED"
         expect_eq $? 0
     fi

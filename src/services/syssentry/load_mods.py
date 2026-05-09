@@ -19,7 +19,18 @@ import re
 
 from .sentry_config import SentryConfig
 
-from .global_values import TYPES_SET, InspectTask, TASKS_STORAGE_PATH, SYSSENTRY_CONF_PATH
+from .global_values import (
+    TYPES_SET,
+    InspectTask,
+    TASKS_STORAGE_PATH,
+    SYSSENTRY_CONF_PATH,
+    DEFAULT_ALARM_CLEAR_TIME,
+    DEFAULT_CONFLICT,
+)
+from .alarm import (
+    MIN_ALARM_ID,
+    MAX_ALARM_ID,
+)
 from .task_map import TasksMap, ONESHOT_TYPE, PERIOD_TYPE
 from .cron_process import PeriodTask
 from .mod_status import set_task_status
@@ -51,6 +62,7 @@ MOD_SUFFIX_LEN = 4
 
 ENABLED_FLAGS_SET = ("yes", "no")
 ONSTART_FLAGS_SET = ("yes", "no")
+CONFLICT_VALUES_SET = ("up", "down", "kill")
 
 
 def mod_name_verify(mod_name):
@@ -160,6 +172,116 @@ def parse_period_delay(mod_conf):
     return cron_delay
 
 
+def validate_alarm_id(mod_name, alarm_id_str):
+    """
+    Validate alarm_id configuration - must be a positive integer and in [MIN_ALARM_ID, MAX_ALARM_ID].
+    :param mod_name: module name for logging
+    :param alarm_id_str: alarm_id value from config
+    :return: valid alarm_id (int) or None if invalid
+    """
+    if alarm_id_str is None or alarm_id_str == "":
+        logging.error("mod %s: alarm_id must be an integer, got '%s'", mod_name, alarm_id_str)
+        return None
+
+    try:
+        alarm_id = int(alarm_id_str)
+        if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
+            logging.error(
+                "mod %s: alarm_id must be in [%d, %d], got '%s'",
+                mod_name,
+                MIN_ALARM_ID,
+                MAX_ALARM_ID,
+                alarm_id_str
+            )
+            return None
+        return alarm_id
+    except ValueError:
+        logging.error("mod %s: alarm_id must be an integer, got '%s'", mod_name, alarm_id_str)
+        return None
+
+
+def validate_alarm_clear_time(mod_name, clear_time_str):
+    """
+    Validate alarm_clear_time configuration - must be a positive integer.
+    :param mod_name: module name for logging
+    :param clear_time_str: alarm_clear_time value from config
+    :return: valid alarm_clear_time (int) or DEFAULT_ALARM_CLEAR_TIME if invalid
+    """
+    if clear_time_str is None or clear_time_str == "":
+        logging.warning("mod %s: alarm_clear_time not set, use %d as default", mod_name, DEFAULT_ALARM_CLEAR_TIME)
+        return DEFAULT_ALARM_CLEAR_TIME
+
+    try:
+        clear_time = int(clear_time_str)
+        if clear_time < 0:
+            logging.error("mod %s: alarm_clear_time must be a positive integer, got '%s'", mod_name, clear_time_str)
+            return DEFAULT_ALARM_CLEAR_TIME
+        return clear_time
+    except ValueError:
+        logging.error("mod %s: alarm_clear_time must be an integer, got '%s'", mod_name, clear_time_str)
+        return DEFAULT_ALARM_CLEAR_TIME
+
+
+def validate_env_file(mod_name, env_file_path):
+    """
+    Validate env_file configuration - must be a valid file path that exists and is readable.
+    :param mod_name: module name for logging
+    :param env_file_path: env_file value from config
+    :return: valid env_file path or "" if invalid
+    """
+    if env_file_path is None:
+        logging.error("mod %s: env_file is None", mod_name)
+        return ""
+
+    # Check if path contains valid characters (no injection attempts)
+    if not isinstance(env_file_path, str):
+        logging.error("mod %s: env_file must be a string path, got '%s'", mod_name, type(env_file_path))
+        return ""
+
+    if env_file_path == "":
+        logging.error("mod %s: env_file is empty", mod_name)
+        return ""
+
+    # Normalize path and check for path traversal
+    normalized_path = os.path.normpath(env_file_path)
+
+    # Check if file exists
+    if not os.path.exists(normalized_path):
+        logging.error("mod %s: env_file '%s' does not exist", mod_name, env_file_path)
+        return ""
+
+    # Check if it's a regular file
+    if not os.path.isfile(normalized_path):
+        logging.error("mod %s: env_file '%s' is not a regular file", mod_name, env_file_path)
+        return ""
+
+    # Check if file is readable
+    if not os.access(normalized_path, os.R_OK):
+        logging.error("mod %s: env_file '%s' is not readable", mod_name, env_file_path)
+        return ""
+
+    return normalized_path
+
+
+def validate_conflict(mod_name, conflict_value):
+    """
+    Validate conflict configuration - must be one of 'up', 'down', 'kill'.
+    :param mod_name: module name for logging
+    :param conflict_value: conflict value from config
+    :return: valid conflict value or 'up' (default) if invalid
+    """
+    if conflict_value is None or conflict_value == "":
+        logging.error("mod %s: conflict must be one of 'up', 'down', 'kill', got '%s'", mod_name, conflict_value)
+        return DEFAULT_CONFLICT
+
+    conflict_value_strip = conflict_value.strip()
+    if conflict_value_strip not in CONFLICT_VALUES_SET:
+        logging.error("mod %s: conflict must be one of 'up', 'down', 'kill', got '%s'", mod_name, conflict_value_strip)
+        return DEFAULT_CONFLICT
+
+    return conflict_value_strip
+
+
 def parse_mod_conf(mod_name, mod_conf):
     """
     :param mod_name:
@@ -206,14 +328,14 @@ def parse_mod_conf(mod_name, mod_conf):
     task.load_enabled = is_enabled
 
     try:
-        task.alarm_id = mod_conf.get(CONF_TASK, CONF_ALARM_ID)
+        task.alarm_id = validate_alarm_id(mod_name, mod_conf.get(CONF_TASK, CONF_ALARM_ID))
     except configparser.NoOptionError:
         task.alarm_id = None
         logging.warning(f"{mod_name} alarm_id not set, alarm_id is None")
 
     if task.alarm_id is not None:
         try:
-            task.alarm_clear_time = mod_conf.get(CONF_TASK, CONF_ALARM_CLEAR_TIME)
+            task.alarm_clear_time = validate_alarm_clear_time(mod_name, mod_conf.get(CONF_TASK, CONF_ALARM_CLEAR_TIME))
         except configparser.NoOptionError:
             logging.warning(f"{mod_name} not set alarm_clear_time, use 15s as default")
 
@@ -225,12 +347,10 @@ def parse_mod_conf(mod_name, mod_conf):
         task.onstart = is_onstart
 
     if CONF_ENV_FILE in mod_conf.options(CONF_TASK):
-        env_file_dir = mod_conf.get(CONF_TASK, CONF_ENV_FILE)
-        task.env_file = env_file_dir
+        task.env_file = validate_env_file(mod_name, mod_conf.get(CONF_TASK, CONF_ENV_FILE))
 
     if CONF_CONFLICT in mod_conf.options(CONF_TASK):
-        conflict = mod_conf.get(CONF_TASK, CONF_CONFLICT)
-        task.conflict = conflict
+        task.conflict = validate_conflict(mod_name, mod_conf.get(CONF_TASK, CONF_CONFLICT))
 
     return task
 

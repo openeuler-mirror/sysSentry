@@ -79,7 +79,7 @@ function do_test_file()
         dbus_output=$(systemctl start xalarmd 2>&1)
         ret=$?
         if [ $ret -eq 0 ]; then
-            systemctl stop xalarmd
+            systemctl stop xalarmd.socket xalarmd.service
         fi
         if [[ "$dbus_output" == *"Failed to connect to bus: Host is down"* ]]; then
             ((++actual_skip_nums))

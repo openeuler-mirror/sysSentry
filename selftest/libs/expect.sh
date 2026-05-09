@@ -67,6 +67,20 @@ function expect_gt() {
     fi
 }
 
+
+function expect_ge() {
+    local actual=${1:-0}
+    local expect=${2:-1}
+    local msg=${3:-}
+    if [ "${actual}" -ge "${expect}" ]; then
+        return 0
+    else
+        ((++syssentry_expects_failed))
+        log_error "expect_ge(${actual}, ${expect}, msg=${msg}) - $(get_file_line)"
+        return 1
+    fi
+}
+
 function expect_true() {
     local cmd=$1
     local msg=$2
@@ -126,10 +140,21 @@ function expect_task_status_eq() {
     local expect_status="$2"
     local status
     for i in $(seq 3); do
-        status=$(sentryctl status ${task_name} | awk '{print $2}')
+        status=$(sentryctl status "${task_name}" | awk '{print $2}')
         [[ "${status}" == "${expect_status}" ]] && break
         sleep 1
     done
     expect_str_eq "${status}" "${expect_status}" "current status is ${status}, expect ${expect_status}"
 }
 
+function expect_service_status_eq() {
+    local service_name="$1"
+    local expect_status="$2"
+    local status
+    for i in $(seq 3); do
+        status=$(systemctl is-active "${service_name}")
+        [[ "${status}" == "${expect_status}" ]] && break
+        sleep 1
+    done
+    expect_str_eq "${status}" "${expect_status}" "current status is ${status}, expect ${expect_status}"
+}
