@@ -99,19 +99,41 @@ void Logger::ReopenLogFile()
     return;
 }
 
+std::string Logger::AnonymizeMessage(const std::string& message)
+{
+    std::string anoMessage = message;
+    const std::string matchStr = "ipmitool";
+    size_t matchPos = anoMessage.find(matchStr);
+    if (matchPos == std::string::npos) {
+        return anoMessage;
+    }
+
+    size_t startDel = matchPos + matchStr.length();
+    size_t commaPos = anoMessage.find(',', startDel);
+    if (commaPos != std::string::npos) {
+        anoMessage.erase(startDel, commaPos - startDel);
+    } else {
+        anoMessage.erase(startDel);
+    }
+
+    return anoMessage;
+}
+
 void Logger::WriteLog(Level level, const char* file, int line, const std::string& message)
 {
     if (level < GetLevel() || message.empty()) {
         return;
     }
 
+    std::string anoMessage = AnonymizeMessage(message);
+
     CheckFileState();
     std::lock_guard<std::mutex> lock(m_writeMutex);
     if (m_fileOpen && m_logFile.good()) {
-        m_logFile << Format(level, file, line, message) << std::endl;
+        m_logFile << Format(level, file, line, anoMessage) << std::endl;
         m_logFile.flush();
     } else {
-        std::cerr << Format(level, file, line, message) << std::endl;
+        std::cerr << Format(level, file, line, anoMessage) << std::endl;
     }
 }
 

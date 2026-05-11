@@ -39,6 +39,7 @@ private:
     void OpenLogFile();
     void CheckFileState();
     void ReopenLogFile();
+    std::string AnonymizeMessage(const std::string& message);
     std::string GetTimeStamp() const;
     std::string Format(Level level, const char* file, int line, const std::string& message) const;
 
