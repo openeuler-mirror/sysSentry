@@ -1124,7 +1124,6 @@ void CBMCRasSentry::ReportAlarm(const IPMIEvent& event)
     std::string bmcId = Uint32ToHexString(event.alarmTypeCode);
     std::string time = Unit32ToLocalTime(event.timestamp);
     json_object_object_add(jObject, JSON_KEY_ALARM_SOURCE.c_str(), json_object_new_string(BMC_TASK_NAME.c_str()));
-    json_object_object_add(jObject, JSON_KEY_BMC_ID.c_str(), json_object_new_string(BMC_TASK_NAME.c_str()));
     json_object_object_add(jObject, JSON_KEY_ID.c_str(), json_object_new_string(event_id.c_str()));
     json_object_object_add(jObject, JSON_KEY_BMC_ID.c_str(), json_object_new_string(bmcId.c_str()));
     json_object_object_add(jObject, JSON_KEY_LEVEL.c_str(), json_object_new_int(event.severity));
