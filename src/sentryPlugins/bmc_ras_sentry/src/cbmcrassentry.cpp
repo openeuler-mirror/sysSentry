@@ -161,7 +161,7 @@ std::pair<std::string, std::vector<PhysicalDiskAddress> > CBMCRasSentry::GetStor
     auto VDDetailInfoHead = format_string(STORCLI_VD_DETAIL_INFO, VDId.c_str());
     auto VDDetailInfoIt = VDInfo.find(VDDetailInfoHead);
     if (VDDetailInfoIt == VDInfo.end()) {
-        BMC_LOG_WARNING << VDDetailInfoHead << "can't be find, cmd: " << getVDInfoCmd;
+        BMC_LOG_WARNING << VDDetailInfoHead << " can't be find, cmd: " << getVDInfoCmd;
         return {"", {}};
     }
     auto VDDetailInfo = ParseStorcliKeyToValue(VDDetailInfoIt->second);
@@ -216,7 +216,7 @@ std::vector<std::string> CBMCRasSentry::GetStorcliPDSN(
             ctrlId.c_str(), PDAddress.encId.c_str(), PDAddress.slotId.c_str());
         auto PDAttributesIt = PDInfo.find(PDAttributesHead);
         if (PDAttributesIt == PDInfo.end()) {
-            BMC_LOG_WARNING << PDAttributesHead << "can't be find, cmd: " << getPDInfoCmd;
+            BMC_LOG_WARNING << PDAttributesHead << " can't be find, cmd: " << getPDInfoCmd;
             continue;
         }
         auto PDAttributes = ParseStorcliKeyToValue(PDAttributesIt->second);
@@ -677,8 +677,8 @@ std::string CBMCRasSentry::BuilSetBMCBlockIoCommand(uint8_t blockType, bool open
     const std::string ipmiReqHead = "ipmitool raw 0x30 0x93";
     const std::string reqId = "0x3E";
     const std::string parameterSelector = "0x00 0x19";
-    const std::string blcokSelector = "0xFF";
-    const std::string extrenSelector = "0xFF";
+    const std::string blockSelector = "0xFF";
+    const std::string externSelector = "0xFF";
     const std::string frameType = "0x00";
     const std::string writingOffset = "0x00 0x00";
     const std::string writingLength = "0x01";
@@ -694,8 +694,8 @@ std::string CBMCRasSentry::BuilSetBMCBlockIoCommand(uint8_t blockType, bool open
               << " " << reqId
               << " " << parameterSelector
               << " " << ByteToHex(blockType)
-              << " " << blcokSelector
-              << " " << extrenSelector
+              << " " << blockSelector
+              << " " << externSelector
               << " " << frameType
               << " " << writingOffset
               << " " << writingLength
@@ -708,8 +708,8 @@ std::string CBMCRasSentry::BuilGetBMCBlockIoCommand(uint8_t blockType)
     const std::string ipmiReqHead = "ipmitool raw 0x30 0x93";
     const std::string reqId = "0x3D";
     const std::string parameterSelector = "0x00 0x19";
-    const std::string blcokSelector = "0xFF";
-    const std::string extrenSelector = "0xFF";
+    const std::string blockSelector = "0xFF";
+    const std::string externSelector = "0xFF";
     const std::string readingOffset = "0x00 0x00";
     const std::string readingLength = "0xFF";
     std::ostringstream cmdStream;
@@ -718,8 +718,8 @@ std::string CBMCRasSentry::BuilGetBMCBlockIoCommand(uint8_t blockType)
               << " " << reqId
               << " " << parameterSelector
               << " " << ByteToHex(blockType)
-              << " " << blcokSelector
-              << " " << extrenSelector
+              << " " << blockSelector
+              << " " << externSelector
               << " " << readingOffset
               << " " << readingLength;
     return cmdStream.str();
@@ -945,7 +945,7 @@ int CBMCRasSentry::QueryEvents()
 
         ProcessEvents(hexBytes, header.eventCount);
         if (header.eventCount > (UINT16_MAX - currentIndex)) {
-            BMC_LOG_ERROR << "Integer overflow rish in currentIndex update, break";
+            BMC_LOG_ERROR << "Integer overflow risk in currentIndex update, break";
             ret = BMCPLU_FAILED;
             break;
         }
@@ -1122,7 +1122,7 @@ void CBMCRasSentry::ReportAlarm(const IPMIEvent& event)
 
     json_object* jObject = json_object_new_object();
     std::string bmcId = Uint32ToHexString(event.alarmTypeCode);
-    std::string time = Unit32ToLocalTime(event.timestamp);
+    std::string time = Uint32ToLocalTime(event.timestamp);
     json_object_object_add(jObject, JSON_KEY_ALARM_SOURCE.c_str(), json_object_new_string(BMC_TASK_NAME.c_str()));
     json_object_object_add(jObject, JSON_KEY_BMC_ID.c_str(), json_object_new_string(BMC_TASK_NAME.c_str()));
     json_object_object_add(jObject, JSON_KEY_ID.c_str(), json_object_new_string(event_id.c_str()));
