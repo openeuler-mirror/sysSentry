@@ -89,7 +89,7 @@ int ParseConfig(const std::string& path, PluConfig& config)
 
         for (const auto& event_id : result) {
             if (!std::regex_match(event_id, event_id_regex)) {
-                BMC_LOG_ERROR << "BMC Events prase error, value: " << value << ", event id: " << event_id;
+                BMC_LOG_ERROR << "BMC Events parse error, value: " << value << ", event id: " << event_id;
                 return false;
             }
         }
@@ -235,7 +235,7 @@ bool HexAsciiToChar(const std::string& hexStr, std::string& asciiStr)
     uint8_t asciiVal = 0;
     unsigned long temp = std::stoul(hexStr, nullptr, 16);
     if (temp > UINT8_MAX) {
-        BMC_LOG_ERROR << "input str value out for 255, str: " << hexStr;
+        BMC_LOG_ERROR << "input str value out of 255, str: " << hexStr;
         return false;
     }
     asciiVal = static_cast<uint8_t>(temp);
@@ -409,13 +409,13 @@ std::string Uint32ToHexString(uint32_t num)
     return oss.str();
 }
 
-std::string Unit32ToLocalTime(uint32_t timestamp)
+std::string Uint32ToLocalTime(uint32_t timestamp)
 {
     time_t t = static_cast<time_t>(timestamp);
 
     struct tm* localTm = localtime(&t);
     if (localTm == nullptr) {
-        BMC_LOG_WARNING << "prase timestamp error, value:" << timestamp;
+        BMC_LOG_WARNING << "parse timestamp error, value:" << timestamp;
         return "";
     }
 
