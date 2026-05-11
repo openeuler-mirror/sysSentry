@@ -1,5 +1,5 @@
 [Unit]
-Description=EulerOS System Inspection Frame
+Description=openEuler System Inspection Frame
 Requires=xalarmd.service sysSentry.socket
 After=xalarmd.service sysSentry.socket
 
