@@ -491,7 +491,6 @@ void CBMCRasSentry::InitBMCEvents()
         {"0301", 0x01000017},
         {"0302", 0x0100003D},
         {"0303", 0x0100005B},
-        {"0304", 0x01000079}
     };
 
     BMCEventMap BMCCpuEvents = {
