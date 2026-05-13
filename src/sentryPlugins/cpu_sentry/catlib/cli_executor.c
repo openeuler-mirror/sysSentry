@@ -9,7 +9,7 @@ static void print_cpu_set(cpu_set_t *cpu_set, ssize_t num_cpus, const char *pref
     bool is_begin_set = false;
     int begin_cpuid = -1;
     int end_cpuid = -1;
-    printf(prefix);
+    printf("%s", prefix);
     for (ssize_t i = 0; i < num_cpus; i++) {
         if (!CPU_ISSET(i, cpu_set)) {
             continue;
