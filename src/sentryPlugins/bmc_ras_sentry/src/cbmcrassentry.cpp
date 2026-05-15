@@ -55,10 +55,13 @@ const std::string IPMI_REQUEST_GET_CONCISE_EVENT = "0x40 0x00";
 const std::string IPMI_REQUEST_ALL_TYPE = "0xFF";
 const std::string LSBLK_GET_SN_AND_NAME = "lsblk -o NAME,SERIAL";
 const std::string STORCLI_GET_CTRL_INFO_CMD = "storcli64 /call show";
+const std::string STORCLI_GET_CTRL_DETAILS_CMD = "storcli64 /c%s show";
 const std::string STORCLI_GET_VD_INFO_CMD = "storcli64 /c%s/v%s show all";
 const std::string STORCLI_GET_PD_INFO_CMD = "storcli64 /c%s/e%s/s%s show all";
 const std::string STORCLI_VD_LIST = "VD LIST :";
 const std::string STORCLI_CTRL_VD = "DG/VD";
+const std::string STORCLI_HEAD_MESSAGE = "head message";
+const std::string STORCLI_SERIAL_NUMBER = "Serial Number";
 const std::string STORCLI_PD_LIST = "PDs for VD %s :";
 const std::string STORCLI_ENC_SLOT = "EID:Slt";
 const std::string STORCLI_VD_DETAIL_INFO = "VD%s Properties :";
@@ -66,12 +69,15 @@ const std::string STORCLI_VD_DRIVE_NAME = "OS Drive Name";
 const std::string STORCLI_PD_ATTRIBUTES = "Drive /c%s/e%s/s%s Device attributes :";
 const std::string STORCLI_PD_SN = "SN";
 const std::string HIRAIDADM_GET_CTRL_LIST_CMD = "hiraidadm show allctrl j";
+const std::string HIRAIDADM_GET_CTRL_STATUS_CMD = "hiraidadm c%d show status j";
 const std::string HIRAIDADM_GET_VD_LIST_CMD = "hiraidadm c%d show vdlist j";
 const std::string HIRAIDADM_GET_VD_DETAIL_INFO_CMD = "hiraidadm c%d:vd%d show j";
 const std::string HIRAIDADM_GET_PD_LIST_CMD = "hiraidadm c%d:vd%d show pdarray";
 const std::string HIRAIDADM_GET_PD_INFO_CMD = "hiraidadm c%d:e%s:s%s show j";
 const std::string HIRAIDADM_CTRL_LIST = "Controllers";
 const std::string HIRAIDADM_CTRL_ID = "ControllerId";
+const std::string HIRAIDADM_CTRL_BOARD_SN_V1 = "BoardSN";
+const std::string HIRAIDADM_CTRL_BOARD_SN_V2 = "Board SN";
 const std::string HIRAIDADM_VD_LIST = "VirtualDrives";
 const std::string HIRAIDADM_VD_ID = "VDID";
 const std::string HIRAIDADM_VD_INFO = "VirtualDriveInformation";
@@ -161,13 +167,13 @@ std::pair<std::string, std::vector<PhysicalDiskAddress> > CBMCRasSentry::GetStor
     auto VDDetailInfoHead = format_string(STORCLI_VD_DETAIL_INFO, VDId.c_str());
     auto VDDetailInfoIt = VDInfo.find(VDDetailInfoHead);
     if (VDDetailInfoIt == VDInfo.end()) {
-        BMC_LOG_WARNING << VDDetailInfoHead << "can't be find, cmd: " << getVDInfoCmd;
+        BMC_LOG_WARNING << VDDetailInfoHead << " can't be find, cmd: " << getVDInfoCmd;
         return {"", {}};
     }
     auto VDDetailInfo = ParseStorcliKeyToValue(VDDetailInfoIt->second);
     auto VDNameIt = VDDetailInfo.find(STORCLI_VD_DRIVE_NAME);
     if (VDNameIt == VDDetailInfo.end()) {
-        BMC_LOG_WARNING << VDDetailInfoHead << "get " << STORCLI_VD_DRIVE_NAME
+        BMC_LOG_WARNING << VDDetailInfoHead << " get " << STORCLI_VD_DRIVE_NAME
                         << " value failed, cmd: " << getVDInfoCmd;
         return {"", {}};
     }
@@ -216,19 +222,40 @@ std::vector<std::string> CBMCRasSentry::GetStorcliPDSN(
             ctrlId.c_str(), PDAddress.encId.c_str(), PDAddress.slotId.c_str());
         auto PDAttributesIt = PDInfo.find(PDAttributesHead);
         if (PDAttributesIt == PDInfo.end()) {
-            BMC_LOG_WARNING << PDAttributesHead << "can't be find, cmd: " << getPDInfoCmd;
+            BMC_LOG_WARNING << PDAttributesHead << " can't be find, cmd: " << getPDInfoCmd;
             continue;
         }
         auto PDAttributes = ParseStorcliKeyToValue(PDAttributesIt->second);
         auto PDSNIt = PDAttributes.find(STORCLI_PD_SN);
         if (PDSNIt == PDAttributes.end()) {
-            BMC_LOG_WARNING << PDAttributesHead << "get " << STORCLI_PD_SN <<" value failed, cmd: " << getPDInfoCmd;
+            BMC_LOG_WARNING << PDAttributesHead << " get " << STORCLI_PD_SN <<" value failed, cmd: " << getPDInfoCmd;
             continue;
         }
         PDSNs.push_back(PDSNIt->second);
     }
 
     return PDSNs;
+}
+
+std::string CBMCRasSentry::GetStorcliCtrlSN(const std::string& ctrlId)
+{
+    auto getCtrlDetailsCmd = format_string(STORCLI_GET_CTRL_DETAILS_CMD, ctrlId.c_str());
+    auto ctrlDetails = ParseStorcliCmd(getCtrlDetailsCmd);
+    auto headMessageIt = ctrlDetails.find(STORCLI_HEAD_MESSAGE);
+    if (headMessageIt == ctrlDetails.end()) {
+        BMC_LOG_WARNING << STORCLI_HEAD_MESSAGE << " can't be find, cmd: " << getCtrlDetailsCmd;
+        return "";
+    }
+
+    auto headMessage = ParseStorcliKeyToValue(headMessageIt->second);
+    auto serialNumberIt = headMessage.find(STORCLI_SERIAL_NUMBER);
+    if (serialNumberIt == headMessage.end()) {
+        BMC_LOG_WARNING << STORCLI_HEAD_MESSAGE << " get " << STORCLI_SERIAL_NUMBER
+                        << " value failed, cmd: " << getCtrlDetailsCmd;
+        return "";
+    }
+
+    return serialNumberIt->second;
 }
 
 void CBMCRasSentry::GetStorcliRaidInfo()
@@ -253,7 +280,7 @@ void CBMCRasSentry::GetStorcliRaidInfo()
     }
 
     uint8_t ctrlVDNUm = ctrlVDNumIt->second;
-    DiskSNToBlockName diskSNToBlockName;
+    std::map<std::string, std::set<std::string> > ctrlInfoMap;
     for (const auto& VDListMapLine : VDListMapInfo) {
         if (ctrlVDNUm >= VDListMapLine.size()) {
             BMC_LOG_WARNING << STORCLI_VD_LIST << " get " << STORCLI_CTRL_VD
@@ -269,13 +296,29 @@ void CBMCRasSentry::GetStorcliRaidInfo()
             continue;
         }
 
-        auto VDInfo = GetStorcliVDInfo(ctrlVDResult[0], ctrlVDResult[1]);
-        auto VDName = VDInfo.first;
-        auto PDSNs = GetStorcliPDSN(VDInfo.second, ctrlVDResult[0]);
-        SetDiskSNToBlockName(VDName, PDSNs, diskSNToBlockName);
+        auto ctrlInfoIt = ctrlInfoMap.find(ctrlVDResult[0]);
+        if (ctrlInfoIt == ctrlInfoMap.end()) {
+            ctrlInfoMap[ctrlVDResult[0]] = {ctrlVDResult[1]};
+        } else {
+            ctrlInfoIt->second.emplace(ctrlVDResult[1]);
+        }
     }
 
-    m_diskSNToBlockNames.push_back(diskSNToBlockName);
+    for (const auto& ctrlInfo : ctrlInfoMap) {
+        DiskSNToBlockName diskSNToBlockName;
+        auto ctrlId = ctrlInfo.first;
+        auto VDIdList = ctrlInfo.second;
+        auto ctrlSN = GetStorcliCtrlSN(ctrlId);
+
+        for (const auto& VDId : VDIdList) {
+            auto VDInfo = GetStorcliVDInfo(ctrlId, VDId);
+            auto VDName = VDInfo.first;
+            auto PDSNs = GetStorcliPDSN(VDInfo.second, ctrlId);
+            SetDiskSNToBlockName(VDName, PDSNs, diskSNToBlockName);
+        }
+        m_diskSNToBlockNames.push_back(diskSNToBlockName);
+        m_raidSNtoBlockNames.emplace(ctrlSN, diskSNToBlockName);
+    }
 }
 
 std::pair<std::string, std::vector<PhysicalDiskAddress> > CBMCRasSentry::GetHiraidadmVdDetailInfo(int ctrlId, int VDId)
@@ -410,6 +453,31 @@ std::vector<std::string> CBMCRasSentry::GetHiraidadmDiskSN(int ctrlId,
     return PDSNs;
 }
 
+std::string CBMCRasSentry::GetHiraidadmCtrlSN(int ctrlId)
+{
+    auto getCtrlStatusCmd = format_string(HIRAIDADM_GET_CTRL_STATUS_CMD, ctrlId);
+
+    auto dataObj = ParseHiraidadmCmd(getCtrlStatusCmd);
+    if (dataObj == NULL)
+        return "";
+
+    auto ctrlSNObj = json_object_object_get(dataObj, HIRAIDADM_CTRL_BOARD_SN_V1.c_str());
+    if (!json_object_is_type(ctrlSNObj, json_type_string)) {
+        ctrlSNObj = json_object_object_get(dataObj, HIRAIDADM_CTRL_BOARD_SN_V2.c_str());
+        if (!json_object_is_type(ctrlSNObj, json_type_string)) {
+            BMC_LOG_WARNING << HIRAIDADM_CTRL_BOARD_SN_V1 << " or " << HIRAIDADM_CTRL_BOARD_SN_V2
+                            << " string can't be find, cmd: " << getCtrlStatusCmd;
+            json_object_put(dataObj);
+            return "";
+        }
+    }
+
+    auto ctrlSN = json_object_get_string(ctrlSNObj);
+
+    json_object_put(dataObj);
+    return ctrlSN;
+}
+
 void CBMCRasSentry::GetHiraidadmRaidInfo()
 {
     auto dataObj = ParseHiraidadmCmd(HIRAIDADM_GET_CTRL_LIST_CMD);
@@ -424,9 +492,9 @@ void CBMCRasSentry::GetHiraidadmRaidInfo()
         return;
     }
 
-    DiskSNToBlockName diskSNToBlockName;
     int arrLen = json_object_array_length(ctrlListObj);
     for (int i = 0; i < arrLen; i++) {
+        DiskSNToBlockName diskSNToBlockName;
         auto ctrlInfoObj = json_object_array_get_idx(ctrlListObj, i);
         if (!json_object_is_type(ctrlInfoObj, json_type_object))
             continue;
@@ -436,6 +504,10 @@ void CBMCRasSentry::GetHiraidadmRaidInfo()
             continue;
 
         int ctrlId = json_object_get_int(ctrlIdObj);
+        auto ctrlSN = GetHiraidadmCtrlSN(ctrlId);
+        if (ctrlSN.length() == 0)
+            continue;
+
         auto VDInfos = GetHiraidadmVDInfo(ctrlId);
         if (VDInfos.size() == 0)
             continue;
@@ -446,9 +518,11 @@ void CBMCRasSentry::GetHiraidadmRaidInfo()
             auto diskSNs = GetHiraidadmDiskSN(ctrlId, PDAddresss);
             SetDiskSNToBlockName(VDName, diskSNs, diskSNToBlockName);
         }
+
+        m_diskSNToBlockNames.push_back(diskSNToBlockName);
+        m_raidSNtoBlockNames.emplace(ctrlSN, diskSNToBlockName);
     }
 
-    m_diskSNToBlockNames.push_back(diskSNToBlockName);
     json_object_put(dataObj);
 }
 
@@ -796,10 +870,10 @@ void CBMCRasSentry::CloseBMCBlockIo(uint8_t blockType)
     m_BMCBlockIoChange[blockType] = false;
 }
 
-std::string CBMCRasSentry::BuildDiskSNIPMICommand(const IPMIEvent& event, uint8_t startIndex)
+std::string CBMCRasSentry::BuildHardwareSNIPMICommand(const IPMIEvent& event, uint8_t startIndex)
 {
     const std::string ipmiReqHead = "ipmitool raw 0x30 0x93";
-    const std::string componentType = "0x02 0x00 0x00 0x80";
+    const std::string componentType = ByteToHex(event.subjectType) + " 0x00 0x00 0x80";
     const std::string reqId = "0x90";
     const std::string groupId = "0xFF";
     const std::string parameterSelector = "0x00 0x00";
@@ -844,13 +918,13 @@ std::string CBMCRasSentry::BuildDiskSNIPMICommand(const IPMIEvent& event, uint8_
 ipmtool raw 0x30 0x93 0xDB 0x07 0x00 0x90 0x02 0x00 0x00 0x80 0xFF 0x01 0x00 0x00 0x00 0x00 0x80
 db 07 00 00 30 33 34 51 56 56 31 30 50 38 31 30 30 34 39 31
     */
-std::string CBMCRasSentry::GetDiskSNByIPMI(const IPMIEvent& event)
+std::string CBMCRasSentry::GetHardwareSNByIPMI(const IPMIEvent& event)
 {
     uint8_t startIndex = 0;
-    std::string diskSN;
+    std::string hardwareSN;
     
     while (startIndex < MAX_REQ_INDEX) {
-        std::string cmd = BuildDiskSNIPMICommand(event, startIndex);
+        std::string cmd = BuildHardwareSNIPMICommand(event, startIndex);
         auto hexBytes = ExecuteIPMICommand(cmd);
         if (hexBytes.empty() || hexBytes.size() < 4) {
             BMC_LOG_ERROR << "get disk SN by IPMI failed, cmd:  " << cmd;
@@ -860,7 +934,7 @@ std::string CBMCRasSentry::GetDiskSNByIPMI(const IPMIEvent& event)
         for (int i = 4; i < hexBytes.size(); i++) {
             std::string asciiStr;
             if (HexAsciiToChar(hexBytes[i], asciiStr)) {
-                diskSN += asciiStr;
+                hardwareSN += asciiStr;
             } else {
                 BMC_LOG_ERROR << "hex ascii to char failed, cmd: " << cmd;
                 return "";
@@ -878,7 +952,7 @@ std::string CBMCRasSentry::GetDiskSNByIPMI(const IPMIEvent& event)
         return "";
     }
 
-    return diskSN;
+    return hardwareSN;
 }
 
 /***** ipml protocol *****/
@@ -1143,7 +1217,7 @@ void CBMCRasSentry::SetHardwareInfo(json_object* jObject, const std::string& eve
 {
     const std::string eventType = eventId.substr(0, 2);
     if (eventType == "01") {
-        std::string diskSN = GetDiskSNByIPMI(event);
+        std::string diskSN = GetHardwareSNByIPMI(event);
         std::string blockNameStr = "";
         if (diskSN == "") {
             diskSN = std::to_string(event.deviceId);
@@ -1167,9 +1241,34 @@ void CBMCRasSentry::SetHardwareInfo(json_object* jObject, const std::string& eve
         json_object_object_add(jObject, JSON_KEY_DISK_INFO.c_str(), diskInfo);
         return;
     } else if (eventType == "02") {
+        std::string raidSN = GetHardwareSNByIPMI(event);
+        if (raidSN == "") {
+            raidSN = std::to_string(event.deviceId);
+        }
+
         json_object* raidInfo = json_object_new_object();
-        json_object_object_add(raidInfo, JSON_KEY_RAID_ID.c_str(),
-                               json_object_new_string(std::to_string(event.deviceId).c_str()));
+        json_object_object_add(raidInfo, JSON_KEY_RAID_ID.c_str(), json_object_new_string(raidSN.c_str()));
+
+        json_object* diskInfos = json_object_new_array();
+        if (m_raidSNtoBlockNames.find(raidSN) != m_raidSNtoBlockNames.end()) {
+            auto diskSNToBlockNames = m_raidSNtoBlockNames[raidSN];
+            for (const auto& diskSNToBlockNameIt : diskSNToBlockNames) {
+                auto diskSN = diskSNToBlockNameIt.first;
+                auto blockNames = diskSNToBlockNameIt.second;
+                std::string blockNameStr = "";
+                for (const auto& blockName : blockNames) {
+                    blockNameStr += blockName + ", ";
+                }
+                if (blockNameStr.size() >= 2)
+                    blockNameStr.erase(blockNameStr.size() - 2);
+
+                json_object* diskInfo = json_object_new_object();
+                json_object_object_add(diskInfo, JSON_KEY_PHYSICAL_DISK.c_str(), json_object_new_string(diskSN.c_str()));
+                json_object_object_add(diskInfo, JSON_KEY_LOGICAL_DISK.c_str(), json_object_new_string(blockNameStr.c_str()));
+                json_object_array_add(diskInfos, diskInfo);
+            }
+        }
+        json_object_object_add(raidInfo, JSON_KEY_DISK_INFO.c_str(), diskInfos);
         json_object_object_add(jObject, JSON_KEY_RAID_INFO.c_str(), raidInfo);
         return;
     } else if (eventType == "03") {

@@ -59,10 +59,12 @@ private:
         const std::string& ctrlId, const std::string& VDId);
     std::vector<std::string> GetStorcliPDSN(
         const std::vector<PhysicalDiskAddress>& PDAddresses, const std::string& ctrlId);
+    std::string GetStorcliCtrlSN(const std::string& ctrlId);
     void GetStorcliRaidInfo();
     std::pair<std::string, std::vector<PhysicalDiskAddress> > GetHiraidadmVdDetailInfo(int ctrlId, int VDId);
     std::map<std::string, std::vector<PhysicalDiskAddress> > GetHiraidadmVDInfo(int ctrlId);
     std::vector<std::string> GetHiraidadmDiskSN(int ctrlId, const std::vector<PhysicalDiskAddress>& PDAddresses);
+    std::string GetHiraidadmCtrlSN(int ctrlId);
     void GetHiraidadmRaidInfo();
     void SetDiskSNToBlockName(const std::string& blockName,
         const std::vector<std::string> diskSNs, DiskSNToBlockName& diskSNToBlockName);
@@ -76,8 +78,8 @@ private:
     std::string BuilGetBMCBlockIoCommand(uint8_t blockType);
     void OpenBMCBlockIo(uint8_t blockType);
     void CloseBMCBlockIo(uint8_t blockType);
-    std::string BuildDiskSNIPMICommand(const IPMIEvent& event, uint8_t startIndex);
-    std::string GetDiskSNByIPMI(const IPMIEvent& event);
+    std::string BuildHardwareSNIPMICommand(const IPMIEvent& event, uint8_t startIndex);
+    std::string GetHardwareSNByIPMI(const IPMIEvent& event);
     void ReportAlarm(const IPMIEvent& event);
     void SetHardwareInfo(json_object* jObject, const std::string& eventId, const IPMIEvent& event);
     void ReportResult(int resultLevel, const std::string& msg);
@@ -95,6 +97,7 @@ private:
     std::condition_variable m_cv;
     std::string m_bmcIp;
     std::vector<DiskSNToBlockName> m_diskSNToBlockNames;
+    std::map<std::string, DiskSNToBlockName> m_raidSNtoBlockNames;
     std::map<uint32_t, std::string> m_BMCOpenEvents;
     std::mutex m_BMCOpenEventsMutex;
     std::map<std::string, BMCEventMap> m_BMCEvents;
