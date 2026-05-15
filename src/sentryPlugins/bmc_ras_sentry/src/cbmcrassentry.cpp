@@ -918,6 +918,7 @@ int CBMCRasSentry::QueryEvents()
         std::string cmd = BuildIPMICommand(currentIndex, IPMI_REQUEST_ALL_TYPE, IPMI_REQUEST_ALL_TYPE);
         std::vector<std::string> hexBytes = ExecuteIPMICommand(cmd);
         if (hexBytes.empty()) {
+            ret = BMCPLU_FAILED;
             break;
         }
 
@@ -931,6 +932,7 @@ int CBMCRasSentry::QueryEvents()
                      << ", returned: " << static_cast<int>(header.eventCount)
                      << ", current index: " << currentIndex;
         if (header.eventCount == 0) {
+            // query event finished, no event
             break;
         }
 
@@ -950,7 +952,13 @@ int CBMCRasSentry::QueryEvents()
         }
         currentIndex += header.eventCount;
 
-        if (currentIndex >= header.totalEvents) {
+        if (currentIndex == header.totalEvents) {
+            // query event finished, event number is expected
+            break;
+        } else if (currentIndex > header.totalEvents) {
+            BMC_LOG_ERROR << "Event number is not expected: " << header.totalEvents
+                          << ", actual number is: " << currentIndex;
+            ret = BMCPLU_FAILED;
             break;
         }
     }
