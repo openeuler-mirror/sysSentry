@@ -115,6 +115,13 @@ def get_syssentry_systemd_sockets():
     global cpu_alarm_fd
     global bmc_fd
 
+    # Initialize global socket variables to None before attempting to get sockets
+    server_fd = None
+    server_result_fd = None
+    heartbeat_fd = None
+    cpu_alarm_fd = None
+    bmc_fd = None
+
     listen_pid = int(os.environ.get('LISTEN_PID', '0'))
     listen_fds = int(os.environ.get('LISTEN_FDS', '0'))
     # we have at least 5 sockets
@@ -407,8 +414,13 @@ def server_result_recv(server_socket: socket.socket):
 
 
 def close_all_fd():
+    """Close all file descriptors in fd_list, handling None values."""
     for fd in fd_list:
-        fd.close()
+        if fd is not None:
+            try:
+                fd.close()
+            except OSError:
+                pass
 
 
 def main_loop():
@@ -420,12 +432,17 @@ def main_loop():
         logging.error("get sysSentry sockets failed")
         return
 
+    # Verify required sockets are available before proceeding
+    if server_fd is None or server_result_fd is None or heartbeat_fd is None:
+        logging.error("Required sockets not available, exiting")
+        return
+
     fd_list.append(server_fd)
     fd_list.append(server_result_fd)
     fd_list.append(heartbeat_fd)
-    if CPU_EXIST:
+    if cpu_alarm_fd is not None:
         fd_list.append(cpu_alarm_fd)
-    if BMC_EXIST:
+    if bmc_fd is not None:
         fd_list.append(bmc_fd)
 
     epoll_fd = select.epoll()
@@ -470,20 +487,23 @@ def main_loop():
 
 def release_pidfile():
     """
-    :return:
+    Release PID file lock and remove the file.
+    Must use the same file descriptor that acquired the lock.
     """
-    pid_file_fd = None
+    global PID_FILE_FLOCK
+    if PID_FILE_FLOCK is not None:
+        try:
+            fcntl.flock(PID_FILE_FLOCK, fcntl.LOCK_UN)
+            PID_FILE_FLOCK.close()
+        except (IOError, OSError) as e:
+            logging.error("Failed to release PID file lock: %s", str(e))
+        finally:
+            PID_FILE_FLOCK = None
     try:
-        pid_file_fd = open(SYSSENTRY_PID_FILE, 'w')
-        os.chmod(SYSSENTRY_PID_FILE, 0o600)
-        fcntl.flock(pid_file_fd, fcntl.LOCK_UN)
-    except (IOError, FileNotFoundError):
-        logging.error("Failed to release PID file lock")
-    finally:
-        if pid_file_fd:
-            pid_file_fd.close()
-        PID_FILE_FLOCK.close()
-        os.unlink(SYSSENTRY_PID_FILE)
+        if os.path.exists(SYSSENTRY_PID_FILE):
+            os.unlink(SYSSENTRY_PID_FILE)
+    except OSError as e:
+        logging.error("Failed to remove PID file: %s", str(e))
 
 
 def sigchld_handler(signum, _f):
