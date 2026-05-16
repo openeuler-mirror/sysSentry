@@ -290,6 +290,20 @@ static int convert_ub_mem_err_smh_msg_to_str(struct sentry_msg_helper_msg* smh_m
     return 0;
 }
 
+static int convert_link_event_smh_msg_to_str(const struct sentry_msg_helper_msg* smh_msg, char* str)
+{
+    int res = snprintf(str, MSG_STR_MAX_LEN, "%lu_{port_id:%u,scna:%u,event:%s}",
+                       smh_msg->msgid,
+                       smh_msg->helper_msg_info.link_info.port_id,
+                       smh_msg->helper_msg_info.link_info.scna,
+                       smh_msg->helper_msg_info.link_info.link_event ? "up" : "down");
+    if ((size_t)res >= MSG_STR_MAX_LEN) {
+        logging_warn("link event msg str size exceeds the max value\n");
+        return -1;
+    }
+    return 0;
+}
+
 static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* str)
 {
     int res;
@@ -306,6 +320,9 @@ static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* s
             break;
         case SMH_MESSAGE_UB_MEM_ERR:
             res = convert_ub_mem_err_smh_msg_to_str(smh_msg, str);
+            break;
+        case SMH_MESSAGE_LINK_EVENT:
+            res = convert_link_event_smh_msg_to_str(smh_msg, str);
             break;
         default:
             logging_warn("Unknown msg type: %d\n", smh_msg->type);
@@ -366,6 +383,9 @@ static unsigned short convert_msg_type_to_xalarm_type(enum sentry_msg_helper_msg
             break;
         case SMH_MESSAGE_UB_MEM_ERR:
             xalarm_type = ALARM_UBUS_MEM_EVENT;
+            break;
+        case SMH_MESSAGE_LINK_EVENT:
+            xalarm_type = ALARM_LINK_EVENT;
             break;
         default:
             logging_warn("Unknown msg type: %d\n", msg_type);
@@ -435,7 +455,7 @@ static void* sender_thread(void* arg)
         if (ret < 0) {
             continue;
         }
-        logging_info("convert_smh_msg_to_str success, msgid is %u\n", smh_msg.msgid);
+        logging_info("convert_smh_msg_to_str success, msgid is %lu\n", smh_msg.msgid);
 
         unsigned short alarm_type = convert_msg_type_to_xalarm_type(smh_msg.type);
         if (alarm_type == 0) {

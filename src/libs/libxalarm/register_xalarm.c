@@ -221,6 +221,8 @@ bool xalarm_Upgrade(struct alarm_subscription_info id_filter, int client_id)
     return true;
 }
 
+static int send_event_registration(int fd, struct alarm_subscription_info id_filter);
+
 int xalarm_Register(alarm_callback_func callback, struct alarm_subscription_info id_filter)
 {
     if (g_register_info.is_registered || (g_register_info.register_fd != -1) ||
@@ -237,6 +239,13 @@ int xalarm_Register(alarm_callback_func callback, struct alarm_subscription_info
     g_register_info.register_fd = create_unix_socket(PATH_REG_ALARM);
     if (g_register_info.register_fd == -1) {
         printf("%s: create_unix_socket failed\n", __func__);
+        return -1;
+    }
+
+    if (send_event_registration(g_register_info.register_fd, id_filter) < 0) {
+        printf("%s: send_event_registration failed\n", __func__);
+        (void)close(g_register_info.register_fd);
+        g_register_info.register_fd = -1;
         return -1;
     }
 
@@ -691,7 +700,8 @@ static int send_event_message(int fd, struct alarm_subscription_info id_filter, 
                 id_filter.id_list[i] == ALARM_OOM_EVENT ||
                 id_filter.id_list[i] == ALARM_PANIC_EVENT ||
                 id_filter.id_list[i] == ALARM_KERNEL_REBOOT_EVENT ||
-                id_filter.id_list[i] == ALARM_UBUS_MEM_EVENT) {
+                id_filter.id_list[i] == ALARM_UBUS_MEM_EVENT ||
+                id_filter.id_list[i] == ALARM_LINK_EVENT) {
             json_object_array_add(ids_array, json_object_new_int(id_filter.id_list[i]));
         }
     }
