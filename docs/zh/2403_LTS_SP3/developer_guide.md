@@ -48,7 +48,26 @@ sysSentry提供python与c两种语言的对外接口。
 
 #### 告警上报使用限制
 
-1. 告警上报仅支持告警id的范围为1001-1128共128种，其中1001固定为内存巡检占用，1002为慢IO告警占用。
+1. 告警上报仅支持告警id的范围为1001-1128共128种，已使用告警ID见下表。
+
+    | 常量 | 值 | 描述 |
+    | --- | --- | --- |
+    | MEMORY_ALARM_ID | 1001 | 内存巡检告警ID |
+    | SLOW_IO_ALARM_ID | 1002 | 慢IO告警事件ID |
+    | ALARM_REBOOT_EVENT | 1003 | BMC下电事件告警ID |
+    | ALARM_REBOOT_ACK_EVENT | 1004 | BMC下电ack事件告警ID |
+    | ALARM_OOM_EVENT | 1005 | OOM事件告警ID |
+    | ALARM_OOM_ACK_EVENT | 1006 | OOM ack事件告警ID |
+    | ALARM_PANIC_EVENT | 1007 | Panic事件告警ID |
+    | ALARM_PANIC_ACK_EVENT | 1008 | Panic ack事件告警ID |
+    | ALARM_KERNEL_REBOOT_EVENT | 1009 | 内核重启事件告警ID |
+    | ALARM_KERNEL_REBOOT_ACK_EVENT | 1010 | 内核重启ack事件告警ID |
+    | ALARM_UBUS_MEM_EVENT | 1013 | UBUS内存故障事件告警ID |
+    | ALARM_RAS_SENTRY_EVENT | 1015 | BMC RAS告警事件告警ID |
+    | SYSSENTRY_DOWN_ALARM_ID | 1128 | sysSentry服务停止告警告警ID |
+
+    上面告警ID已被插件占用，用户新增插件不可复用，并且1011,1012和1014也不可使用（预留）。
+
 2. 告警上报最大支持8191个字符。
 
 #### python实现插件告警上报
@@ -232,7 +251,7 @@ void process_alarm_info(struct alarm_msg* param)
     long long alarmtime;
     char *pucParas;
 
-    alarmid = (param == NULL ? 0 : param->usAlarmId;
+    alarmid = (param == NULL ? 0 : param->usAlarmId);
     alarmtime = (param == NULL ? 0 : ((long long)param->AlarmTime.tv_sec) * TIME_UNIT_MILLISECONDS + (long long)(param->AlarmTime.tv_usec / TIME_UNIT_MILLISECONDS));
     pucParas = (param == NULL ? NULL : param->pucParas);
     printf("plugin notified with [alarmid:%d], [alarmtime: %lld ms], [msg:%s]\n", alarmid, alarmtime, pucParas);
@@ -273,6 +292,322 @@ int main(int argc, char **argv)
 
     xalarm_unregister_event(&register_info);
 
+    return 0;
+}
+```
+
+### 插件事件告警订阅
+
+sysSentry内置的告警转发子系统xalarmd通过收集巡检任务巡检过程中产生的告警信息，并将告警信息转发给订阅此类告警的用户。
+
+#### python接口
+
+##### 告警订阅接口（回调模式）
+
+###### xalarm_register
+
+| 接口   | xalarm_register(callback: callable, id_filter: list) -> int |
+| ------ | ------------------------------------------------------------ |
+| 描述   | 用于注册告警接收回调函数，订阅指定告警ID的告警信息           |
+| 参数   | callback -- 告警回调函数，要求函数仅接收一个参数，用于接收告警信息对象<br>id_filter -- 告警ID过滤列表，长度必须为128，列表中每个元素为布尔值，表示是否订阅对应告警ID（索引0对应告警ID 1001，索引127对应告警ID 1128） |
+| 限制   | 1. 告警ID过滤列表长度必须为128<br>2. 回调函数必须仅接收一个参数<br>3. 当前仅支持单例注册，即同一进程只能注册一次告警回调 |
+| 返回值 | 注册成功返回0，注册失败返回-1                                |
+
+###### xalarm_unregister
+
+| 接口   | xalarm_unregister(clientId: int) -> None                     |
+| ------ | ------------------------------------------------------------ |
+| 描述   | 用于注销已注册的告警回调函数，停止接收告警信息               |
+| 参数   | clientId -- 客户端ID，整数类型                               |
+| 限制   | clientId无用, 目前仅支持单个客户端注册/解注册，因此clientId目前只能是0                                        |
+| 返回值 | 无返回值                                                     |
+
+###### xalarm_upgrade
+
+| 接口   | xalarm_upgrade(clientId: int, id_filter: list) -> bool       |
+| ------ | ------------------------------------------------------------ |
+| 描述   | 用于更新已注册的告警ID订阅列表，动态调整订阅的告警类型       |
+| 参数   | clientId -- 客户端ID，整数类型<br>id_filter -- 新的告警ID过滤列表，长度必须为128 |
+| 限制   | 1. clientId目前只能是0<br>2. 告警ID过滤列表长度必须为128<br>3. 必须先完成告警注册才能进行订阅更新 |
+| 返回值 | 更新成功返回True，更新失败返回False                          |
+
+###### xalarm_getid
+
+| 接口   | xalarm_getid(alarm_info: Xalarm) -> int                      |
+| ------ | ------------------------------------------------------------ |
+| 描述   | 从告警信息对象中获取告警ID                                   |
+| 参数   | alarm_info -- 告警信息对象，类型为Xalarm                     |
+| 返回值 | 返回告警ID，整数类型。若alarm_info为空则返回0                |
+
+###### xalarm_getlevel
+
+| 接口   | xalarm_getlevel(alarm_info: Xalarm) -> int                   |
+| ------ | ------------------------------------------------------------ |
+| 描述   | 从告警信息对象中获取告警级别                                 |
+| 参数   | alarm_info -- 告警信息对象，类型为Xalarm                     |
+| 返回值 | 返回告警级别，整数类型，取值范围为：MINOR_ALM（一般告警）、MAJOR_ALM（严重告警）或CRITICAL_ALM（致命告警）。若alarm_info为空则返回0 |
+
+###### xalarm_gettype
+
+| 接口   | xalarm_gettype(alarm_info: Xalarm) -> int                    |
+| ------ | ------------------------------------------------------------ |
+| 描述   | 从告警信息对象中获取告警类型                                 |
+| 参数   | alarm_info -- 告警信息对象，类型为Xalarm                     |
+| 返回值 | 返回告警类型，整数类型，取值范围为：ALARM_TYPE_OCCUR（告警产生）或ALARM_TYPE_RECOVER（故障恢复）。若alarm_info为空则返回0 |
+
+###### xalarm_gettime
+
+| 接口   | xalarm_gettime(alarm_info: Xalarm) -> int                    |
+| ------ | ------------------------------------------------------------ |
+| 描述   | 从告警信息对象中获取告警产生时间                             |
+| 参数   | alarm_info -- 告警信息对象，类型为Xalarm                     |
+| 返回值 | 返回告警时间，整数类型，单位为毫秒。若alarm_info为空则返回0  |
+
+###### xalarm_getdesc
+
+| 接口   | xalarm_getdesc(alarm_info: Xalarm) -> str                    |
+| ------ | ------------------------------------------------------------ |
+| 描述   | 从告警信息对象中获取告警描述信息                             |
+| 参数   | alarm_info -- 告警信息对象，类型为Xalarm                     |
+| 返回值 | 返回告警描述信息，字符串类型。若alarm_info为空或解码失败则返回None |
+
+###### 使用示例
+
+以下示例展示如何注册告警回调函数并处理接收到的告警信息：
+
+```python
+import time
+from xalarm.register_xalarm import (
+    xalarm_register,
+    xalarm_unregister,
+    xalarm_getid,
+    xalarm_getlevel,
+    xalarm_gettype,
+    xalarm_gettime,
+    xalarm_getdesc
+)
+
+ALARM_RAS_SENTRY_EVENT = 1015
+
+def alarm_handler(alarm_info):
+    alarm_id = xalarm_getid(alarm_info)
+    alarm_level = xalarm_getlevel(alarm_info)
+    alarm_type = xalarm_gettype(alarm_info)
+    alarm_time = xalarm_gettime(alarm_info)
+    alarm_desc = xalarm_getdesc(alarm_info)
+
+    print(f"收到告警:")
+    print(f"  ID: {alarm_id}")
+    print(f"  级别: {alarm_level}")
+    print(f"  类型: {alarm_type}")
+    print(f"  时间: {alarm_time} ms")
+    print(f"  描述: {alarm_desc}")
+
+if __name__ == "__main__":
+    # 创建ID过滤器，只订阅特定告警ID的告警信息
+    id_filter = [False] * 128
+    id_filter[ALARM_RAS_SENTRY_EVENT - 1001] = True # 启用BMC RAS告警事件
+
+    client_id = xalarm_register(alarm_handler, id_filter)
+    if client_id != 0:
+        print("告警注册失败")
+        exit(1)
+
+    print("告警注册成功，等待接收告警...")
+    time.sleep(100)
+
+    # 程序退出时注销
+    xalarm_unregister(client_id)
+```
+
+#### C接口
+
+##### 安装相关软件包
+
+libxalarm是sysSentry提供的C语言告警上报和订阅库，用于与xalarmd服务进行通信。使用前需要安装相关软件包：
+
+```shell
+[root@openEuler ~]# yum install -y libxalarm
+```
+
+开发环境还需要安装libxalarm-devel包（构建依赖，非运行依赖）：
+
+```shell
+[root@openEuler ~]# yum install -y libxalarm-devel
+```
+
+##### 头文件引用
+
+使用libxalarm接口时，需要包含以下头文件：
+
+```c
+#include <xalarm/register_xalarm.h>
+```
+
+编译时需要链接libxalarm库：
+
+```shell
+gcc your_program.c -o your_program -lxalarm
+```
+
+##### 数据结构说明
+
+###### alarm_info结构体
+
+告警信息结构体，用于socket通信格式。
+
+```c
+struct alarm_info {
+    unsigned short usAlarmId;       // 告警ID
+    unsigned char ucAlarmLevel;     // 告警级别
+    unsigned char ucAlarmType;      // 告警类别
+    struct timeval AlarmTime;       // 告警生成时间戳
+    char pucParas[ALARM_INFO_MAX_PARAS_LEN];  // 告警描述信息
+};
+```
+
+###### alarm_msg结构体
+
+告警消息结构体，用于事件订阅获取告警信息。
+
+```c
+struct alarm_msg {
+    unsigned short usAlarmId;       // 告警ID
+    struct timeval AlarmTime;       // 告警生成时间戳
+    char pucParas[ALARM_INFO_MAX_PARAS_LEN];  // 告警描述信息
+};
+```
+
+###### alarm_subscription_info结构体
+
+告警订阅信息结构体，用于指定订阅的告警ID列表。
+
+```c
+struct alarm_subscription_info {
+    int id_list[MAX_NUM_OF_ALARM_ID];  // 订阅的告警ID列表
+    unsigned int len;                   // 列表长度
+};
+```
+
+##### 告警订阅接口（回调模式）
+
+###### xalarm_Register
+
+| 接口 | int xalarm_Register(alarm_callback_func callback, struct alarm_subscription_info id_filter); |
+| --- | --- |
+| 描述 | 注册告警订阅，通过回调函数接收告警信息 |
+| 参数 | callback -- 告警回调函数，类型为void (*)(struct alarm_info \*)<br>id_filter -- 告警订阅信息，指定订阅的告警ID列表 |
+| 限制 | 1. 回调函数不能为NULL<br>2. id_filter.len不能超过128<br>3. id_filter中的每个告警ID必须在1001-1128范围内<br>4. 不支持多线程使用，不是信号安全函数<br>5. 同一进程只能注册一次 <br>6.alarm_subscription_info类型入参中len的大小需要与用户填充到id_list中告警ID的个数一致.|
+| 返回值 | 返回0表示成功，失败返回-1 |
+
+回调函数类型定义：
+
+```c
+typedef void (*alarm_callback_func)(struct alarm_info *palarm);
+```
+
+###### xalarm_UnRegister
+
+| 接口 | void xalarm_UnRegister(int client_id); |
+| --- | --- |
+| 描述 | 取消告警订阅注册，停止接收告警信息 |
+| 参数 | client_id -- 客户端ID，当前仅支持传入0 |
+| 限制 | client_id必须为0 |
+| 返回值 | 无 |
+
+###### xalarm_Upgrade
+
+| 接口 | bool xalarm_Upgrade(struct alarm_subscription_info id_filter, int client_id); |
+| --- | --- |
+| 描述 | 更新订阅的告警ID列表 |
+| 参数 | id_filter -- 新的告警订阅信息<br>client_id -- 客户端ID，当前仅支持传入0 |
+| 限制 | 1. 必须已经通过xalarm_Register注册<br>2. client_id必须为0<br>3. id_filter.len不能超过128<br>4. id_filter中的每个告警ID必须在1001-1128范围内 |
+| 返回值 | 返回true表示成功，失败返回false |
+
+###### xalarm_getid
+
+| 接口 | unsigned short xalarm_getid(const struct alarm_info \*palarm); |
+| --- | --- |
+| 描述 | 获取告警ID |
+| 参数 | palarm -- 告警信息结构体指针 |
+| 返回值 | 返回告警ID，若palarm为NULL则返回0 |
+
+###### xalarm_getlevel
+
+| 接口 | unsigned char xalarm_getlevel(const struct alarm_info \*palarm); |
+| --- | --- |
+| 描述 | 获取告警级别 |
+| 参数 | palarm -- 告警信息结构体指针 |
+| 返回值 | 返回告警级别（MINOR_ALM/MAJOR_ALM/CRITICAL_ALM）;若palarm为NULL则返回0，表示获取不到告警 级别 |
+
+###### xalarm_gettype
+
+| 接口 | unsigned char xalarm_gettype(const struct alarm_info \*palarm); |
+| --- | --- |
+| 描述 | 获取告警类别 |
+| 参数 | palarm -- 告警信息结构体指针 |
+| 返回值 | 返回告警类别（ALARM_TYPE_OCCUR/ALARM_TYPE_RECOVER），若palarm为NULL则返回0 |
+
+###### xalarm_gettime
+
+| 接口 | long long xalarm_gettime(const struct alarm_info \*palarm); |
+| --- | --- |
+| 描述 | 获取告警时间戳 |
+| 参数 | palarm -- 告警信息结构体指针 |
+| 返回值 | 返回告警时间戳（毫秒）; 返回0则表示时间存在异常 |
+
+###### xalarm_getdesc
+
+| 接口 | char \*xalarm_getdesc(const struct alarm_info \*palarm); |
+| --- | --- |
+| 描述 | 获取告警描述信息 |
+| 参数 | palarm -- 告警信息结构体指针 |
+| 返回值 | 返回告警描述信息字符串指针，若palarm为NULL则返回NULL |
+
+###### 使用示例
+
+```c
+#include <stdio.h>
+#include <xalarm/register_xalarm.h>
+
+void alarm_handler(struct alarm_info *palarm)
+{
+    printf("Received alarm id: %d\n", xalarm_getid(palarm));
+    printf("Alarm level: %d\n", xalarm_getlevel(palarm));
+    printf("Alarm message: %s\n", xalarm_getdesc(palarm));
+}
+
+int main(int argc, char **argv)
+{
+    struct alarm_subscription_info id_filter;
+    id_filter.id_list[0] = ALARM_OOM_EVENT;
+    id_filter.id_list[1] = ALARM_PANIC_EVENT;
+    id_filter.len = 2;
+
+    int client_id = xalarm_Register(alarm_handler, id_filter);
+    if (client_id != 0) {
+        printf("register failed.\n");
+        return -1;
+    }
+
+    // 等待接收告警...
+    sleep(60);
+
+    // 动态更新订阅列表
+    struct alarm_subscription_info new_filter;
+    new_filter.id_list[0] = ALARM_OOM_EVENT;
+    new_filter.id_list[1] = ALARM_KERNEL_REBOOT_EVENT;
+    new_filter.len = 2;
+
+    bool ret = xalarm_Upgrade(new_filter, client_id);
+    if (!ret) {
+        printf("upgrade failed.\n");
+    } else {
+        // 等待接收新的事件告警...
+        sleep(60);
+    }
+
+    xalarm_UnRegister(client_id);
     return 0;
 }
 ```
