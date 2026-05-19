@@ -44,6 +44,10 @@ ALARM_UBUS_MEM_EVENT = 1013
 SENTRY_REPORTER_MODULE_EVENT_ID_LIST = [ALARM_REBOOT_EVENT, ALARM_OOM_EVENT, ALARM_UBUS_MEM_EVENT]
 SENTRY_REMOTE_REPORTER_MODULE_EVENT_ID_LIST = [ALARM_PANIC_EVENT, ALARM_KERNEL_REBOOT_EVENT]
 
+# Critical events that should never be disabled if it has already been enabled, even
+# when no clients are subscribed. These events are essential for recording system anomalies.
+CRITICAL_EVENTS = [ALARM_PANIC_EVENT, ALARM_KERNEL_REBOOT_EVENT]
+
 EVENT_PROC_NAME_DICT = {
     ALARM_REBOOT_EVENT : "power_off",
     ALARM_OOM_EVENT : "oom",
@@ -97,6 +101,12 @@ def disable_event(event_id: int) -> bool:
     Returns:
         bool: True if successful
     """
+    # Critical events should never be disabled if it has already been enabled.
+    # If necessary, it is recommended that the administrator proactively disable it
+    if event_id in CRITICAL_EVENTS:
+        logging.info("Event %d is critical, keeping enabled", event_id)
+        return False
+
     try:
         set_sentry_reporter_module_switch(event_id, DISABLE_EVENT_INPUT)
         logging.info("Event %d disabled - no clients subscribed", event_id)
@@ -213,7 +223,7 @@ def unregister_client_events(client_fd: int, event_ids: list) -> None:
                         break
 
                 if not still_needed and event_id in enabled_events:
-                    disable_event(event_id)
-                    enabled_events.discard(event_id)
+                    if disable_event(event_id):
+                        enabled_events.discard(event_id)
 
         logging.info("Client fd %d unregistered events: %s", client_fd, event_ids)
