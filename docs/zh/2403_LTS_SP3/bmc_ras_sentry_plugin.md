@@ -1,6 +1,6 @@
 # bmc ras告警上报插件
 
-用户可通过bmc ras告警上报插件获取bmc上各种ras告警信息，当插件检测到bmc ras告警时，会将结果上报给xalarmd服务。检测模式为定时轮询，每次轮询会上报当前产生的告警，不上报历史告警。用户可通过注册告警或get_alarm命令的方式查看告警结果（注册告警和get_alarm命令可参考《[安装和使用](https://docs.openeuler.openatom.cn/zh/docs/20.03_LTS_SP4/docs/sysSentry/%E5%AE%89%E8%A3%85%E5%92%8C%E4%BD%BF%E7%94%A8.html)》）。
+用户可通过bmc ras告警上报插件获取bmc上各种ras告警信息，当插件检测到bmc ras告警时，会将结果上报给xalarmd服务。检测模式为定时轮询，每次轮询会上报当前产生的告警，不上报历史告警。用户可通过注册告警或get_alarm命令的方式查看告警结果（注册告警和get_alarm命令可参考《[安装和使用](./installation_and_usage.md)》）。
 
 ## 硬件规格要求
 
@@ -11,13 +11,13 @@
 
 ### 前置条件
 
-已安装sysSentry巡检插件，sentryCollector采集服务已配置io相关采集项（请参考《[安装和使用](./installation_and_usage.md)》进行配置）。
+已安装sysSentry框架和bmc ras告警上报插件，并且启动sysSentry服务（请参考《[安装和使用](./installation_and_usage.md)》进行配置）。
 硬盘raid场景下需要安装raid工具（目前仅支持raid工具hiraidadm《[hiraidadm工具使用指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100048779/d802bccf)》，raid工具storcli64《[storcli64工具使用指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100048779/596d0e24)》）。
 
 ### 安装软件包
 
 ```shell
-yum install -y ras_bmc_sentry ipmitool libxalarm
+yum install -y bmc_ras_sentry ipmitool libxalarm
 ```
 
 ## bmc ras告警上报插件参数配置
@@ -30,7 +30,7 @@ bmc ras告警上报插件参数配置保存在/etc/sysSentry/plugins/bmc_ras_sen
 | ------------- | ----------------------------------------------------------------- | --------- | ------ |
 | log_level     | 日志级别，可配置范围为debug/info/warning/error/critical           | info      | y      |
 | patrol_second | 采样周期，单位为秒，可配置范围为[60，3600]                        | 60        | y      |
-| bmc_events    | 查询事件配置，每个事件以四位数字标识，前两位标识主体类型，后两位标识告警事件，00表示所有当前类型告警事件，0000表示所有类型所有事件，各个事件间以逗号隔开（具体事件ID参考BMC告警事件字典）| 0000      | y   |
+| bmc_events    | 1. 查询事件配置，每个事件以四位数字标识，前两位标识主体类型，后两位标识告警事件，00表示所有当前类型告警事件，0000表示所有类型所有事件，各个事件间以英文逗号隔开（具体事件ID参考BMC告警事件字典）。<br>  2. 每个逗号之间只能有4个字符，并且全都是整数。 | 0000      | y   |
 
 - 配置示例
 
@@ -84,7 +84,6 @@ bmc_events=0101,0102
 | 01       | 0x01000017 | DIMM MCE错误                          |
 | 02       | 0x0100003D | 内存温度过高严重告警                  |
 | 03       | 0x0100005B | 内存条接触异常告警                    |
-| 04       | 0x01000079 | 内存CE风暴故障告警                    |
 
 - BMC CPU事件字典
 
@@ -103,7 +102,7 @@ bmc_events=0101,0102
 2. 查看巡检插件状态
 
    ```shell
-   sentryclt status bmc_ras_sentry
+   sentryctl status bmc_ras_sentry
    ```
 
    状态为RUNNING即为运行中，状态为EXITED为退出
@@ -126,7 +125,7 @@ bmc_events=0101,0102
             "alarm_level": "MINOR_ALM",
             "timestamp": "2026-03-05 09:55:31",
             "alarm_info": {
-                "alarm_source": "bcm_ras_sentry",
+                "alarm_source": "bmc_ras_sentry",
                 "id": "0101",
                 "bmc_id": "0x02000009",
                 "level": 1,
@@ -148,10 +147,10 @@ bmc_events=0101,0102
             "alarm_level": "MINOR_ALM",
             "timestamp": "2026-03-25 13:35:27",
             "alarm_info": {
-                "alarm_source": "bcm_ras_sentry",
+                "alarm_source": "bmc_ras_sentry",
                 "id": "0201",
                 "bmc_id": "0x0800004B",
-                "level": 3,
+                "level": 2,
                 "time": "2026-03-25 08:17:28",
                 "raid_info": {
                     "raid_id": "1",
@@ -169,10 +168,10 @@ bmc_events=0101,0102
             "alarm_level": "MINOR_ALM",
             "timestamp": "2026-03-25 13:35:27",
             "alarm_info": {
-                "alarm_source": "bcm_ras_sentry",
+                "alarm_source": "bmc_ras_sentry",
                 "id": "0301",
                 "bmc_id": "0x01000017",
-                "level": 4,
+                "level": 3,
                 "time": "2026-03-25 08:17:28",
                 "ram_info": {
                     "ram_id": "1",
@@ -190,10 +189,10 @@ bmc_events=0101,0102
             "alarm_level": "MINOR_ALM",
             "timestamp": "2026-03-25 13:35:27",
             "alarm_info": {
-                "alarm_source": "bcm_ras_sentry",
+                "alarm_source": "bmc_ras_sentry",
                 "id": "0401",
                 "bmc_id": "0x0000001D",
-                "level": 4,
+                "level": 3,
                 "time": "2026-03-25 08:17:28",
                 "cpu_info": {
                     "cpu_id": "1",
@@ -220,7 +219,7 @@ bmc_events=0101,0102
    | alarm_source | 告警插件名称，bmc ras告警上报插件的固定值为bmc_ras_sentry |
    | id | bmc ras告警上报插件内部定义的告警事件id，（具体事件ID参考BMC告警事件字典） |
    | bmc_id | bmc上定义的告警id |
-   | level | 告警等级，1-轻微，2-正常，3-严重，4-紧急 |
+   | level | 告警等级，0-正常，1-轻微，2-严重，3-紧急 |
    | time | 告警产生的时间 |
    | disk_info | 硬盘内容，硬盘类型告警特有字段 |
    | raid_info | RAID卡内容，RAID卡类型告警特有字段 |
@@ -255,7 +254,7 @@ bmc_events=0101,0102
 4. 停止巡检
 
    ```shell
-   sentryclt stop bmc_ras_sentry
+   sentryctl stop bmc_ras_sentry
    ```
 
 5. 查看巡检结果
