@@ -44,37 +44,37 @@ class Report:
 
 
 class Xalarm:
-    ALARM_ID = 1002
+    SLOW_IO_ALARM_ID = 1002
 
     @staticmethod
     def minor(info: dict):
         info_str = json.dumps(info)
-        xalarm_report(Xalarm.ALARM_ID, MINOR_ALM, ALARM_TYPE_OCCUR, info_str)
-        logging.debug(f"Report {Xalarm.ALARM_ID} MINOR_ALM: {info_str}")
+        xalarm_report(Xalarm.SLOW_IO_ALARM_ID, MINOR_ALM, ALARM_TYPE_OCCUR, info_str)
+        logging.debug(f"Report {Xalarm.SLOW_IO_ALARM_ID} MINOR_ALM: {info_str}")
 
     @staticmethod
     def major(info: dict):
         info_str = json.dumps(info)
-        xalarm_report(Xalarm.ALARM_ID, MAJOR_ALM, ALARM_TYPE_OCCUR, info_str)
-        logging.debug(f"Report {Xalarm.ALARM_ID} MAJOR_ALM: {info_str}")
+        xalarm_report(Xalarm.SLOW_IO_ALARM_ID, MAJOR_ALM, ALARM_TYPE_OCCUR, info_str)
+        logging.debug(f"Report {Xalarm.SLOW_IO_ALARM_ID} MAJOR_ALM: {info_str}")
 
     @staticmethod
     def critical(info: dict):
         info_str = json.dumps(info)
-        xalarm_report(Xalarm.ALARM_ID, CRITICAL_ALM, ALARM_TYPE_OCCUR, info_str)
-        logging.debug(f"Report {Xalarm.ALARM_ID} CRITICAL_ALM: {info_str}")
+        xalarm_report(Xalarm.SLOW_IO_ALARM_ID, CRITICAL_ALM, ALARM_TYPE_OCCUR, info_str)
+        logging.debug(f"Report {Xalarm.SLOW_IO_ALARM_ID} CRITICAL_ALM: {info_str}")
 
     def minor_recover(info: dict):
         info_str = json.dumps(info)
-        xalarm_report(Xalarm.ALARM_ID, MINOR_ALM, ALARM_TYPE_RECOVER, info_str)
-        logging.debug(f"Report {Xalarm.ALARM_ID} MINOR_ALM Recover: {info_str}")
+        xalarm_report(Xalarm.SLOW_IO_ALARM_ID, MINOR_ALM, ALARM_TYPE_RECOVER, info_str)
+        logging.debug(f"Report {Xalarm.SLOW_IO_ALARM_ID} MINOR_ALM Recover: {info_str}")
 
     def major_recover(info: dict):
         info_str = json.dumps(info)
-        xalarm_report(Xalarm.ALARM_ID, MAJOR_ALM, ALARM_TYPE_RECOVER, info_str)
-        logging.debug(f"Report {Xalarm.ALARM_ID} MAJOR_ALM Recover: {info_str}")
+        xalarm_report(Xalarm.SLOW_IO_ALARM_ID, MAJOR_ALM, ALARM_TYPE_RECOVER, info_str)
+        logging.debug(f"Report {Xalarm.SLOW_IO_ALARM_ID} MAJOR_ALM Recover: {info_str}")
 
     def critical_recover(info: dict):
         info_str = json.dumps(info)
-        xalarm_report(Xalarm.ALARM_ID, CRITICAL_ALM, ALARM_TYPE_RECOVER, info_str)
-        logging.debug(f"Report {Xalarm.ALARM_ID} CRITICAL_ALM Recover: {info_str}")
+        xalarm_report(Xalarm.SLOW_IO_ALARM_ID, CRITICAL_ALM, ALARM_TYPE_RECOVER, info_str)
+        logging.debug(f"Report {Xalarm.SLOW_IO_ALARM_ID} CRITICAL_ALM Recover: {info_str}")
