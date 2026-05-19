@@ -21,7 +21,7 @@ import signal
 import fcntl
 import socket
 
-from .xalarm_config import config_init, get_log_level
+from . import xalarm_config
 from .xalarm_server import server_loop
 
 ALARM_LOGFILE = '/var/log/sysSentry/xalarm.log'
@@ -49,29 +49,31 @@ def chk_and_set_pidfile():
 
 def release_pidfile():
     """
-    :return:
+    Release PID file lock and remove the file.
+    Must use the same file descriptor that acquired the lock.
     """
-    pid_file_fd = None
+    global PID_FILE_FLOCK
+    if PID_FILE_FLOCK is not None:
+        try:
+            fcntl.flock(PID_FILE_FLOCK, fcntl.LOCK_UN)
+            PID_FILE_FLOCK.close()
+        except (IOError, OSError) as e:
+            logging.error("Failed to release PID file lock: %s", str(e))
+        finally:
+            PID_FILE_FLOCK = None
     try:
-        pid_file_fd = open(XALARMD_PID_FILE, 'w')
-        os.chmod(XALARMD_PID_FILE, 0o600)
-        fcntl.flock(pid_file_fd, fcntl.LOCK_UN)
-    except (IOError, FileNotFoundError):
-        logging.error("Failed to release PID file lock")
-    finally:
-        if pid_file_fd:
-            pid_file_fd.close()
-        PID_FILE_FLOCK.close()
-        os.unlink(XALARMD_PID_FILE)
+        if os.path.exists(XALARMD_PID_FILE):
+            os.unlink(XALARMD_PID_FILE)
+    except OSError as e:
+        logging.error("Failed to remove PID file: %s", str(e))
 
 
 def signal_handler(signum, _f):
     """signal handler
     """
-    logging.error("xalarmd server exits due to an abnormal signal")
     if signum == signal.SIGTERM:
-        release_pidfile()
-        sys.exit(0)
+        logging.info("xalarmd received SIGTERM, initiating graceful shutdown")
+        xalarm_config.SHUTDOWN_FLAG = True
 
 
 def daemon_init():
@@ -104,11 +106,12 @@ def daemon_main():
     """
     daemon_init()
     try:
-        alarm_config = config_init()
+        alarm_config = xalarm_config.config_init()
         server_loop(alarm_config)
         logging.info("xalarmd server exits normally")
     except socket.error as e:
         logging.error("xalarmd server exits due to %s", str(e))
+    finally:
         release_pidfile()
 
 
@@ -118,7 +121,7 @@ def alarm_process_create():
     if not os.path.exists(os.path.dirname(ALARM_LOGFILE)):
         os.mkdir(os.path.dirname(ALARM_LOGFILE), 0o700)
 
-    log_level = get_log_level()
+    log_level = xalarm_config.get_log_level()
     log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
 
     logging.basicConfig(filename=ALARM_LOGFILE, level=log_level, format=log_format)
