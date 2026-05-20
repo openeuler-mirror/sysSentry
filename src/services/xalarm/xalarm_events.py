@@ -17,6 +17,8 @@ Create: 2026-04-20
 import logging
 import threading
 import json
+import errno
+import subprocess
 from collections import defaultdict
 
 from syssentry.sentry_proc import (
@@ -57,17 +59,63 @@ EVENT_PROC_NAME_DICT = {
 }
 
 
-def set_sentry_reporter_module_switch(event_id: int, param: str):
+def load_sentry_driver(driver_name: str) -> bool:
+    """
+    Load sentry driver module using modprobe.
+
+    Args:
+        driver_name: Name of the driver module to load
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        result = subprocess.run(
+            ["/usr/sbin/modprobe", driver_name],
+            capture_output=True,
+            text=True,
+            timeout=3
+        )
+        if result.returncode == 0:
+            logging.info("Successfully loaded driver: %s", driver_name)
+            return True
+        else:
+            logging.error("Failed to load driver %s: %s", driver_name, result.stderr.strip())
+            return False
+    except subprocess.TimeoutExpired:
+        logging.error("Timeout while loading driver: %s", driver_name)
+        return False
+    except Exception as e:
+        logging.error("Exception while loading driver %s: %s", driver_name, str(e))
+        return False
+
+
+def set_sentry_reporter_module_switch(event_id: int, param: str) -> int:
     """set sentry proc value"""
     if param not in [ENABLE_EVENT_INPUT, DISABLE_EVENT_INPUT] or not (
         event_id in SENTRY_REPORTER_MODULE_EVENT_ID_LIST or
         event_id in SENTRY_REMOTE_REPORTER_MODULE_EVENT_ID_LIST
     ):
         logging.error(f"invalid param: {param}")
+        return -1
+
+    ret = 0
     if event_id in SENTRY_REPORTER_MODULE_EVENT_ID_LIST:
-        set_sentry_reporter_proc(EVENT_PROC_NAME_DICT[event_id], param)
+        ret = set_sentry_reporter_proc(EVENT_PROC_NAME_DICT[event_id], param)
+        if ret == -errno.ENOENT:
+            logging.warning("sentry_reporter proc not found, attempting to load driver")
+            if load_sentry_driver("sentry_reporter"):
+                ret = set_sentry_reporter_proc(EVENT_PROC_NAME_DICT[event_id], param)
     else:
-        set_remote_reporter_proc(EVENT_PROC_NAME_DICT[event_id], param)
+        ret = set_remote_reporter_proc(EVENT_PROC_NAME_DICT[event_id], param)
+        if ret == -errno.ENOENT:
+            logging.warning("sentry_remote_reporter proc not found, attempting to load driver")
+            if load_sentry_driver("sentry_remote_reporter"):
+                ret = set_remote_reporter_proc(EVENT_PROC_NAME_DICT[event_id], param)
+
+    if ret != 0:
+        logging.error("set %s event to %s failed", EVENT_PROC_NAME_DICT[event_id], param)
+    return ret
 
 
 def open_event(event_id: int) -> bool:
@@ -82,9 +130,13 @@ def open_event(event_id: int) -> bool:
         bool: True if successful
     """
     try:
-        set_sentry_reporter_module_switch(event_id, ENABLE_EVENT_INPUT)
-        logging.info("Event %d enabled - client subscribed", event_id)
-        return True
+        ret = set_sentry_reporter_module_switch(event_id, ENABLE_EVENT_INPUT)
+        if ret == 0:
+            logging.info("Event %d enabled - client subscribed", event_id)
+            return True
+        else:
+            logging.info("Event %d enable failed - client can't get this event msg", event_id)
+            return False
     except Exception as e:
         logging.error("Failed to enable event %d: %s", event_id, str(e))
         return False
