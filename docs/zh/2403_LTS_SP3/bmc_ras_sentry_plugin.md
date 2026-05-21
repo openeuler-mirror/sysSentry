@@ -153,7 +153,17 @@ bmc_events=0101,0102
                 "level": 2,
                 "time": "2026-03-25 08:17:28",
                 "raid_info": {
-                    "raid_id": "1",
+                    "raid_id": "2102313XXFFSNB001957",
+                    "disk_info": [
+                        {
+                            "physical_disk": "034QVV10P8100491",
+                            "logical_disk": "sda",
+                        },
+                        {
+                            "physical_disk": "034QVV10P8100490",
+                            "logical_disk": "sdb",
+                        }
+                    ]
                 }
             }
         }
@@ -237,7 +247,8 @@ bmc_events=0101,0102
 
    | 字段 | 描述 |
    | --- | --- |
-   | raid_id | RAID卡编号 |
+   | raid_id | RAID卡SN号 |
+   | disk_info | 硬盘内容，raid卡下各硬盘信息，具体字段见disk_info各字段介绍 |
 
    ram_info各字段介绍：
 
