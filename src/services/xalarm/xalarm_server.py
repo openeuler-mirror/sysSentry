@@ -165,6 +165,15 @@ def monitor_sentry_service():
 
     logging.info("sysSentry service monitoring started")
     loop = GLib.MainLoop()
+
+    def check_shutdown():
+        if xalarm_config.SHUTDOWN_FLAG:
+            logging.info("Shutdown flag detected, stopping GLib main loop")
+            loop.quit()
+            return False
+        return True
+
+    GLib.timeout_add_seconds(1, check_shutdown)
     loop.run()
 
 
@@ -267,9 +276,9 @@ def server_loop(alarm_config):
                 logging.error("Error server: %s", str(e))
     finally:
         conn_thread_should_stop.set()
-        conn_thread.join()
-        cleanup_thread.join()
-        systemd_monitor_thread.join()
+        conn_thread.join(timeout=3)
+        cleanup_thread.join(timeout=3)
+        systemd_monitor_thread.join(timeout=3)
 
         # Safely close resources, checking if they exist first
         if alarm_epoll is not None and alarm_sock is not None:
