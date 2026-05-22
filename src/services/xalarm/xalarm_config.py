@@ -28,6 +28,9 @@ MIN_ID_NUMBER = 1001
 MAX_ID_NUMBER = 1128
 MAX_ID_MASK_CAPACITY = 128
 
+# Global shutdown flag for graceful termination
+SHUTDOWN_FLAG = False
+
 # log
 CONF_LOG = 'log'
 CONF_LOG_LEVEL = 'level'

@@ -33,6 +33,7 @@ from .xalarm_transfer import (
     cleanup_closed_connections,
     broadcast_sentry_down
 )
+from . import xalarm_config
 
 
 ALARM_REPORT_LEN = 8216
@@ -164,6 +165,15 @@ def monitor_sentry_service():
 
     logging.info("sysSentry service monitoring started")
     loop = GLib.MainLoop()
+
+    def check_shutdown():
+        if xalarm_config.SHUTDOWN_FLAG:
+            logging.info("Shutdown flag detected, stopping GLib main loop")
+            loop.quit()
+            return False
+        return True
+
+    GLib.timeout_add_seconds(1, check_shutdown)
     loop.run()
 
 
@@ -188,12 +198,6 @@ def server_loop(alarm_config):
     """
     logging.info("server loop waiting for messages")
 
-    # Get sockets from systemd socket activation
-    systemd_sockets = get_systemd_sockets()
-    if systemd_sockets[0] is None:
-        logging.error("Failed to get systemd sockets, exiting")
-        return
-
     global report_sock
     global alarm_sock
     global alarm_epoll
@@ -202,6 +206,19 @@ def server_loop(alarm_config):
     global conn_thread_should_stop
     global conn_thread
     global fd_to_socket_lock
+
+    # Initialize global variables to None before attempting to get sockets
+    alarm_sock = None
+    report_sock = None
+    alarm_epoll = None
+    report_epoll = None
+    fd_to_socket = {}
+
+    # Get sockets from systemd socket activation
+    systemd_sockets = get_systemd_sockets()
+    if systemd_sockets[0] is None:
+        logging.error("Failed to get systemd sockets, exiting")
+        return
 
     (alarm_sock, alarm_epoll), (report_sock, report_epoll) = systemd_sockets
     fd_to_socket = {alarm_sock.fileno(): alarm_sock,}
@@ -226,6 +243,8 @@ def server_loop(alarm_config):
     try:
         while True:
             try:
+                if xalarm_config.SHUTDOWN_FLAG:
+                    break
                 # set timeout as 1 seconds to avoid main process blocked by recvfrom
                 # which will cause socket cannot be rebuild
                 events = report_epoll.poll(1.0)
@@ -254,19 +273,27 @@ def server_loop(alarm_config):
                     fd_to_socket_lock
                 )
             except Exception as e:
-                logging.error(f"Error server:{e}")
+                logging.error("Error server: %s", str(e))
     finally:
         conn_thread_should_stop.set()
-        conn_thread.join()
-        cleanup_thread.join()
-        systemd_monitor_thread.join()
+        conn_thread.join(timeout=3)
+        cleanup_thread.join(timeout=3)
+        systemd_monitor_thread.join(timeout=3)
 
-        alarm_epoll.unregister(alarm_sock.fileno())
-        alarm_epoll.close()
-        alarm_sock.close()
+        # Safely close resources, checking if they exist first
+        if alarm_epoll is not None and alarm_sock is not None:
+            try:
+                alarm_epoll.unregister(alarm_sock.fileno())
+            except (OSError, ValueError):
+                pass
+            alarm_epoll.close()
+        if alarm_sock is not None:
+            alarm_sock.close()
 
-        report_epoll.close()
-        report_sock.close()
+        if report_epoll is not None:
+            report_epoll.close()
+        if report_sock is not None:
+            report_sock.close()
 
 
 
