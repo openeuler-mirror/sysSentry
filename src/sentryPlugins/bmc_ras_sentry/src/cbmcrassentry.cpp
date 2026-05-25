@@ -562,7 +562,7 @@ void CBMCRasSentry::InitBMCEvents()
 
     BMCEventMap BMCRamEvents = {
         {"0301", 0x01000017},
-        {"0302", 0x0100003D},
+        {"0302", 0x0100003B},
         {"0303", 0x0100005B},
     };
 
