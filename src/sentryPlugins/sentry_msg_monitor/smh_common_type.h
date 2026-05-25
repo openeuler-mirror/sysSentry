@@ -69,6 +69,9 @@ enum sentry_msg_helper_msg_type {
     SMH_MESSAGE_UB_MEM_ERR,
     SMH_MESSAGE_PANIC_ACK,
     SMH_MESSAGE_KERNEL_REBOOT_ACK,
+    SMH_MESSAGE_HEARTBEAT,
+    SMH_MESSAGE_HEARTBEAT_ACK,
+    SMH_MESSAGE_LINK_EVENT,
     SMH_MESSAGE_UNKNOWN,
 };
 
@@ -96,6 +99,11 @@ struct sentry_msg_helper_msg {
             int fault_with_kill;
             enum ras_err_type raw_ubus_mem_err_type;
         } ub_mem_info;
+        struct {
+            uint16_t port_id;
+            unsigned int scna;
+            int link_event;
+        } link_info;
     } helper_msg_info;
     unsigned long res;
 };

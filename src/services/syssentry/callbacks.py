@@ -191,6 +191,8 @@ def task_set(set_data):
                 ret_code |= set_sentry_reporter_proc("power_off", set_data['power_off'])
             if set_data.get('oom') is not None:
                 ret_code |= set_sentry_reporter_proc("oom", set_data['oom'])
+            if set_data.get('link_event') is not None:
+                ret_code |= set_sentry_reporter_proc("link_event", set_data['link_event'])
             if set_data.get('oom_policy') is not None:
                 try:
                     policy_dict = json.loads(set_data['oom_policy'])
