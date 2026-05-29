@@ -1,6 +1,7 @@
 # Secondary Development Guide
 
 As an inspection task management framework, sysSentry can manage both provided plugins and user-developed plugins. To develop a new plugin and manage it through the sysSentry framework, the following are needed:
+
 1. Compiling the plugin management configuration file
 2. Completing plugin function development
 
@@ -21,12 +22,12 @@ alarm_id=1100						# Alarm ID. This parameter is optional.
 alarm_clear_time=5					# Alarm clearance time. This parameter is optional.
 ```
 
-
 ## Plugin Function Development
 
 ### Plugin Usage Restrictions
 
 New plugins developed by users must meet the following requirements:
+
 1. There is no restriction on the plugin development language. However, Python or C language is recommended. Currently, sysSentry offers secondary development interfaces exclusively for Python and C.
 2. All plugins must be executable files.
 3. All plugins must contain a stop command. Running the command can accurately stop the plugin task without affecting the running of other programs in the system.
@@ -46,6 +47,7 @@ You can use the alarm reporting interface to report plugin alarm information to 
 sysSentry provides external interfaces for both Python and C languages.
 
 #### Restrictions on Alarm Reporting
+
 1. Alarm reporting only supports 128 alarm IDs ranging from 1001 to 1128. ID 1001 is reserved for memory inspection, and ID 1002 is reserved for slow I/O detection.
 2. A maximum of 8191 characters are allowed for alarm reporting.
 
@@ -189,6 +191,7 @@ The timestamp format is YYYY-MM-DD HH:MM:SS,FF, for example `2006-01-02 15:04:05
 
 The log level can be `debug`, `info`, `warning`, `error`, or `critical`.
 The meaning of each level is as follows:
+
 - `debug`: lowest level, which is used to record detailed technical information to help with development and debugging.
 - `info`: records normal running information about the program, such as the startup and shutdown.
 - `warning`: records the situations that may cause problems but do not affect the running of the program.
@@ -198,13 +201,16 @@ The meaning of each level is as follows:
 It is recommended that the log level be set to `info` when the program is running properly.
 
 #### Plugin Log Rotation Configuration
+
 The logs of the sysSentry framework and plugins are automatically rotated based on the `logrotate` mechanism. Log rotation is a system management technology used to manage the size and number of log files and prevent log files from occupying too much disk space.
 
 Each time `logrotate` is triggered, the system checks the size of the log files of the sysSentry framework and plugins. If the size of a log file exceeds 4096 KB, `logrotate` is performed. The logs of a plugin or service can be rotated twice at most, and the rotated logs are compressed.
 
 ##### Example of Plugin Log Rotation Configuration
+
 For details about how to configure log rotation, see the `/etc/logrotate.d/sysSentry` file.
 The current configuration of `/etc/logrotate.d/sysSentry` is as follows:
+
 ```shell
 /var/log/sysSentry/*.log{
     compress
@@ -216,7 +222,9 @@ The current configuration of `/etc/logrotate.d/sysSentry` is as follows:
     hourly
 }
 ```
+
 The meaning of each configuration item is as follows:
+
 - `/var/log/sysSentry/*.log` indicates the log files to be dumped. The asterisk (*) is a wildcard, indicating all log files whose names end with `.log` in the `/var/log/sysSentry/` directory.
 - `compress` indicates that log files are compressed by default to save memory space. You can also change it to `nocompress`, indicating that log files are not compressed. The default value `compress` is recommended.
 - `missingok` indicates that `logrotate` does not report an error or stop processing other log files if a log file is missing. The default value of the configuration item is recommended.
@@ -227,9 +235,12 @@ The meaning of each configuration item is as follows:
 - `hourly` indicates that log rotation is performed every hour. The value can be `hourly`, `daily`, `weekly`, `monthly`, and others. In this example, `logrotate` rotates log files every hour. It is recommended that this item be configured to `hourly` by default.
 
 ##### Changing the Plugin Log Rotation Configuration
+
 For new plugins:
+
 1. You can modify the existing configuration items in `/etc/logrotate.d/sysSentry`. (Note: This operation will modify the configuration of all log files whose names end with `.log` in the `/var/log/sysSentry/` directory.)
 2. To set different configurations for different log files in the `/var/log/sysSentry/` directory, configure each log file separately in `/etc/logrotate.d/sysSentry` as follows:
+
     ```shell
     /var/log/sysSentry/`[Log_name 1]`.log{
         # Required configuration items
@@ -238,7 +249,9 @@ For new plugins:
         # Required configuration items
     }
     ```
+
 Do not set different configurations for the same log, as shown in the following example:
+
 ```shell
 # A BAD EXAMPLE
 /var/log/sysSentry/*.log{
@@ -248,10 +261,12 @@ Do not set different configurations for the same log, as shown in the following 
     nocompress
 }
 ```
+
 In this example, the wildcard * represents all log files whose names end with `.log` in the `/var/log/sysSentry/` directory, including `example.log`. These files are configured to be compressed during log rotation. However, `example.log` is separately configured in the configuration file to not be compressed. This may cause unexpected behavior.
 
 If the `/etc/logrotate.d/sysSentry` file is manually modified, you can run the `logrotate -f /etc/logrotate.d/sysSentry` command to manually trigger log rotation.
 For details about how to use `logrotate`, visit <https://linux.die.net/man/8/logrotate>.
+
 ### Result Reporting
 
 You can use the interface provided by sysSentry to report the plugin inspection result to the sysSentry service and run the `get_result` command to view the result.
@@ -311,13 +326,14 @@ Install the libxlaram software package.
 ```shell
 [root@openEuler ~]# yum install -y libxlaram
 ```
+
 The libxalarm-devel package (build dependency, not runtime dependency) also needs to be installed in the development environment.
+
 ```shell
 [root@openEuler ~]# yum install -y libxalam-devel
 ```
 
 `Structure` RESULT_LEVEL <a id="resultlevel_c"></a>
-
 
 ```c
 enum RESULT_LEVEL {
@@ -332,7 +348,7 @@ enum RESULT_LEVEL {
 
 `Interface` result reporting
 
-| Interface  | int report_result(const char *task_name, enum RESULT_LEVEL result_level, const char *report_data); |
+| Interface  | int report_result(const char \*task_name, enum RESULT_LEVEL result_level, const char \*report_data); |
 | ------ | ------------------------------------------------------------ |
 | Description  | Used by the module tool to report the inspection result to sysSentry.                         |
 | Parameter  | `task_name`: inspection task name<br>`result_level`: exception level of the inspection result. For details about the optional parameters, see the `ResultLevel` structure.<br>`report_data`: detailed inspection result, which must be a character string converted from the JSON format.|
@@ -382,13 +398,14 @@ The sentryCollector service can periodically collect data of specified disks usi
 #### Differences Between Kernel Lock-free Collection and eBPF-based Collection
 
 The differences between kernel lock-free collection and eBPF-based collection are as follows:
-1. Different collection stages
-An I/O is divided into multiple stages from its occurrence to completion. The following table lists the stages supported by the two collection solutions.
 
-| Stage        | bio    | rq_driver | throtl   | wbt    | gettag | plug     | deadline | bpf      | requeue  | hctx     |
-| ------------ | ------ | --------- | -------- | ------ | ------ | -------- | -------- | -------- | -------- | -------- |
-| Kernel lock-free collection| Supported| Supported   | Supported  | Supported| Supported| Supported  | Supported  | Supported  | Supported  | Supported  |
-| eBPF-based collection    | Supported| Supported   | Not supported| Supported| Supported| Not supported| Not supported| Not supported| Not supported| Not supported|
+1. Different collection stages
+    An I/O is divided into multiple stages from its occurrence to completion. The following table lists the stages supported by the two collection solutions.
+
+    | Stage        | bio    | rq_driver | throtl   | wbt    | gettag | plug     | deadline | bpf      | requeue  | hctx     |
+    | ------------ | ------ | --------- | -------- | ------ | ------ | -------- | -------- | -------- | -------- | -------- |
+    | Kernel lock-free collection| Supported| Supported   | Supported  | Supported| Supported| Supported  | Supported  | Supported  | Supported  | Supported  |
+    | eBPF-based collection    | Supported| Supported   | Not supported| Supported| Supported| Not supported| Not supported| Not supported| Not supported| Not supported|
 
 2. Different types of I/Os that are collected
 
@@ -400,6 +417,7 @@ An I/O is divided into multiple stages from its occurrence to completion. The fo
 | discard | Supported      | Not supported| Discard I/O|
 
 Except for the preceding two differences, the data types and supported systems for the kernel lock-free collection are the same as those for the eBPF-based collection.
+
 1. Both collection solutions support the 4.19 kernel and x86_64 and AArch64 architectures.
 2. Both collection solutions can collect data of NVMe SSDs, SATA SSDs, and SATA HDDs.
 3. Both collection solutions can collect `latency`, `iodump`, `iolength`, and `iops` data.
