@@ -14,12 +14,12 @@ New plugins developed by users can be managed using sysSentry. To do so, a corre
 ```shell
 [root@openEuler ~]# cat /etc/sysSentry/tasks/test.mod
 [common]
-enabled=yes							# Specifies whether to load the plugin. This parameter is mandatory.
-task_start=/usr/bin/test			# Plugin startup command. This parameter is mandatory.
-task_stop=pkill -f /usr/bin/test	# Plugin stop command. This parameter is mandatory.
-type=oneshot						# Plugin task type. This parameter is mandatory.
-alarm_id=1100						# Alarm ID. This parameter is optional.
-alarm_clear_time=5					# Alarm clearance time. This parameter is optional.
+enabled=yes                         # Specifies whether to load the plugin. This parameter is mandatory.
+task_start=/usr/bin/test            # Plugin startup command. This parameter is mandatory.
+task_stop=pkill -f /usr/bin/test    # Plugin stop command. This parameter is mandatory.
+type=oneshot                        # Plugin task type. This parameter is mandatory.
+alarm_id=1100                       # Alarm ID. This parameter is optional.
+alarm_clear_time=5                  # Alarm clearance time. This parameter is optional.
 ```
 
 ## Plugin Function Development
