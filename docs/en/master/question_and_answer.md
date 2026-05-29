@@ -30,8 +30,8 @@ Modify the EXTRAVERSION = .blk_io in the Makefile (this change will be reflected
 Step 3: Reboot the system using the new kernel.
 
 ```shell
-[root@openEuler ~]# grubby --info ALL 	#Check the index of the newly compiled kernel.
-[root@openEuler ~]# grubby --set-default-index N 	#Set N to the index of the newly compiled kernel.
+[root@openEuler ~]# grubby --info ALL   #Check the index of the newly compiled kernel.
+[root@openEuler ~]# grubby --set-default-index N   #Set N to the index of the newly compiled kernel.
 [root@openEuler ~]# reboot
 ```
 
@@ -54,18 +54,22 @@ If the directory exists, the `sentryCollector` service uses kernel lock-free col
 ## **Question 2: How Do I Identify the Types of Drives in the System?**
 
 You can check all drive types and their `rotate` status in the current environment using the `lsblk -d` command:
+
 1. NVMe SSD: The drive name starts with `nvme` and `rotate` is `0`.
 2. SATA SSD: The drive name starts with `sd` and `rotate` is `1`.
 3. SATA HDD: The drive name starts with `sd` and `rotate` is `0`.
 
 ## **Question 3: What System Data Does the Average Threshold-Based or AI Threshold-Based Slow Drive Detection Plugin Analyze During Runtime?**
+
 The average threshold-based or AI threshold-based slow drive detection plugin obtains the `latency` and `iodump` data of specified drives at each stage through the `sentryCollector` service and perform data analysis:
+
 - `latency`: I/O latency data, representing the time information of completed IOs within a statistical period.
 - `iodump`: The count of I/Os that have timed out (not completed). If an I/O remains incomplete for more than 1 second, the `iodump` count increases by one.
   
 SentryCollector supports both eBPF-based collection and kernel lock-free collection. By default, eBPF-based collection is used. For details about the differences between the two collection methods and how to use kernel lock-free collection, see [Secondary Development Guide](./developer_guide.md).
 
 ## **Question 4: Why Does the Status Remain EXITED After the sentryctl start avg_block_io/ai_block_io Command Is Executed?**
+
 This may be caused by the following reasons: 
 
 1. The `sentryCollector` service is not started: Check whether the service is running using the `systemctl status sentryCollector` command.
