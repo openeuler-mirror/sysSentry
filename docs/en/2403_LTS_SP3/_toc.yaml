@@ -1,0 +1,24 @@
+label: sysSentry User Guide
+isManual: true
+description: Fault Inspection Framework
+sections: 
+  - label: Introduction
+    href: ./syssentry_introduction.md
+  - label: Installing sysSentry
+    href: ./installation_and_usage.md
+  - label: Inspection Plugin
+    sections:
+      - label: Plugin Introduction
+        href: ./plugins.md
+      - label: Slow I/O Plugin
+        sections:
+            - label: AI Threshold-Based Slow Drive Detection Plugin
+              href: ./ai_block_io_plugin.md
+            - label: Average Threshold-Based Slow Drive Detection Plugin
+              href: ./avg_block_io_plugin.md
+      - label: UBPRM
+        href: ./sentry_msg_monitor.md
+  - label: FAQs
+    href: ./question_and_answer.md
+  - label: Secondary Development Guide
+    href: ./developer_guide.md
