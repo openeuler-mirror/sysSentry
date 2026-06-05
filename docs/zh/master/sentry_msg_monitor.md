@@ -183,9 +183,9 @@ UVB通信组件初始化参数说明：
 
 #### 链路（link）事件配置
 
-链路事件默认是未开启的，当用户订阅ALARM_LINK_EVENT事件时，xalarmd服务将主动去打开事件开关。
+链路（link）事件默认处于关闭状态。当用户订阅 ALARM_LINK_EVENT 事件时，xalarmd 服务会自动开启该事件开关。
 
-链路事件用于上报灵衢总线链路状态变化（链路断开或链路恢复）的事件通知。该事件为单向事件，不需要回复（无ACK事件）。
+该事件用于上报灵衢总线的链路状态变化（包括链路断开与恢复），属于单向事件，无需回复（无 ACK 应答）。
 
 ### 故障事件上报和回复消息格式
 
@@ -233,7 +233,6 @@ UB内存故障事件对应的消息字段说明：
 | OOM事件                  |msgid_res |msgid:uint64_t类型，表示消息对应的id<br>  res:unsigned long类型，表示消息处理结果      |
 | panic事件         |msgid_{cna:cna,eid:eid}_res                      |msgid:uint64_t类型，表示消息对应的id<br>  cna:对应节点的CNA信息<br>  eid:对应节点的eid信息<br>  res:unsigned long类型，表示消息处理结果     |
 | kernel reboot事件 |msgid_{cna:cna,eid:eid}_res                      |msgid:uint64_t类型，表示消息对应的id<br>  cna:对应节点的CNA信息<br>  eid:对应节点的eid信息<br>  res:unsigned long类型，表示消息处理结果     |
-
 
 ### xalarmd接口
 
