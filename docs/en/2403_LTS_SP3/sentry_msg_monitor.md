@@ -32,7 +32,7 @@ This plugin supports the reception and reporting of event messages, including ou
 
 ## Key Specifications
 
-- A maximum of 16 nodes are supported in a cluster.
+- A maximum of 32 nodes are supported in a cluster.
 - When communication is based on URMA, the node EID must be configured in IPv6 format only.
 - The hijacking features for out-of-band power-off, OOM, UB memory faults, `panic`, and in-band power-off flows are disabled by default. These features take effect only after being enabled through commands on the management plane.
 - For `panic` and in-band power-off flow hijacking, the system sends an event message and blocks for a period before continuing the original flow. Related logs are recorded in `dmesg` (kernel log persistence is provided by the `kbox` service). The `panic` or in-band power-off flow will not be eventually blocked.
