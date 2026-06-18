@@ -44,6 +44,49 @@
 #define XALARM_PANIC_MSG_ITEM_CNT 4 // msgid_{cna:cna,eid:eid}_res
 #define PYHS_ADDR_HEX_STR_MAX_LEN 20
 
+/*
+ * Version policy:
+ *   - MAJOR: must match between kernel and userspace; mismatch = refuse to run.
+ *   - MINOR: kernel > userspace means new features added in kernel, user app can't process new msg.
+ *            kernel < userspace means userspace expects features the kernel lacks.
+ *            mismatch = warning log and start to run.
+ */
+static int check_kernel_compat(int fd)
+{
+    struct smh_version_info kver = {0};
+    int ret;
+
+    ret = ioctl(fd, SMH_VERSION_CHECK, &kver);
+    if (ret < 0) {
+        logging_warn("Kernel sentry driver version check failed (ioctl ret=%d). "
+                      "Driver may be too old (no SMH_VERSION_CHECK support) or not loaded."
+                      "Suggest downgrade sentry_msg_monitor or upgrade kernel\n", ret);
+        return 0;
+    }
+
+    if (kver.major != SMH_VERSION_MAJOR) {
+        logging_error("Major version mismatch: kernel=%d.%d, userspace=%d.%d. "
+                      "Major version must match, refusing to start.\n",
+                      kver.major, kver.minor, SMH_VERSION_MAJOR, SMH_VERSION_MINOR);
+        return -1;
+    }
+
+    if (kver.minor < SMH_VERSION_MINOR) {
+        logging_warn("Minor version mismatch: kernel=%d.%d, userspace=%d.%d. "
+                     "Minor versions are recommended to match, otherwise some features cannot be used."
+                     "Suggest users upgrade the kernel to solve version mismatch issues\n",
+                     kver.major, kver.minor, SMH_VERSION_MAJOR, SMH_VERSION_MINOR);
+    } else if (kver.minor > SMH_VERSION_MINOR) {
+        logging_warn("Minor version mismatch: kernel=%d.%d, userspace=%d.%d. "
+                     "Minor versions are recommended to match, otherwise some features cannot be used."
+                     "Suggest users upgrade the sentry_msg_monitor to solve version mismatch issues\n",
+                     kver.major, kver.minor, SMH_VERSION_MAJOR, SMH_VERSION_MINOR);
+    } else {
+        logging_info("Version check passed\n");
+    }
+    return 0;
+}
+
 struct receiver_cleanup_data {
     int fd;
     struct alarm_msg *al_msg;
@@ -655,7 +698,7 @@ close_send:
 
 int main(void)
 {
-    int ret, pid_fd;
+    int ret, pid_fd, smh_fd;
     pthread_t sender, receiver;
 
     setLogLevel();
@@ -664,6 +707,23 @@ int main(void)
     if (pid_fd < 0) {
         return pid_fd;
     }
+
+    smh_fd = smh_dev_get_fd();
+    if (smh_fd < 0) {
+        release_pid_file(pid_fd);
+        logging_error("Failed to open %s for version check\n", SMH_DEV_PATH);
+        return smh_fd;
+    }
+
+    ret = check_kernel_compat(smh_fd);
+    if (ret < 0) {
+        close(smh_fd);
+        release_pid_file(pid_fd);
+        logging_error("Kernel-driver compatibility check failed, refusing to start\n");
+        return ret;
+    }
+    close(smh_fd);
+    /* Threads will open the device again; version check is one-time */
 
     ret = pthread_create(&sender, NULL, sender_thread, &receiver);
     if (ret) {
