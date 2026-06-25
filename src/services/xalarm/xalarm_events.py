@@ -23,7 +23,9 @@ from collections import defaultdict
 
 from syssentry.sentry_proc import (
     set_sentry_reporter_proc,
+    get_sentry_reporter_proc,
     set_remote_reporter_proc,
+    get_remote_reporter_proc,
 )
 
 from .xalarm_api import (
@@ -142,14 +144,46 @@ def open_event(event_id: int) -> bool:
     try:
         ret = set_sentry_reporter_module_switch(event_id, ENABLE_EVENT_INPUT)
         if ret == 0:
-            logging.info("Event %d enabled - client subscribed", event_id)
             return True
         else:
-            logging.info("Event %d enable failed - client can't get this event msg", event_id)
             return False
     except Exception as e:
         logging.error("Failed to enable event %d: %s", event_id, str(e))
         return False
+
+
+def check_event_switch_is_on(event_id: int) -> bool:
+    """
+    Check whether the event switch is actually in the "on" state
+    by reading the corresponding proc file. This verifies the real
+    kernel state rather than relying on the in-memory enabled_events set,
+    which may be stale if the sentry driver was unloaded/reloaded.
+
+    Args:
+        event_id: Event ID to check
+
+    Returns:
+        bool: True if the proc file reads "on", False otherwise
+              (including when the proc file does not exist)
+    """
+    proc_name = EVENT_PROC_NAME_DICT.get(event_id)
+    if proc_name is None:
+        return False
+
+    if event_id in SENTRY_REPORTER_MODULE_EVENT_ID_LIST:
+        value = get_sentry_reporter_proc(proc_name)
+    else:
+        value = get_remote_reporter_proc(proc_name)
+
+    if value is None:
+        logging.info("Event %d proc file not found, switch is not on", event_id)
+        return False
+
+    if value == ENABLE_EVENT_INPUT:
+        return True
+
+    logging.info("Event %d proc value is '%s', not 'on'", event_id, value)
+    return False
 
 
 def disable_event(event_id: int) -> bool:
@@ -260,6 +294,9 @@ def clear_enabled_events_state() -> None:
 def register_client_events(client_fd: int, event_ids: list) -> None:
     """
     Register client's event subscriptions and enable events if needed.
+    When an event_id is already in enabled_events, verify the actual proc
+    file switch state. If the switch is not truly "on" (e.g. because the
+    sentry driver was unloaded and reloaded), re-open it.
 
     Args:
         client_fd: Client socket file descriptor
@@ -268,12 +305,15 @@ def register_client_events(client_fd: int, event_ids: list) -> None:
     with event_state_lock:
         fd_to_events[client_fd] = set(event_ids)
 
+        logging.info("Client fd %d start to register events: %s", client_fd, event_ids)
         for event_id in event_ids:
-            if event_id not in enabled_events:
+            if event_id not in enabled_events or not check_event_switch_is_on(event_id):
                 if open_event(event_id):
                     enabled_events.add(event_id)
-
-        logging.info("Client fd %d registered events: %s", client_fd, event_ids)
+                    logging.info("Client fd %d enable event %s success", client_fd, event_id)
+                elif event_id in enabled_events:
+                    logging.info("Client fd %d enable event %s failed", client_fd, event_id)
+                    enabled_events.discard(event_id)
 
 
 def unregister_client_events(client_fd: int, event_ids: list) -> None:
@@ -288,6 +328,7 @@ def unregister_client_events(client_fd: int, event_ids: list) -> None:
         if client_fd not in fd_to_events:
             return
 
+        logging.info("Client fd %d start to unregister events: %s", client_fd, event_ids)
         for event_id in event_ids:
             if event_id in fd_to_events[client_fd]:
                 fd_to_events[client_fd].discard(event_id)
@@ -301,5 +342,4 @@ def unregister_client_events(client_fd: int, event_ids: list) -> None:
                 if not still_needed and event_id in enabled_events:
                     if disable_event(event_id):
                         enabled_events.discard(event_id)
-
-        logging.info("Client fd %d unregistered events: %s", client_fd, event_ids)
+                        logging.info("Client fd %d disable event %s success", client_fd, event_id)

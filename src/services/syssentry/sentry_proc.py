@@ -23,6 +23,32 @@ MAX_CLIENT_JETTY_ID = 1023
 MAX_URMA_EID_LENGTH = 39
 
 
+def read_proc_file(proc_dir, proc_name):
+    """
+    Read the value from a proc file.
+
+    Args:
+        proc_dir: proc directory name (e.g. "sentry_reporter")
+        proc_name: proc file name (e.g. "oom")
+
+    Returns:
+        str: the content of the proc file (stripped), or None if read failed
+    """
+    try:
+        with open("/proc/%s/%s" % (proc_dir, proc_name), mode="r") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        logging.debug("proc file /proc/%s/%s does not exist", proc_dir, proc_name)
+        return None
+    except PermissionError:
+        logging.error("sentryctl: error: read %s failed for %s, the user does not have the permission",
+                      proc_dir, proc_name)
+        return None
+    except Exception as e:
+        logging.error("sentryctl: error: read %s failed for %s", proc_dir, proc_name)
+        return None
+
+
 def write_proc_file(proc_dir, proc_name, proc_value):
     """
     Don't use 'shell=True' for subprocess.run/subprocess.Popen, it's not safe. However, if 'shell=true'
@@ -49,8 +75,16 @@ def set_sentry_reporter_proc(proc_name, proc_value):
     return write_proc_file("sentry_reporter", proc_name, proc_value)
 
 
+def get_sentry_reporter_proc(proc_name):
+    return read_proc_file("sentry_reporter", proc_name)
+
+
 def set_remote_reporter_proc(proc_name, proc_value):
     return write_proc_file("sentry_remote_reporter", proc_name, proc_value)
+
+
+def get_remote_reporter_proc(proc_name):
+    return read_proc_file("sentry_remote_reporter", proc_name)
 
 
 def set_urma_heartbeat(proc_value):
