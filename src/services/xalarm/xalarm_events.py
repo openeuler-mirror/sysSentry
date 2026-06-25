@@ -243,6 +243,20 @@ def handle_client_event(client_fd: int, data: bytes) -> None:
         unregister_client_events(client_fd, event_ids)
 
 
+def clear_enabled_events_state() -> None:
+    """
+    Clear the enabled_events state when sysSentry service goes down.
+    Since the sentry driver is unloaded when sysSentry stops, all previously
+    opened event switches become invalid. Clearing enabled_events ensures that
+    when a new client registers the same event after sysSentry recovers,
+    the event switch will be re-opened instead of being skipped.
+
+    Must be called with event_state_lock held.
+    """
+    logging.info("Clearing enabled_events state due to sysSentry service down")
+    enabled_events.clear()
+
+
 def register_client_events(client_fd: int, event_ids: list) -> None:
     """
     Register client's event subscriptions and enable events if needed.
