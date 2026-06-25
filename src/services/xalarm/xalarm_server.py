@@ -33,6 +33,10 @@ from .xalarm_transfer import (
     cleanup_closed_connections,
     broadcast_sentry_down
 )
+from .xalarm_events import (
+    event_state_lock,
+    clear_enabled_events_state
+)
 from . import xalarm_config
 
 
@@ -155,8 +159,12 @@ def monitor_sentry_service():
         if 'ActiveState' in changed:
             state = changed['ActiveState']
             logging.info("sysSentry service state changed to: %s", state)
-            if state in ['inactive', 'failed']:
+            if state in ['inactive', 'failed', 'deactivating']:
                 logging.warning("sysSentry service is down, broadcasting alarm to all clients")
+                # Clear enabled_events state since the sentry driver is unloaded,
+                # all previously opened event switches are now invalid
+                with event_state_lock:
+                    clear_enabled_events_state()
                 broadcast_sentry_down(alarm_sock, fd_to_socket, fd_to_socket_lock)
 
     systemd.connect_to_signal(dbus_interface='org.freedesktop.DBus.Properties',
