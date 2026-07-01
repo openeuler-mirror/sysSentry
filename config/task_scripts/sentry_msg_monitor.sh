@@ -5,8 +5,12 @@ if [ "$(systemctl is-system-running)" = "stopping" ]; then
 else
     echo "[sentry] Manual stop, unloading driver"
     /sbin/rmmod sentry_remote_reporter
-    /sbin/rmmod sentry_uvb_comm
-    /sbin/rmmod sentry_urma_comm
+    if lsmod | grep -q "^sentry_uvb_comm"; then
+	    /sbin/rmmod sentry_uvb_comm
+    fi
+    if lsmod | grep -q "^sentry_urma_comm"; then
+	    /sbin/rmmod sentry_urma_comm
+    fi
     /sbin/rmmod sentry_reporter
     /sbin/rmmod sentry_msg_helper
     echo "[sentry] unload sentry kmod success"
