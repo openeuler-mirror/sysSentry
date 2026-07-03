@@ -24,7 +24,7 @@ else
 all: sentry_msg_monitor
 
 sentry_msg_monitor:
-	gcc sentry_msg_monitor.c ub_fault_lib.c bmc_log_lib.c -fstack-protector-strong -Wall -D_FORTIFY_SOURCE=2 -O2 -g -Wl,-z,relro -Wl,-z,now -fPIE -pie -I../../libsentry/c/log -L../../libsentry/c/log/build -I../../libs/libxalarm -L../../libs/build/libxalarm -lobmm -lxalarm -lsentry_log -ljson-c -pthread -o sentry_msg_monitor
+	gcc sentry_msg_monitor.c ub_fault_lib.c bmc_log_lib.c -fstack-protector-strong -Wall -D_FORTIFY_SOURCE=2 -O2 -g -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wtrampolines -fPIE -pie -I../../libsentry/c/log -L../../libsentry/c/log/build -I../../libs/libxalarm -L../../libs/build/libxalarm -lobmm -lxalarm -lsentry_log -ljson-c -pthread -o sentry_msg_monitor
 
 clean:
 	rm -f sentry_msg_monitor

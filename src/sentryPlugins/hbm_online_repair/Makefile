@@ -1,8 +1,8 @@
 CC = gcc
 
-CFLAGS = -Wall -o3
+CFLAGS += -Wall -Wtrampolines -O2 -g -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
 
-LDFLAGS = -ltraceevent
+LDFLAGS += -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -ltraceevent
 
 SRC = $(wildcard *.c)
 HDR = $(wildcard *.h)
