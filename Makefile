@@ -20,7 +20,7 @@ CURTESTDIR      = $(CURDIR)/selftest
 CURCONFIGDIR    = $(CURDIR)/config
 
 PYBIN   = $(shell which python3)
-PYNAME  = $(shell ls /usr/lib |grep -E '^python'| sort -V | tail -n1)
+PYNAME  = $(shell $(PYBIN) -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')")
 PYDIR   = $(DESTDIR)$(PREFIX)/lib/$(PYNAME)/site-packages
 
 PYTHON_VERSION := $(shell $(PYBIN) --version 2>&1 | awk '{print $$2}' | cut -d '.' -f 1,2)
