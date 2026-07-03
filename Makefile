@@ -196,8 +196,6 @@ endif
 	install -m 644 src/libs/pyxalarm/register_xalarm.py $(PYDIR)/xalarm
 
 	# log utils
-	install -d -m 700 $(INCLUDEDIR)/libsentry
-	install -m 644 $(CURSRCDIR)/libsentry/c/log/log_utils.h $(INCLUDEDIR)/libsentry/
 	install -m 550 $(CURSRCDIR)/libsentry/c/log/build/libsentry_log.so $(LIBINSTALLDIR)
 
 ebpf_clean:
@@ -237,7 +235,6 @@ uninstall:
 	rm -rf $(LIBINSTALLDIR)/libxalarm.so
 	rm -rf $(INCLUDEDIR)/xalarm
 	rm -rf $(LIBINSTALLDIR)/libsentry_log.so
-	rm -rf $(INCLUDEDIR)/libsentry
 	rm -rf $(ETCDIR)/sysSentry
 	rm -rf $(ETCDIR)/hbm_online_repair.env
 	rm -rf $(ETCDIR)/soc_ring_sentry.env
