@@ -11,3 +11,8 @@ link_directories(${CMAKE_SOURCE_DIR}/../../../libs/build/libxalarm/)
 
 TARGET_LINK_LIBRARIES(cpu_patrol pthread xalarm -ldl)
 
+set_target_properties(cpu_patrol PROPERTIES
+    COMPILE_FLAGS "-fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -Wall -Wtrampolines -g"
+    LINK_FLAGS "-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack"
+)
+

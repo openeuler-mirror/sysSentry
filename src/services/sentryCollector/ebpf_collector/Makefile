@@ -7,7 +7,8 @@ ARCH := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/' | sed 's
 KERNEL_CFLAGS = -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH)
 
 # 定义用户态编译选项
-USER_CFLAGS = -g -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -Wl,-z,relro,-z,now -lbpf
+USER_CFLAGS = -g -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -Wall -Wtrampolines -fPIE -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+USER_LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -lbpf
 
 # 定义目标文件
 KERNEL_TARGET = ebpf_collector.bpf.o
@@ -28,7 +29,7 @@ $(SKELETON_HEADER): $(KERNEL_TARGET)
 
 # 编译用户态文件
 $(USER_TARGET): ebpf_collector.c $(SKELETON_HEADER)
-	$(CC) $(USER_CFLAGS) $< -o $@
+	$(CC) $(USER_CFLAGS) $< -o $@ $(USER_LDFLAGS)
 
 # 清理生成的文件
 clean:
