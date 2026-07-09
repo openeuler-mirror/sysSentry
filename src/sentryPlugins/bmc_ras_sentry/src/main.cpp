@@ -14,7 +14,8 @@
 #include <thread>
 #include <cstring>
 #include <sys/stat.h>
-#include <sys/fcntl.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <cstdio>
 #include "cbmcrassentry.h"
 #include "configure.h"
