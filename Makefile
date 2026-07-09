@@ -20,7 +20,7 @@ CURTESTDIR      = $(CURDIR)/selftest
 CURCONFIGDIR    = $(CURDIR)/config
 
 PYBIN   = $(shell which python3)
-PYNAME  = $(shell ls /usr/lib |grep -E '^python'| sort -V | tail -n1)
+PYNAME  = $(shell $(PYBIN) -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')")
 PYDIR   = $(DESTDIR)$(PREFIX)/lib/$(PYNAME)/site-packages
 
 PYTHON_VERSION := $(shell $(PYBIN) --version 2>&1 | awk '{print $$2}' | cut -d '.' -f 1,2)
@@ -196,8 +196,6 @@ endif
 	install -m 644 src/libs/pyxalarm/register_xalarm.py $(PYDIR)/xalarm
 
 	# log utils
-	install -d -m 700 $(INCLUDEDIR)/libsentry
-	install -m 644 $(CURSRCDIR)/libsentry/c/log/log_utils.h $(INCLUDEDIR)/libsentry/
 	install -m 550 $(CURSRCDIR)/libsentry/c/log/build/libsentry_log.so $(LIBINSTALLDIR)
 
 ebpf_clean:
@@ -237,7 +235,6 @@ uninstall:
 	rm -rf $(LIBINSTALLDIR)/libxalarm.so
 	rm -rf $(INCLUDEDIR)/xalarm
 	rm -rf $(LIBINSTALLDIR)/libsentry_log.so
-	rm -rf $(INCLUDEDIR)/libsentry
 	rm -rf $(ETCDIR)/sysSentry
 	rm -rf $(ETCDIR)/hbm_online_repair.env
 	rm -rf $(ETCDIR)/soc_ring_sentry.env
