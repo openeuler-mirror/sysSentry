@@ -861,12 +861,34 @@ int xalarm_report_event(unsigned short usAlarmId, char *pucParas, size_t len)
     struct sockaddr_un alarm_addr;
 
     if (usAlarmId < MIN_ALARM_ID || usAlarmId > MAX_ALARM_ID) {
-        fprintf(stderr, "%s: invalid alarm id", __func__);
+        fprintf(stderr, "%s: invalid alarm id\n", __func__);
         return -EINVAL;
     }
 
-    if (pucParas == NULL || strlen(pucParas) != len || len > MAX_PARAS_LEN) {
-        fprintf(stderr, "%s: invalid report msg or len", __func__);
+    if (pucParas == NULL) {
+        fprintf(stderr, "%s: null pointer\n", __func__);
+        return -EINVAL;
+    }
+
+    if (len == 0 || len > MAX_PARAS_LEN) {
+        fprintf(stderr, "%s: invalid input string len (%zu)\n", __func__, len);
+        return -EINVAL;
+    }
+
+    /*
+     * Use strnlen instead of strlen to avoid unbounded over-read.
+     * strnlen(pucParas, len) only reads [0, len-1], never accesses pucParas[len],
+     * so it is safe even if pucParas is exactly len bytes with no null terminator.
+     * If strnlen returns len, it means no '\0' was found in [0, len-1],
+     * which could mean either a legitimate len-length string or a string
+     * longer than len — but we cannot distinguish without reading pucParas[len],
+     * which would be an out-of-bounds access.
+     * If strnlen returns a value < len, the string is shorter than claimed.
+     */
+    size_t actualLen = strnlen(pucParas, len);
+    if (actualLen != len) {
+        fprintf(stderr, "%s: length mismatch (expect %zu, got %zu)\n",
+                __func__, len, actualLen);
         return -EINVAL;
     }
 
@@ -876,11 +898,16 @@ int xalarm_report_event(unsigned short usAlarmId, char *pucParas, size_t len)
     info.ucAlarmType = ALARM_TYPE_OCCUR;
     gettimeofday(&info.AlarmTime, NULL);
 
-    ret = snprintf(info.pucParas, sizeof(info.pucParas), "%s", pucParas);
-    if (ret < 0 || ret >= sizeof(info.pucParas)) {
-        fprintf(stderr, "%s: snprintf failed\n", __func__);
-        return -EINVAL;
-    }
+    /*
+     * Use memcpy + explicit null terminator instead of snprintf("%s").
+     * snprintf with %s format reads until it finds '\0' in pucParas,
+     * which could over-read if pucParas is longer than len (strnlen
+     * cannot distinguish this case). memcpy only reads exactly len bytes
+     * from [0, len-1], which we have already validated, and we manually
+     * write '\0' to the destination buffer — no over-read on the source.
+     */
+    memcpy(info.pucParas, pucParas, len);
+    info.pucParas[sizeof(info.pucParas) - 1] = '\0';
 
     fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (fd < 0) {
