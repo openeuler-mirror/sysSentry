@@ -34,8 +34,9 @@ MAX_KERNEL_REBOOT_TIMEOUT_MS = 3600000
 MIN_CLIENT_JETTY_ID = 3
 MAX_CLIENT_JETTY_ID = 1023
 
+CTL_HEAD_MSG_DATA_DEFAULT_LEN = 4
+CTL_RESPONSE_DATA_DEFAULT_LEN = 3
 RESULT_MSG_DATA_LEN = 4
-CTL_MSG_LEN_LEN = 3
 ALARM_MSG_DATA_LEN = 6
 DEFAULT_ALARM_TIME_RANGE = 10
 
@@ -102,15 +103,21 @@ def client_send_and_recv(request_data, data_str_len):
 
     # msg: CTL{len}{data}
     req_data_len = len(request_data)
-    request_msg = "CTL" + str(req_data_len).zfill(3) + request_data
+    req_head_msg = "CTL" + str(req_data_len).zfill(CTL_HEAD_MSG_DATA_DEFAULT_LEN)
+    if len(req_head_msg) > len("CTL") + CTL_HEAD_MSG_DATA_DEFAULT_LEN:
+        client_socket.close()
+        print("The request message sent by the sentryctl command exceeds the length limit")
+        return None
+
+    request_msg = req_head_msg + request_data
 
     try:
         client_socket.send(request_msg.encode())
         if len("CTL") + data_str_len > MAX_MSG_LEN:
             client_socket.close()
-            logging.error("socket recv data is illegal:%d", len("CTL") + data_str_len)
+            print("socket recv data is illegal: %d" % (len("CTL") + data_str_len))
             return None
-        res_data = client_socket.recv(len("CTL") + data_str_len)
+        res_data = client_socket.recv(len("RES") + data_str_len)
         res_data = res_data.decode()
     except (OSError, UnicodeError):
         client_socket.close()
@@ -118,17 +125,17 @@ def client_send_and_recv(request_data, data_str_len):
         return None
 
     # res: RES{len}{data}
-    res_magic = res_data[:3]
+    res_magic = res_data[:len("RES")]
     if res_magic != "RES":
         client_socket.close()
         print("res msg format error")
         return None
 
     try:
-        res_data_len = int(res_data[3:])
+        res_data_len = int(res_data[len("RES"):])
         if res_data_len > MAX_MSG_LEN:
             client_socket.close()
-            logging.error("socket recv data is illegal:%d", res_data_len)
+            print("socket recv data is illegal:%d" % res_data_len)
             return
         res_msg_data = client_socket.recv(res_data_len)
         res_msg_data = res_msg_data.decode()
@@ -240,7 +247,7 @@ if __name__ == '__main__':
     elif client_args.cmd_type == 'get_alarm':
         result_message = client_send_and_recv(request_message, ALARM_MSG_DATA_LEN)
     else:
-        result_message = client_send_and_recv(request_message, CTL_MSG_LEN_LEN)
+        result_message = client_send_and_recv(request_message, CTL_RESPONSE_DATA_DEFAULT_LEN)
     if not result_message:
         print("sentryctl: client_send_and_recv failed")
         sys.exit(-1)

@@ -62,12 +62,12 @@ except ImportError:
 
 exit_flag = False
 
-CTL_MSG_HEAD_LEN = 6
+CTL_MSG_HEAD_LEN = 7
 CTL_MSG_MAGIC_LEN = 3
-CTL_MSG_LEN_LEN = 3
 CTL_MAGIC = "CTL"
 RES_MAGIC = "RES"
 ALARM_MSG_DATA_LEN = 6
+CTL_RESPONSE_DATA_DEFAULT_LEN = 3
 
 CTL_LISTEN_QUEUE_LEN = 5
 SERVER_EPOLL_TIMEOUT = 0.3
@@ -262,7 +262,7 @@ def msg_head_process(msg_head):
         logging.error("recv msg head magic invalid: %s", ctl_magic)
         return -1
 
-    data_len_str = msg_head[CTL_MSG_LEN_LEN:CTL_MSG_HEAD_LEN]
+    data_len_str = msg_head[CTL_MSG_MAGIC_LEN:CTL_MSG_HEAD_LEN]
     try:
         data_len = int(data_len_str)
     except ValueError:
@@ -343,7 +343,7 @@ def server_recv(server_socket: socket.socket):
     elif cmd_type == "get_alarm":
         res_data_len = str(len(res_data)).zfill(ALARM_MSG_DATA_LEN)
     else:
-        res_data_len = str(len(res_data)).zfill(CTL_MSG_MAGIC_LEN)
+        res_data_len = str(len(res_data)).zfill(CTL_RESPONSE_DATA_DEFAULT_LEN)
     res_head += res_data_len
     logging.debug("res head %s", res_head)
 
