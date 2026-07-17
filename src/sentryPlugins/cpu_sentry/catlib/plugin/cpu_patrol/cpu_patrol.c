@@ -9,6 +9,7 @@
 #include <signal.h>
 #include "cpu_patrol_result.h"
 #include "cpu_patrol.h"
+#include "io_utils.h"
 
 pthread_mutex_t g_start_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t g_stop_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -36,8 +37,8 @@ static cat_return_t write_patrol_config(const char *path, const char *config)
         return CAT_GENERIC_ERROR;
     }
 
-    ssize_t ret = write(fd, config, strlen(config));
-    if (ret == -1) {
+    ssize_t ret = WriteAll(fd, config, strlen(config));
+    if (ret < 0) {
         CAT_LOG_E("Write [%s] file fail, config[%s], errno[%d]", path, config, errno);
         close(fd);
         if (errno == EINVAL) {
@@ -113,7 +114,7 @@ static cat_return_t start_patrol(bool is_start)
     }
 
     char start_switch = (char)((is_start != 0) ? '1' : '0');
-    int ret = write(fd, &start_switch, sizeof(start_switch));
+    ssize_t ret = WriteAll(fd, &start_switch, sizeof(start_switch));
     if (ret < 0) {
         CAT_LOG_E("Write cpu_utility file fail, %s", strerror(errno));
         close(fd);

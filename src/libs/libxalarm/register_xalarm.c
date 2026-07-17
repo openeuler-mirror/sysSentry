@@ -26,19 +26,18 @@
 
 #include <stddef.h>
 
+#include "io_utils.h"
 #include "register_xalarm.h"
 
 #define DIR_XALARM "/var/run/xalarm"
 #define PATH_REG_ALARM "/var/run/xalarm/alarm"
 #define PATH_REPORT_ALARM "/var/run/xalarm/report"
-#define TIME_UNIT_MILLISECONDS 1000
 
 #define MAX_PARAS_LEN 8191
 #define MIN_ALARM_ID 1001
 #define MAX_ALARM_ID (MIN_ALARM_ID + MAX_NUM_OF_ALARM_ID - 1)
 
 #define ALARM_ENABLED 1
-#define RECV_DELAY_MSEC 100
 #define TASK_NAME_MAX_LEN 256
 
 struct alarm_register_info {
@@ -60,6 +59,7 @@ const char *g_result_level_string[] = {
 };
 
 struct alarm_register_info g_register_info = {{0}, -1, ULONG_MAX, false, NULL, 1};
+
 
 static bool id_is_registered(unsigned short alarm_id)
 {
@@ -134,7 +134,7 @@ static void *alarm_recv(void *arg)
     int recvlen = 0;
     struct alarm_info info;
     int ret = 0;
-    
+
     /* prctl does not return false if arg2 is right when arg1 is PR_SET_NAME */
     ret = prctl(PR_SET_NAME, "register-recv");
     if (ret != 0) {
@@ -395,7 +395,7 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
             fprintf(stderr, "%s: sendto failed, ret is 0\n", __func__);
         } else {
             if (ret != (int)sizeof(struct alarm_info)) {
-                fprintf(stderr, "%s sendto failed, ret:%d, len:%u\n", __func__, ret, sizeof(struct alarm_info));
+                fprintf(stderr, "%s sendto failed, ret:%d, len:%zu\n", __func__, ret, sizeof(struct alarm_info));
             }
         }
         break;
@@ -446,7 +446,8 @@ bool check_params(unsigned short type, unsigned short module, unsigned short tra
 int cpu_alarm_Report(unsigned short type, unsigned short module, unsigned short trans_to, unsigned short command,
                      unsigned short event_type, int socket_id, int core_id)
 {
-    int ret, fd;
+    int fd;
+    ssize_t ret;
     bool is_valid;
     int report_info_len, alarm_msg_len;
     char report_info[MAX_CHAR_LEN];
@@ -497,21 +498,10 @@ int cpu_alarm_Report(unsigned short type, unsigned short module, unsigned short 
                 fprintf(stderr, "%s: connect failed errno: %d\n", __func__, errno);
             }
         }
-        
-        ret = write(fd, alarm_msg, strlen(alarm_msg));
+
+        ret = WriteAll(fd, alarm_msg, strlen(alarm_msg));
         if (ret < 0) {
-            if (errno == EINTR) {
-                /* interrupted by signal, ignore */
-                continue;
-            } else {
-                fprintf(stderr, "%s: write failed errno: %d\n", __func__, errno);
-            }
-        } else if (ret == 0) {
-            fprintf(stderr, "%s: write failed, ret is 0\n", __func__);
-        } else {
-            if (ret != strlen(alarm_msg)) {
-                fprintf(stderr, "%s write failed, ret:%d, len:%d\n", __func__, ret, strlen(alarm_msg));
-            }
+            fprintf(stderr, "%s: write failed errno: %d\n", __func__, errno);
         }
         break;
     }
@@ -559,7 +549,7 @@ int send_data_to_socket(const char *socket_path, const char *message)
     }
 
     // write data
-    if (write(sockfd, message, strlen(message)) == -1) {
+    if (WriteAll(sockfd, message, strlen(message)) < 0) {
         fprintf(stderr, "failed to send data to socket %s\n", socket_path);
         close(sockfd);
         return RETURN_CODE_FAIL;
@@ -684,7 +674,7 @@ static int send_event_message(int fd, struct alarm_subscription_info id_filter, 
     json_object *ids_array = json_object_new_array();
     int i;
     const char *json_str;
-    int ret;
+    ssize_t ret;
 
     if (root == NULL || ids_array == NULL) {
         if (root != NULL)
@@ -708,7 +698,7 @@ static int send_event_message(int fd, struct alarm_subscription_info id_filter, 
     json_object_object_add(root, "event_ids", ids_array);
 
     json_str = json_object_to_json_string(root);
-    ret = send(fd, json_str, strlen(json_str), 0);
+    ret = SendAll(fd, json_str, strlen(json_str));
     if (ret < 0) {
         fprintf(stderr, "%s: send %s msg of client fd %d failed\n", __func__, action, fd);
         json_object_put(root);
@@ -796,25 +786,20 @@ int xalarm_get_event(struct alarm_msg* msg, struct alarm_register *register_info
     }
 
     while (true) {
-        int recvlen = recv(register_info->register_fd, &info, sizeof(struct alarm_info), 0);
+        ssize_t recvlen = RecvAll(register_info->register_fd, (char *)&info, sizeof(struct alarm_info));
 
         // recvlen < 0 means that we meet with error when recv.
         if (recvlen < 0) {
-            // when recv EINTR or EAGAIN or EWOULDBLOCK signal, we should try again.
-            // EINTR means recv func interrupted by signal
-            // EAGIAN and EWOULDBLOCK means recv has been blocked(in nonblock mode)
-            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-                usleep(RECV_DELAY_MSEC * TIME_UNIT_MILLISECONDS);
-                continue;
-            } else {
-                // otherwise means we meet up with some unrecoverable error
-                // ECONNRESET means server closed the connection for some error
-                // EBADF means this filr descriptor is invalid
-                // ENOMEM means out of memory
-                // EFAULT means invalid buffer address
-                close(register_info->register_fd);
-                return -errno;
-            }
+            /* when recv EINTR or EAGAIN or EWOULDBLOCK signal, we should try again.
+             * RecvAll already handles EINTR, EAGIAN and EWOULDBLOCK.
+             * otherwise means we meet up with some unrecoverable error
+             * ECONNRESET means server closed the connection for some error
+             * EBADF means this file descriptor is invalid
+             * ENOMEM means out of memory
+             * EFAULT means invalid buffer address
+             */
+            close(register_info->register_fd);
+            return -errno;
         }
         // recvlen == 0 means the connection has been properly closed, 
         // and the remote end has no more data to send.
@@ -822,35 +807,32 @@ int xalarm_get_event(struct alarm_msg* msg, struct alarm_register *register_info
             close(register_info->register_fd);
             return -ENOTCONN;
         }
-        // if recvlen == sizeof(alarm_info), that means we recieved data correctlly
+        // RecvAll guarantees we receive exactly sizeof(struct alarm_info) bytes on success
         // why use alarm_info rather than alarm_msg? alarm_info is used for old
         // api, it's a communication protocol between xalarmd service and libxalarm.
         // to be compatible with old api and reduce modification to xalarmd, use
         // alarm_info for communication and return alarm_msg(alarm_msg is subset of
         // alarm_info).
-        if (recvlen == (int)sizeof(struct alarm_info)) {
-            // check if this is sysSentry down notification
-            if (info.usAlarmId == SYSSENTRY_DOWN_ALARM_ID) {
-                close(register_info->register_fd);
-                return -EBADF;
-            }
-            // filter alarm id, alarm id reciecved which is not registered by this program
-            // will be ignored and continue to wait for next msg
-            if (info.usAlarmId < MIN_ALARM_ID || info.usAlarmId > MAX_ALARM_ID || 
-                    register_info->alarm_enable_bitmap[info.usAlarmId - MIN_ALARM_ID] != ALARM_ENABLED) {
-                continue;
-            }
-            ret = snprintf(msg->pucParas, sizeof(msg->pucParas), "%s", info.pucParas);
-            if (ret < 0 || ret >= sizeof(msg->pucParas)) {
-                printf("Warning: snprintf failed, ret is %d\n", ret);
-                continue;
-            }
-            msg->usAlarmId = info.usAlarmId;
-            msg->AlarmTime = info.AlarmTime;
-            // no need to close fd because get_event() can be reused after recv one msg
-            return 0;
+        // check if this is sysSentry down notification
+        if (info.usAlarmId == SYSSENTRY_DOWN_ALARM_ID) {
+            close(register_info->register_fd);
+            return -EBADF;
         }
-        // if recvlen > 0 but not equal to sizeof alarm_info, loop to wait for msg
+        // filter alarm id, alarm id reciecved which is not registered by this program
+        // will be ignored and continue to wait for next msg
+        if (info.usAlarmId < MIN_ALARM_ID || info.usAlarmId > MAX_ALARM_ID ||
+                register_info->alarm_enable_bitmap[info.usAlarmId - MIN_ALARM_ID] != ALARM_ENABLED) {
+            continue;
+        }
+        ret = snprintf(msg->pucParas, sizeof(msg->pucParas), "%s", info.pucParas);
+        if (ret < 0 || ret >= sizeof(msg->pucParas)) {
+            printf("Warning: snprintf failed, ret is %d\n", ret);
+            continue;
+        }
+        msg->usAlarmId = info.usAlarmId;
+        msg->AlarmTime = info.AlarmTime;
+        // no need to close fd because get_event() can be reused after recv one msg
+        return 0;
     }
 }
 

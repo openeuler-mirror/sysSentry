@@ -11,6 +11,7 @@
 #include "register_xalarm.h"
 #include "cat_structs.h"
 #include "cpu_patrol_result.h"
+#include "io_utils.h"
 
 core_list_st g_isolated_core_list = { 0 };
 
@@ -166,7 +167,7 @@ static cat_return_t do_cpu_core_offline(unsigned int cpu)
     buf[0] = CPU_STATE_OFFLINE;
     buf[1] = '\0';
 
-    ssize_t rc = write(fd, buf, strlen(buf));
+    ssize_t rc = WriteAll(fd, buf, strlen(buf));
     close(fd);
     if (rc < 0) {
         CAT_LOG_E("CPU%d offline failed, errno:%d", cpu, errno);

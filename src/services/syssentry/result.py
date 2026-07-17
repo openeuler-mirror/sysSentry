@@ -19,6 +19,7 @@ import re
 import logging
 
 from enum import Enum
+from syssentry.utils import recv_all
 
 
 class ResultLevel(Enum):
@@ -37,6 +38,7 @@ RESULT_MSG_HEAD_LEN = 10
 RESULT_MSG_MAGIC_LEN = 6 # len(RESULT_MAGIC)
 RESULT_MAGIC = "RESULT"
 RESULT_INFO_MAX_LEN = 4096
+RESULT_RESPONSE_MSG_LEN = max(len("SUCCESS"), len("FAILED"))
 
 RESULT_LEVEL_ERR_MSG_DICT = {
         ResultLevel.PASS.name : "",
@@ -101,7 +103,7 @@ def report_result(task_name: str, result_level : ResultLevel, report_data : str)
 
     try:
         client_socket.sendall(request_msg)
-        server_reponse_info = client_socket.recv(len("SUCCESS"))
+        server_reponse_info = recv_all(client_socket, RESULT_RESPONSE_MSG_LEN)
         server_reponse_info = server_reponse_info.decode().strip()
         if server_reponse_info != "SUCCESS":
             logging.error("report result to sysSentry, get incorrect response information : %s", server_reponse_info)

@@ -1,8 +1,7 @@
 CC = gcc
 
-CFLAGS += -Wall -Wtrampolines -O2 -g -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
-
-LDFLAGS += -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -ltraceevent
+CFLAGS += -Wall -Wtrampolines -O2 -g -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -I../../libsentry/c/io
+LDFLAGS += -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -ltraceevent -L../../libsentry/c/io/build -lsentry_io
 
 SRC = $(wildcard *.c)
 HDR = $(wildcard *.h)

@@ -21,7 +21,7 @@ import socket
 from .mod_status import set_runtime_status, RUNNING_STATUS, FAILED_STATUS
 from .global_values import SENTRY_RUN_DIR
 from .task_map import TasksMap
-from .utils import MAX_MSG_LEN
+from .utils import MAX_MSG_LEN, recv_all
 
 THB_SOCKET_PATH = "/var/run/sysSentry/heartbeat.sock"
 THB_MAGIC = 'THB'
@@ -86,7 +86,7 @@ def heartbeat_recv(heartbeat_socket: socket.socket):
         return
 
     try:
-        msg_head = client_socket.recv(THB_MSG_HEAD_LEN)
+        msg_head = recv_all(client_socket, THB_MSG_HEAD_LEN)
     except OSError:
         logging.error("heartbeat recv head failed")
         client_socket.close()
@@ -111,7 +111,7 @@ def heartbeat_recv(heartbeat_socket: socket.socket):
     logging.debug("hb msg data length: %d", data_len)
 
     try:
-        task_name = client_socket.recv(data_len).decode()
+        task_name = recv_all(client_socket, data_len).decode()
     except (OSError, UnicodeError):
         logging.error("heartbeat recv msg failed")
         client_socket.close()
