@@ -98,9 +98,10 @@ static int get_numa_node(void)
 static int is_cpu_online(int core_id)
 {
     char online_file[64];
-     struct stat buffer;
-    int online;
+    struct stat buffer;
+    int online = -1;
     FILE *fp;
+    int ret;
 
     snprintf(online_file, sizeof(online_file), "/sys/devices/system/cpu/cpu%d/online", core_id);
     if ((core_id == 0) && (lstat(online_file, &buffer) != 0)) {
@@ -113,9 +114,20 @@ static int is_cpu_online(int core_id)
         return 0;
     }
 
-    fscanf(fp, "%d", &online);
+    ret = fscanf(fp, "%d", &online);
     fclose(fp);
 
+    if (ret != 1) {
+        logging_error("Failed to read online status from %s\n", online_file);
+        // Read failure, assumed offline
+        return 0;
+    }
+
+    if (online != 0 && online != 1) {
+        logging_error("Invalid online value %d from %s\n", online, online_file);
+        // Read invalid value, assumed offline
+        return 0;
+    }
     return online;
 }
 
@@ -610,7 +622,7 @@ static bool tc_ring_one_scan_test_block(uintptr_t base_addr, int scan_bit, size_
         rd_data[1] = *((uint64_t *)(base_addr + i + TC_RING_ONE_CACHELINE_SIZE + word_offset)); // base_addr + (n + 1) * 64 + word_offset
         if((rd_data[0] != tgt_dat_all_one) || (rd_data[1] != tgt_dat_pattern)) {
             snprintf(err_msg, sizeof(err_msg), "[ERROR][CORE%d] test loop %lu vaddr = %#lx paddr = %#lx read_data = %#lx read_disturb = %#lx "
-                "target_data = %#lx bit_index = %d offset = %#zu block_size = %#zu",
+                "target_data = %#lx bit_index = %d offset = %#zx block_size = %#zx",
                 sched_getcpu(), loop_cnt, (base_addr + i + word_offset), vaddr_to_phys(base_addr + i + word_offset), rd_data[1], rd_data[0],
                 tgt_dat_pattern, scan_bit, word_offset, block_size);
             soc_ring_sentry_report(RESULT_LEVEL_MAJOR_ALM, err_msg);

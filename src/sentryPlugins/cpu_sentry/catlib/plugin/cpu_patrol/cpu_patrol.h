@@ -33,7 +33,7 @@ cat_return_t lib_cpu_patrol_start(const char *cpumask, int cpu_utility, int patr
 /*
  * 停止巡检
  */
-cat_return_t lib_cpu_patrol_stop(void);
+void lib_cpu_patrol_stop(int sig);
 
 
 #endif

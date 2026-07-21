@@ -45,7 +45,9 @@ int main(int argc, char * const argv[])
         }
     }
     int ret = checkParamsDependency(&request_body, &option_errs);
-    RETURN_NOT_TRUE(ret == CAT_OK, NULL, NULL); // 检查到的参数值有异常不再后续检查
+    if (ret != CAT_OK) {
+        return CAT_ERR;
+    }
     return execute_request(&request_body);
 }
 

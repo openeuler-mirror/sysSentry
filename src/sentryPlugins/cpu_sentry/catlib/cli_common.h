@@ -7,18 +7,6 @@
 
 #define DECIMAL 10 /* 十进制 */
 
-// 期望bool_expression为true，否则return CAT_ERR，(bool_expression可能为表达式！！！)
-#define RETURN_NOT_TRUE(bool_expression, to_release, fail_msg, ...) \
-    do {                                                            \
-        if (!(bool_expression)) {                                   \
-            if (fail_msg != NULL) {                                 \
-                printf(fail_msg, ##__VA_ARGS__), printf("\n");      \
-            }                                                       \
-            free(to_release);                                       \
-            return CAT_ERR;                                         \
-        }                                                           \
-    } while (0)
-
 // 红色打印
 #define PRINT_RED(msg, ...)          \
     do {                             \

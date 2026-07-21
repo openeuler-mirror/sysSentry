@@ -292,8 +292,8 @@ std::map<std::string, std::vector<std::string> > ParseStorcliCmd(const std::stri
     }
 
     std::map<std::string, std::vector<std::string> > result;
-    int startLine = 0, endLine = 0;
-    for (int i = 0; i < cmdOut.size(); i++) {
+    size_t startLine = 0, endLine = 0;
+    for (size_t i = 0; i < cmdOut.size(); i++) {
         if ((cmdOut[i].size() == 0 || cmdOut[i] != std::string(cmdOut[i].size(), '=')) && i != cmdOut.size() - 1)
             continue;
 
@@ -304,7 +304,7 @@ std::map<std::string, std::vector<std::string> > ParseStorcliCmd(const std::stri
             endLine = i - 2;
         }
 
-        if (startLine < 0 || endLine > cmdOut.size() || startLine > endLine) {
+        if (endLine > cmdOut.size() || startLine > endLine) {
             BMC_LOG_ERROR << "parse storcli message failed, cmd:" << cmd;
             return {};
         }
