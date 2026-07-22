@@ -13,12 +13,39 @@
 some common function
 """
 import logging
+import socket
 import subprocess
 import shlex
 from datetime import datetime, timezone, timedelta
 
 # Security: Maximum allowed message length to prevent DoS attacks
 MAX_MSG_LEN = 10 * 1024 * 1024  # 10MB
+
+
+def recv_all(sock: socket.socket, length: int) -> bytes:
+    """Receive exactly `length` bytes from the socket.
+
+    socket.recv() may return fewer bytes than requested, especially on
+    stream sockets. This function loops until all requested bytes are
+    received or the connection is closed / an error occurs.
+
+    Returns the received data as bytes.
+    Raises OSError on socket errors.
+    Raises ConnectionError if the peer closes the connection before all
+    bytes are received.
+    """
+    if length <= 0:
+        return b""
+    data = b""
+    while len(data) < length:
+        chunk = sock.recv(length - len(data))
+        if not chunk:
+            # Connection closed by peer before all data received
+            raise ConnectionError(
+                f"Connection closed: received {len(data)} of {length} bytes"
+            )
+        data += chunk
+    return data
 
 
 def run_cmd(cmd):

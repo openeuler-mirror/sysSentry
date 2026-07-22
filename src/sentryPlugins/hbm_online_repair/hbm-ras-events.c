@@ -24,6 +24,7 @@
 #include <traceevent/event-parse.h>
 #include "hbm-ras-handler.h"
 #include "logger.h"
+#include "io_utils.h"
 
 #define SIG_LIST_LEN 4
 #define DEBUGFS_DIR_MAX_LEN 512
@@ -139,7 +140,7 @@ int toggle_ras_event(char *trace_dir, char *group, char *event, int enable)
         goto err;
     }
 
-    rc = write(fd, fname, strlen(fname));
+    rc = (int)WriteAll(fd, fname, strlen(fname));
     close(fd);
     if (rc <= 0) {
         log(LOG_WARNING, "Can't write to set_event\n");
@@ -218,7 +219,7 @@ static int set_buffer_percent(struct ras_events *ras, int percent)
         char buf[16];
         ssize_t size;
         snprintf(buf, sizeof(buf), "%d", percent);
-        size = write(fd, buf, strlen(buf));
+        size = WriteAll(fd, buf, strlen(buf));
         if (size <= 0) {
             log(LOG_WARNING, "can't write to buffer_percent\n");
             ret = -1;

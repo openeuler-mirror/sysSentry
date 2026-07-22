@@ -20,6 +20,7 @@
 #include <sys/ioctl.h>
 
 #include "logger.h"
+#include "io_utils.h"
 #include "non-standard-hbm-repair.h"
 
 extern int page_isolation_threshold;
@@ -278,7 +279,7 @@ static int write_variable(char *name, char *guid, void *value, unsigned long siz
     }
 
     // write to var file
-    writesize = write(fd, buffer, total);
+    writesize = WriteAll(fd, buffer, total);
     if (writesize != total) {
         log(LOG_ERROR, "write %s failed\n", filename);
         goto err;
@@ -358,7 +359,7 @@ static int write_file(char *path, const char *name, unsigned long long value)
 {
     char fname[MAX_PATH];
     char buf[20];
-    int ret;
+    ssize_t ret;
     int fd;
 
     snprintf(fname, MAX_PATH, "%s/%s", path, name);
@@ -371,17 +372,14 @@ static int write_file(char *path, const char *name, unsigned long long value)
     }
 
     snprintf(buf, sizeof(buf), "0x%llx\n", value);
-    ret = write(fd, buf, strlen(buf));
-    if (ret <= 0)
+    ret = WriteAll(fd, buf, strlen(buf));
+    if (ret < 0) {
         log(LOG_WARNING, "HBM: Failed to set %s (0x%llx): %s\n",
                     fname, value, strerror(errno));
-
-    close(fd);
-    if (ret == 0) {
-        ret = -EINVAL;
-    } else if (ret < 0) {
         ret = -errno;
     }
+
+    close(fd);
     return ret;
 }
 
@@ -499,7 +497,7 @@ static int notice_BMC(const struct hisi_common_error_section *err, uint8_t repai
 
     log(LOG_DEBUG, "Send msg to sysSentry, bmc msg is %s\n", bmc_msg);
 
-    if (write(sockfd, bmc_msg, strlen(bmc_msg)) <= 0) {
+    if (WriteAll(sockfd, bmc_msg, strlen(bmc_msg)) <= 0) {
         log(LOG_ERROR, "Failed to send data to BMC notice socket\n");
         close(sockfd);
         return -1;

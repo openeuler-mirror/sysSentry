@@ -31,9 +31,9 @@ ARCH := $(shell uname -m)
 
 all: lib ebpf hbm_online_repair sentry_msg_monitor bmc_ras_sentry soc_ring_sentry cpu_patrol
 
-lib:libxalarm log
+lib:libxalarm log sentry_io
 
-libxalarm:
+libxalarm: sentry_io
 	cd $(CURLIBDIR) && cmake . -DXD_INSTALL_BINDIR=$(LIBINSTALLDIR) -B build
 	cd $(CURLIBDIR)/build && make
 
@@ -41,16 +41,20 @@ log:
 	cd $(CURSRCDIR)/libsentry/c/log && cmake . -B build
 	cd $(CURSRCDIR)/libsentry/c/log/build && make
 
+sentry_io:
+	cd $(CURSRCDIR)/libsentry/c/io && cmake . -B build
+	cd $(CURSRCDIR)/libsentry/c/io/build && make
+
 ebpf:
 	@if [ -d "$(CURSRCDIR)/services/sentryCollector/ebpf_collector/" ]; then \
 		cd $(CURSRCDIR)/services/sentryCollector/ebpf_collector/ && make;	\
 	fi
 
-cpu_patrol: libxalarm
+cpu_patrol: lib
 	cd $(CURSRCDIR)/sentryPlugins/cpu_sentry/catlib/ && cmake -B ./build/ -S . -DCMAKE_INSTALL_PREFIX=/usr/local
 	cd $(CURSRCDIR)/sentryPlugins/cpu_sentry/catlib/build && make
 
-hbm_online_repair:
+hbm_online_repair: lib
 	cd $(CURSRCDIR)/sentryPlugins/hbm_online_repair/ && make
 
 sentry_msg_monitor: lib
@@ -198,6 +202,9 @@ endif
 	# log utils
 	install -m 550 $(CURSRCDIR)/libsentry/c/log/build/libsentry_log.so $(LIBINSTALLDIR)
 
+	# io utils
+	install -m 550 $(CURSRCDIR)/libsentry/c/io/build/libsentry_io.so $(LIBINSTALLDIR)
+
 ebpf_clean:
 	cd $(CURSRCDIR)/services/sentryCollector/ebpf_collector && make clean
 
@@ -217,6 +224,7 @@ clean: ebpf_clean hbm_clean smm_clean bmc_clean srs_clean
 	rm -rf $(CURLIBDIR)/build
 	rm -rf $(CURSRCDIR)/build
 	rm -rf $(CURSRCDIR)/libsentry/c/log/build
+	rm -rf $(CURSRCDIR)/libsentry/c/io/build
 	rm -rf $(CURSRCDIR)/sentryPlugins/bmc_ras_sentry/build/
 	rm -rf $(CURSRCDIR)/sentryPlugins/cpu_sentry/catlib/build/
 	rm -rf $(CURSRCDIR)/syssentry.egg-info
@@ -235,6 +243,7 @@ uninstall:
 	rm -rf $(LIBINSTALLDIR)/libxalarm.so
 	rm -rf $(INCLUDEDIR)/xalarm
 	rm -rf $(LIBINSTALLDIR)/libsentry_log.so
+	rm -rf $(LIBINSTALLDIR)/libsentry_io.so
 	rm -rf $(ETCDIR)/sysSentry
 	rm -rf $(ETCDIR)/hbm_online_repair.env
 	rm -rf $(ETCDIR)/soc_ring_sentry.env

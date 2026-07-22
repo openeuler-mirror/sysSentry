@@ -41,8 +41,8 @@ from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FA
 from .load_mods import load_tasks, reload_single_mod
 from .heartbeat import (heartbeat_timeout_chk, heartbeat_recv)
 from .result import RESULT_MSG_HEAD_LEN, RESULT_MSG_MAGIC_LEN, RESULT_MAGIC
-from .result import RESULT_LEVEL_ERR_MSG_DICT, ResultLevel
-from .utils import get_current_time_string, MAX_MSG_LEN
+from .result import RESULT_LEVEL_ERR_MSG_DICT, RESULT_RESPONSE_MSG_LEN, ResultLevel
+from .utils import get_current_time_string, MAX_MSG_LEN, recv_all
 from .alarm import alarm_register
 
 from xalarm.register_xalarm import xalarm_unregister
@@ -298,7 +298,7 @@ def server_recv(server_socket: socket.socket):
         return
 
     try:
-        msg_head = client_socket.recv(CTL_MSG_HEAD_LEN)
+        msg_head = recv_all(client_socket, CTL_MSG_HEAD_LEN)
         logging.debug("recv msg head: %s", msg_head.decode())
         data_len = msg_head_process(msg_head.decode())
     except (OSError, UnicodeError):
@@ -316,7 +316,7 @@ def server_recv(server_socket: socket.socket):
         logging.error("socket recv data is illegal:%d", data_len)
         return
     try:
-        msg_data = client_socket.recv(data_len)
+        msg_data = recv_all(client_socket, data_len)
         msg_data_decode = msg_data.decode()
         logging.debug("msg data %s", msg_data_decode)
     except (OSError, UnicodeError):
@@ -351,9 +351,9 @@ def server_recv(server_socket: socket.socket):
     logging.debug("res msg %s", res_msg)
 
     try:
-        client_socket.send(res_msg.encode())
+        client_socket.sendall(res_msg.encode())
     except OSError:
-        logging.error("server recv failed")
+        logging.error("server send failed")
     finally:
         client_socket.close()
     return
@@ -369,7 +369,7 @@ def server_result_recv(server_socket: socket.socket):
         return
 
     try:
-        msg_head = client_socket.recv(RESULT_MSG_HEAD_LEN)
+        msg_head = recv_all(client_socket, RESULT_MSG_HEAD_LEN)
         logging.debug("recv msg head: %s", msg_head.decode())
         data_len = result_msg_head_process(msg_head.decode())
     except (OSError, UnicodeError):
@@ -388,7 +388,7 @@ def server_result_recv(server_socket: socket.socket):
         return
 
     try:
-        msg_data = client_socket.recv(data_len)
+        msg_data = recv_all(client_socket, data_len)
         msg_data_decode = msg_data.decode()
         logging.info("server recv result data :\n%s\n", msg_data_decode)
     except (OSError, UnicodeError):
@@ -405,7 +405,8 @@ def server_result_recv(server_socket: socket.socket):
     # response to client
     logging.info("result recv msg head : %s , response ...", process_plugins_result)
     try:
-        client_socket.send(process_plugins_result.encode())
+        process_plugins_result = process_plugins_result.ljust(RESULT_RESPONSE_MSG_LEN)
+        client_socket.sendall(process_plugins_result.encode())
     except OSError:
         logging.warning("server send response to plugins failed")
     finally:
