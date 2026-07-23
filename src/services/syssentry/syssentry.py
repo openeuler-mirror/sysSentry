@@ -476,8 +476,8 @@ def main_loop():
                 else:
                     continue
 
-        except socket.error:
-            pass
+        except socket.error as e:
+            logging.error("epoll socket error: %s", str(e))
 
         # handle period task
         period_tasks_handle()
@@ -539,7 +539,8 @@ def sigchld_handler(signum, _f):
                 else:
                     set_runtime_status(task.name, FAILED_STATUS)
             task.result_info["end_time"] = get_current_time_string()
-        except:
+        except Exception as e:
+            logging.error("Error in sigchld processing: %s", str(e))
             break
 
 
@@ -616,8 +617,8 @@ def main():
         client_id = alarm_register()
         main_loop()
 
-    except Exception as e:
-        logging.error(traceback.format_exc())
+    except Exception:
+        logging.error("Error occurred in the main function of sysSentry service: %s", traceback.format_exc())
     finally:
         if client_id != -1:
             xalarm_unregister(client_id)

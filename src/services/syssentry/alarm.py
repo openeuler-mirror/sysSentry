@@ -22,7 +22,6 @@ import sys
 from xalarm.register_xalarm import xalarm_register,xalarm_getid,xalarm_getlevel,xalarm_gettype,xalarm_gettime,xalarm_getdesc
 from xalarm.xalarm_api import Xalarm
 
-from .global_values import InspectTask
 from .task_map import TasksMap
 
 # 告警ID映射字典，key为插件名，value为告警ID（类型为数字）
@@ -112,7 +111,7 @@ def alarm_register():
             task.alarm_clear_time = int(task.alarm_clear_time)
             alarm_id = task.alarm_id
             alarm_clear_time = task.alarm_clear_time
-            
+
             alarm_list_dict[alarm_id] = []
             task_alarm_id_dict[task_name] = alarm_id
             if alarm_id not in alarm_id_clear_time_dict:
@@ -129,7 +128,18 @@ def alarm_register():
     logging.info('register xalarm: success')
     return clientId
 
-def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Dict]:
+
+def get_alarm_result(task_name: str, time_range: int, detailed: bool):
+    """
+    get task alarm result
+
+    Returns
+    -------
+    list or None
+        - Return a list of alarm info if get alarm result success
+        - Return an empty list [] if alarm info are not found
+        - Return None if an exception or error occurred during the operation
+    """
     alarm_list_lock.acquire()
     try:
         if task_name not in task_alarm_id_dict:
@@ -187,21 +197,27 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool) -> List[Di
             alarm['alarm_info'] = alarm_info
         alarm_list = [alarm for alarm in alarm_list if 'alarm_source' in alarm['alarm_info'] and alarm['alarm_info']['alarm_source'] == task_name]
 
-        alarm_level_mapping = { 
+        alarm_level_mapping = {
                 1: 'MINOR_ALM',
                 2: 'MAJOR_ALM',
                 3: 'CRITICAL_ALM'
-                }   
+                }
 
-        alarm_type_mapping = { 
+        alarm_type_mapping = {
                 1: 'ALARM_TYPE_OCCUR',
                 2: 'ALARM_TYPE_RECOVER'
-                }   
+                }
 
         for alarm in alarm_list:
             alarm['alarm_level'] = alarm_level_mapping.get(alarm['alarm_level'], 'UNKNOWN_LEVEL')
             alarm['alarm_type'] = alarm_type_mapping.get(alarm['alarm_type'], 'UNKNOWN_TYPE')
         return alarm_list
 
+    except json.JSONDecodeError:
+        logging.error("get_alarm_result: json decode error")
+        return None
+    except (IndexError, KeyError, TypeError) as e:
+        logging.error("get_alarm_result failed, error msg is: %s", str(e))
+        return None
     finally:
         alarm_list_lock.release()
