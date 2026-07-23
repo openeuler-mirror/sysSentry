@@ -24,7 +24,6 @@ from .utils import get_current_time_string, run_cmd
 from .mod_status import set_runtime_status
 from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS, WAITING_STATUS
 
-SENTRY_RUN_DIR = "/var/run/sysSentry"
 CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
 SYSSENTRY_CONF_PATH = "/etc/sysSentry"
 INSPECT_CONF_PATH = "/etc/sysSentry/inspect.conf"
@@ -32,7 +31,6 @@ TASK_LOG_DIR = "/var/log/sysSentry"
 DEFAULT_ALARM_CLEAR_TIME = 15
 DEFAULT_CONFLICT = "up"
 
-SENTRY_RUN_DIR_PERM = 0o750
 
 TYPES_SET = ('oneshot', 'period')
 

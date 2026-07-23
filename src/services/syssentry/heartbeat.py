@@ -19,7 +19,6 @@ import logging
 import socket
 
 from .mod_status import set_runtime_status, RUNNING_STATUS, FAILED_STATUS
-from .global_values import SENTRY_RUN_DIR
 from .task_map import TasksMap
 from .utils import MAX_MSG_LEN, recv_all
 

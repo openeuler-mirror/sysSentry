@@ -25,7 +25,6 @@ import select
 
 from .sentry_config import SentryConfig, get_log_level
 from .task_map import TasksMap
-from .global_values import SENTRY_RUN_DIR, SENTRY_RUN_DIR_PERM
 from .cron_process import period_tasks_handle
 from .callbacks import (
     mod_list_show,
@@ -590,10 +589,6 @@ def clean_child():
 def main():
     """main
     """
-    if not os.path.exists(SENTRY_RUN_DIR):
-        os.mkdir(SENTRY_RUN_DIR)
-        os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
-
     log_level = get_log_level()
     log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
 
