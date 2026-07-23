@@ -18,7 +18,6 @@ import argparse
 import json
 import sys
 import logging
-import json
 
 from syssentry.utils import MAX_MSG_LEN, recv_all
 

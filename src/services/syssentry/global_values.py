@@ -22,7 +22,7 @@ import shlex
 from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
 from .utils import get_current_time_string, run_cmd
 from .mod_status import set_runtime_status
-from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS, WAITING_STATUS
+from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS
 
 CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
 SYSSENTRY_CONF_PATH = "/etc/sysSentry"
@@ -213,6 +213,7 @@ class InspectTask:
         if not res:
             return False
         set_runtime_status(self.name, RUNNING_STATUS)
+        return True
 
     def check_conflict(self):
         logging.debug("load_env_file detail, task_name: %s, conflict: %s, env_file: %s",

@@ -30,7 +30,7 @@ class AlarmRegister:
         self.thread_should_stop = False
 
     def check_params(self) -> bool:
-        if (len(self.id_filter) != MAX_NUM_OF_ALARM_ID):
+        if len(self.id_filter) != MAX_NUM_OF_ALARM_ID:
             sys.stderr.write("check_params: invalid param id_filter\n")
             return False
         
@@ -49,6 +49,7 @@ class AlarmRegister:
             sys.stderr.write("set_id_filter: invalid param id_filter\n")
             return False
         self.id_filter = id_filter
+        return True
 
     def id_is_registered(self, alarm_id) -> bool:
         if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
@@ -72,7 +73,7 @@ class AlarmRegister:
             sock.setblocking(False)
             sock.connect(PATH_REG_ALARM)
             return sock
-        except (IOError, OSError, FileNotFoundError) as e:
+        except (IOError, OSError) as e:
             sock.close()
             sys.stderr.write(f"create_unix_socket: create socket error:{e}\n")
             return None
