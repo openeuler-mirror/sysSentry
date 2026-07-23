@@ -203,7 +203,6 @@ int get_socket_id(int core_id) {
     FILE *file;
     char line[MAX_LINE_LEN];
     int id_pair[PAIR_LEN];
-    int socket_id;
 
     file = popen("lscpu -p=cpu,socket | grep '[0-9]\\+,[0-9]\\+'", "r");
     if (file == NULL) {
@@ -229,15 +228,15 @@ int get_socket_id(int core_id) {
 
 void isolate_cpu_core(core_list_st *isolated_core_list, const core_list_st *fault_list)
 {
-    int ret, core_id, socket_id;
     unsigned int total_core = sysconf(_SC_NPROCESSORS_CONF);
     if (total_core == -1) {
         CAT_LOG_E("Get total cpu cores failed.");
         return;
     }
+
     for (unsigned short i = 0; i < fault_list->current_nums; i++) {
-        core_id = fault_list->order_list[i];
-        socket_id = get_socket_id(core_id);
+        int core_id = fault_list->order_list[i];
+        int socket_id = get_socket_id(core_id);
         // 0核不隔离
         if ((core_id >= total_core) || (core_id == 0)) {
             CAT_LOG_E("Isolate cpu core failed, invalid core id(%u)", core_id);
@@ -259,53 +258,6 @@ void isolate_cpu_core(core_list_st *isolated_core_list, const core_list_st *faul
             CAT_LOG_I("<ISOLATE-CORE>:%d", core_id);
         }
     }
-}
-
-/*
- * 功能说明：把列表1,2,3,10,22,23,24转换成"1-3,10,22,24"形式字符串
- */
-static cat_return_t get_core_list_str(const core_list_st *core_list, char *out_str, unsigned short out_str_len)
-{
-    if (core_list->current_nums == 0) {
-        *out_str = '\0';
-        return CAT_OK;
-    }
-
-    char buf[PATROL_RESULT_LEN] = {0};
-    char tmp_buf[PATROL_RESULT_LEN] = {0};
-    unsigned int begin_cpuid = core_list->order_list[0];
-    unsigned int end_cpuid = begin_cpuid;
-
-    for (unsigned short i = 1; i < core_list->current_nums; i++) {
-        if (core_list->order_list[i] == (end_cpuid + 1)) {
-            end_cpuid++;
-            continue;
-        }
-
-        if (begin_cpuid == end_cpuid) {
-            (void)snprintf(tmp_buf, sizeof(tmp_buf), "%u", begin_cpuid);
-        } else {
-            (void)snprintf(tmp_buf, sizeof(tmp_buf), "%u-%u", begin_cpuid, end_cpuid);
-        }
-        (void)strncat(buf, tmp_buf, sizeof(buf) - strlen(buf) - 1);
-        (void)strncat(buf, ",", sizeof(buf) - strlen(buf) - 1);
-
-        end_cpuid = core_list->order_list[i];
-        begin_cpuid = end_cpuid;
-    }
-    if (begin_cpuid == end_cpuid) {
-        (void)snprintf(tmp_buf, sizeof(tmp_buf), "%u", begin_cpuid);
-    } else {
-        (void)snprintf(tmp_buf, sizeof(tmp_buf), "%u-%u", begin_cpuid, end_cpuid);
-    }
-    (void)strncat(buf, tmp_buf, sizeof(buf) - strlen(buf) - 1);
-
-    int ret = snprintf(out_str, out_str_len, "%s", buf);
-    if (ret < 0 || ret >= out_str_len) {
-        CAT_LOG_E("snprintf failed");
-        return CAT_ERR;
-    }
-    return CAT_OK;
 }
 
 static cat_return_t get_core_list(const core_list_st *core_list, cpu_set_t *cpu_set)

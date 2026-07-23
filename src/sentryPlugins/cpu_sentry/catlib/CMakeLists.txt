@@ -23,7 +23,7 @@ target_sources(cat-cli PUBLIC ${CLI_SRC})
 TARGET_LINK_LIBRARIES(cat-cli pthread -ldl  cpu_patrol)
 
 set_target_properties(cat-cli PROPERTIES LINK_FLAGS "-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wtrampolines")
-set_target_properties(cat-cli PROPERTIES CMAKE_C_FLAGS "-shared -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -Wall -Werror -g")
+set_target_properties(cat-cli PROPERTIES COMPILE_FLAGS "-shared -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -Wall -Werror -g")
 
 # 安装相关
 install(TARGETS cat-cli

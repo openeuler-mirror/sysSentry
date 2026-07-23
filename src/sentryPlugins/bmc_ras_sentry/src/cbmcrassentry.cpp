@@ -929,7 +929,7 @@ std::string CBMCRasSentry::GetHardwareSNByIPMI(const IPMIEvent& event)
             return "";
         }
 
-        for (int i = 4; i < hexBytes.size(); i++) {
+        for (size_t i = 4; i < hexBytes.size(); i++) {
             std::string asciiStr;
             if (HexAsciiToChar(hexBytes[i], asciiStr)) {
                 hardwareSN += asciiStr;

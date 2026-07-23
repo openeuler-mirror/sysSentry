@@ -302,21 +302,19 @@ cat_return_t lib_cpu_patrol_start(const char *cpumask, int cpu_utility, const in
     return ret;
 }
 
-cat_return_t lib_cpu_patrol_stop(void)
+void lib_cpu_patrol_stop(int sig)
 {
     puts("system will stop cpu patrol soon");
     // 正在停止巡检，返回成功
     if (pthread_mutex_trylock(&g_stop_mutex) != 0) {
-        return CAT_OK;
+        return;
     }
 
-    cat_return_t ret = stop();
+    stop();
 
     if (pthread_mutex_unlock(&g_stop_mutex) != 0) {
         CAT_LOG_E("pthread_mutex_unlock g_stop_mutex failed.");
     }
-
-    return ret;
 }
 
 

@@ -69,8 +69,6 @@ static const struct argp_option opts[] = {
 };
 
 static error_t parse_arg(int key, char *arg, struct argp_state *state) {
-    static int pos_args; 
-
     switch (key) { 
     case 'h': 
         argp_state_help(state, stderr, ARGP_HELP_STD_HELP); 
@@ -334,19 +332,15 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
 }
 
 int main(int argc, char **argv) {
-    struct partitions *partitions = NULL; 
-    const struct partition *partition; 
     static const struct argp argp = { 
         .options = opts, 
         .parser = parse_arg, 
         .doc = argp_program_doc, 
     };
     int err; 
-    char filename[256];
     DIR *dir;
     struct dirent *entry;
     char path[1024];
-    int major, minor;
     DeviceInfo devices[MAP_SIZE];
     int device_count = 0;
     struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY}; 
