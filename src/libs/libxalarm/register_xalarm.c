@@ -90,6 +90,11 @@ static int create_unix_socket(const char *path)
         return -1;
     }
 
+    if (access(DIR_XALARM, F_OK) == -1) {
+        printf("xalarm directory access failed\n");
+        return -1;
+    }
+
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         printf("socket failed:%s\n", strerror(errno));
@@ -99,11 +104,6 @@ static int create_unix_socket(const char *path)
     ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     if (ret == -1) {
         printf("%s: fcntl setfl failed\n", __func__);
-        goto release_socket;
-    }
-
-    if (access(DIR_XALARM, F_OK) == -1) {
-        printf("xalarm directory %s does not exist, service may not be started\n", DIR_XALARM);
         goto release_socket;
     }
 

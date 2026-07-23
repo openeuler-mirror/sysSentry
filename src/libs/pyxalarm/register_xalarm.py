@@ -64,13 +64,12 @@ class AlarmRegister:
 
     def create_unix_socket(self) -> socket.socket:
         try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.setblocking(False)
-
             if not os.access(DIR_XALARM, os.F_OK):
-                sys.stderr.write(f"xalarm directory {DIR_XALARM} does not exist, service may not be started\n")
+                sys.stderr.write("xalarm directory access failed\n")
                 return None
 
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.setblocking(False)
             sock.connect(PATH_REG_ALARM)
             return sock
         except (IOError, OSError, FileNotFoundError) as e:
