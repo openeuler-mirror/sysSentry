@@ -64,6 +64,7 @@ class AlarmRegister:
         self.callback(alarm_info)
 
     def create_unix_socket(self) -> socket.socket:
+        sock = None
         try:
             if not os.access(DIR_XALARM, os.F_OK):
                 sys.stderr.write("xalarm directory access failed\n")
@@ -74,10 +75,11 @@ class AlarmRegister:
             sock.connect(PATH_REG_ALARM)
             return sock
         except (IOError, OSError) as e:
-            sock.close()
+            if sock is not None:
+                sock.close()
             sys.stderr.write(f"create_unix_socket: create socket error:{e}\n")
             return None
-    
+
     def alarm_recv(self):
         while not self.thread_should_stop:
             try:
