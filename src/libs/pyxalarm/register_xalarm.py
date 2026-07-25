@@ -30,7 +30,7 @@ class AlarmRegister:
         self.thread_should_stop = False
 
     def check_params(self) -> bool:
-        if (len(self.id_filter) != MAX_NUM_OF_ALARM_ID):
+        if len(self.id_filter) != MAX_NUM_OF_ALARM_ID:
             sys.stderr.write("check_params: invalid param id_filter\n")
             return False
         
@@ -49,6 +49,7 @@ class AlarmRegister:
             sys.stderr.write("set_id_filter: invalid param id_filter\n")
             return False
         self.id_filter = id_filter
+        return True
 
     def id_is_registered(self, alarm_id) -> bool:
         if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
@@ -63,21 +64,22 @@ class AlarmRegister:
         self.callback(alarm_info)
 
     def create_unix_socket(self) -> socket.socket:
+        sock = None
         try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.setblocking(False)
-
             if not os.access(DIR_XALARM, os.F_OK):
-                sys.stderr.write(f"xalarm directory {DIR_XALARM} does not exist, service may not be started\n")
+                sys.stderr.write("xalarm directory access failed\n")
                 return None
 
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.setblocking(False)
             sock.connect(PATH_REG_ALARM)
             return sock
-        except (IOError, OSError, FileNotFoundError) as e:
-            sock.close()
+        except (IOError, OSError) as e:
+            if sock is not None:
+                sock.close()
             sys.stderr.write(f"create_unix_socket: create socket error:{e}\n")
             return None
-    
+
     def alarm_recv(self):
         while not self.thread_should_stop:
             try:

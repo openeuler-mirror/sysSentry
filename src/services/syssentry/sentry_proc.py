@@ -22,6 +22,36 @@ MIN_CLIENT_JETTY_ID = 3
 MAX_CLIENT_JETTY_ID = 1023
 MAX_URMA_EID_LENGTH = 39
 
+ALLOWED_PROC_DIRS = [
+    "sentry_reporter",
+    "sentry_remote_reporter",
+    "sentry_urma_comm",
+    "sentry_uvb_comm"
+]
+ALLOWED_PROC_NAMES = [
+    # sentry_reporter module proc
+    "ub_mem_fault_with_kill",
+    "ub_mem_fault",
+    "power_off",
+    "oom",
+    "oom_rate_limit",
+    "link_event",
+    # sentry_remote_reporter module proc
+    "cna",
+    "eid",
+    "uvb_comm",
+    "urma_comm",
+    "panic",
+    "panic_timeout",
+    "kernel_reboot",
+    "kernel_reboot_timeout",
+    # sentry_urma_comm module proc
+    "client_info",
+    "heartbeat",
+    # sentry_uvb_comm module proc
+    "server_cna",
+]
+
 
 def read_proc_file(proc_dir, proc_name):
     """
@@ -35,6 +65,9 @@ def read_proc_file(proc_dir, proc_name):
         str: the content of the proc file (stripped), or None if read failed
     """
     try:
+        if proc_dir not in ALLOWED_PROC_DIRS or proc_name not in ALLOWED_PROC_NAMES:
+            logging.error(f"Invalid proc path: /proc/{proc_dir}/{proc_name}")
+            return None
         with open("/proc/%s/%s" % (proc_dir, proc_name), mode="r") as f:
             return f.read().strip()
     except FileNotFoundError:
@@ -56,6 +89,9 @@ def write_proc_file(proc_dir, proc_name, proc_value):
     """
     exit_code = 0
     try:
+        if proc_dir not in ALLOWED_PROC_DIRS or proc_name not in ALLOWED_PROC_NAMES:
+            logging.error(f"Invalid proc path: /proc/{proc_dir}/{proc_name}")
+            return -1
         with open("/proc/%s/%s" % (proc_dir, proc_name), mode="w") as f:
             f.write(str(proc_value) + "\n")
     except PermissionError as e:

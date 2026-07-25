@@ -25,7 +25,6 @@ import select
 
 from .sentry_config import SentryConfig, get_log_level
 from .task_map import TasksMap
-from .global_values import SENTRY_RUN_DIR, SENTRY_RUN_DIR_PERM
 from .cron_process import period_tasks_handle
 from .callbacks import (
     mod_list_show,
@@ -477,8 +476,8 @@ def main_loop():
                 else:
                     continue
 
-        except socket.error:
-            pass
+        except socket.error as e:
+            logging.error("epoll socket error: %s", str(e))
 
         # handle period task
         period_tasks_handle()
@@ -540,7 +539,8 @@ def sigchld_handler(signum, _f):
                 else:
                     set_runtime_status(task.name, FAILED_STATUS)
             task.result_info["end_time"] = get_current_time_string()
-        except:
+        except Exception as e:
+            logging.error("Error in sigchld processing: %s", str(e))
             break
 
 
@@ -590,10 +590,6 @@ def clean_child():
 def main():
     """main
     """
-    if not os.path.exists(SENTRY_RUN_DIR):
-        os.mkdir(SENTRY_RUN_DIR)
-        os.chmod(SENTRY_RUN_DIR, mode=SENTRY_RUN_DIR_PERM)
-
     log_level = get_log_level()
     log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
 
@@ -621,8 +617,8 @@ def main():
         client_id = alarm_register()
         main_loop()
 
-    except Exception as e:
-        logging.error(traceback.format_exc())
+    except Exception:
+        logging.error("Error occurred in the main function of sysSentry service: %s", traceback.format_exc())
     finally:
         if client_id != -1:
             xalarm_unregister(client_id)

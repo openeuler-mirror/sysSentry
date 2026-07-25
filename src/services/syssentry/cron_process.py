@@ -137,6 +137,8 @@ class PeriodTask(InspectTask):
         res, _ = self.start()
         if res:
             set_runtime_status(self.name, RUNNING_STATUS)
+            return True
+        return False
 
 
 def period_tasks_handle():

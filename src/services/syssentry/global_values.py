@@ -22,9 +22,8 @@ import shlex
 from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
 from .utils import get_current_time_string, run_cmd
 from .mod_status import set_runtime_status
-from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS, WAITING_STATUS
+from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS
 
-SENTRY_RUN_DIR = "/var/run/sysSentry"
 CTL_SOCKET_PATH = "/var/run/sysSentry/control.sock"
 SYSSENTRY_CONF_PATH = "/etc/sysSentry"
 INSPECT_CONF_PATH = "/etc/sysSentry/inspect.conf"
@@ -32,7 +31,6 @@ TASK_LOG_DIR = "/var/log/sysSentry"
 DEFAULT_ALARM_CLEAR_TIME = 15
 DEFAULT_CONFLICT = "up"
 
-SENTRY_RUN_DIR_PERM = 0o750
 
 TYPES_SET = ('oneshot', 'period')
 
@@ -215,6 +213,7 @@ class InspectTask:
         if not res:
             return False
         set_runtime_status(self.name, RUNNING_STATUS)
+        return True
 
     def check_conflict(self):
         logging.debug("load_env_file detail, task_name: %s, conflict: %s, env_file: %s",

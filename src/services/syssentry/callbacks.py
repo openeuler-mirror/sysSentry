@@ -70,7 +70,10 @@ def task_get_alarm(data):
     if not task.load_enabled:
         return "failed", f"mod {task_name} is not enabled"
 
-    return "success", get_alarm_result(task_name, time_range, detailed)
+    alarm_info = get_alarm_result(task_name, time_range, detailed)
+    if alarm_info is None:
+        return "failed", f"cannot get valid alarm msg for task {task_name}"
+    return "success", alarm_info
 
 def task_stop(mod_name):
     """stop by mod name"""
