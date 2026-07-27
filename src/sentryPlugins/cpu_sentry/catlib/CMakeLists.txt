@@ -4,6 +4,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED OFF)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
 set(CMAKE_SKIP_RPATH TRUE)
+SET(CMAKE_VERBOSE_MAKEFILE ON)
+
 # 父子模块都可以直接<include>如下路径下的头文件
 include_directories(PUBLIC
         ${PROJECT_SOURCE_DIR}
