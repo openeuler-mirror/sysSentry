@@ -190,6 +190,7 @@ endif
 	install -m 644 src/libsentry/python/pySentryCollector/collect_plugin.py $(PYDIR)/sentryCollector
 
 	# libxalarm
+	which chrpath >/dev/null 2>&1 && chrpath -d $(CURLIBDIR)/build/libxalarm/libxalarm.so || true
 	install -m 550 $(CURLIBDIR)/build/libxalarm/libxalarm.so $(LIBINSTALLDIR)
 
 	# libxalarm-devel
