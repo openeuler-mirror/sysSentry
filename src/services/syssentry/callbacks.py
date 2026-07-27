@@ -56,13 +56,18 @@ def task_get_alarm(data):
     """get alarm by mod name"""
     try:
         if not isinstance(data, dict):
-            return "failed", "data type error, current type is %s" % type(dict)
+            return "failed", "data type error, current type is %s" % type(data)
         task_name, time_range, detailed = None, None, None
         task_name = data['task_name']
-        time_range = data['time_range']
-        detailed = data['detailed']
-    except KeyError:
-        logging.debug("the expected key does not exist in the dictionary")
+        time_range = int(data['time_range'])
+        detailed = bool(data['detailed'])
+    except (KeyError, ValueError, TypeError) as e:
+        logging.error("Data parsing failed with Error: %s", str(e))
+        return "failed", "the expected key does not exist in the dictionary"
+
+    # The 'detailed' parameter is nullable; it accepts either None or a valid value
+    if task_name is None or time_range is None:
+        return "failed", "Required param task_name is None or time_range is missing."
 
     task = TasksMap.get_task_by_name(task_name)
     if not task:
