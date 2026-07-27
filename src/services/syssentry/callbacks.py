@@ -15,7 +15,6 @@ callback methods.
 import json
 import logging
 
-
 from .task_map import TasksMap, ONESHOT_TYPE, PERIOD_TYPE
 from .mod_status import EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS, RUNNING_STATUS, WAITING_STATUS
 from .mod_status import set_runtime_status
@@ -95,7 +94,9 @@ def task_stop(mod_name):
         if task.runtime_status == WAITING_STATUS:
             set_runtime_status(task.name, EXITED_STATUS)
             return "success", ""
-        task.stop()
+        result, msg = task.stop()
+        ret = "success" if result else "failed"
+        res = msg
     else:
         ret = "failed"
         res = "task not exist"

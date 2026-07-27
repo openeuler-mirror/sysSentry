@@ -19,7 +19,7 @@ import logging
 import subprocess
 import shlex
 
-from .utils import get_current_time_string
+from .utils import get_current_time_string, validate_command_string
 from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
 from .global_values import InspectTask
 from .task_map import TasksMap, PERIOD_TYPE
@@ -39,16 +39,29 @@ class PeriodTask(InspectTask):
 
     def stop(self):
         self.period_enabled = False
-        cmd_list = shlex.split(self.task_stop)
-        if cmd_list[-1] == "$pid":
-            cmd_list[-1] = str(self.pid)
         try:
+            if not validate_command_string(self.task_stop):
+                return False, "task_stop cmd validate failed"
+
+            if self.runtime_status != RUNNING_STATUS:
+                return False, "task %s is not running, stop failed" % self.name
+
+            cmd_list = shlex.split(self.task_stop)
+            if cmd_list[-1] == "$pid":
+                cmd_list[-1] = str(self.pid)
             subprocess.Popen(cmd_list, stdout=subprocess.PIPE, close_fds=True)
+            return True, "task %s stop success" % self.name
         except OSError:
             logging.error("task stop Popen failed, invalid cmd")
-        self.post()
-        if self.runtime_status != RUNNING_STATUS:
-            self.runtime_status = EXITED_STATUS
+            return False, "Failed to execute the stop command for task %s" % self.name
+        except Exception as e:
+            logging.error("task %s stop failed with an exception: %s", self.name, str(e))
+            return False, "Failed to execute the stop command for task %s" % self.name
+        finally:
+            self.post()
+            if self.runtime_status != RUNNING_STATUS:
+                self.runtime_status = EXITED_STATUS
+
 
     def start(self):
         """
@@ -60,6 +73,9 @@ class PeriodTask(InspectTask):
         self.result_info["end_time"] = ""
         self.result_info["error_msg"] = ""
         self.result_info["details"] = {}
+
+        if not validate_command_string(self.task_start):
+            return False, "task_start cmd validate failed"
 
         if not self.pre_done:
             pre_res = self.pre()

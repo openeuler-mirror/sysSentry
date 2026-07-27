@@ -16,6 +16,8 @@ import logging
 import socket
 import subprocess
 import shlex
+import re
+
 from datetime import datetime, timezone, timedelta
 
 # Security: Maximum allowed message length to prevent DoS attacks
@@ -34,6 +36,11 @@ ENV_BLACKLIST_PATTERNS = [
     r"^HOME$",               # 可能改变配置文件读取路径
     r"^HISTFILE$",           # 可能覆盖历史记录
 ]
+
+CMD_STRING_WHITELIST = ["kill $pid"]
+
+# Base safe characters: letters, numbers, spaces, comma, hyphens, underscore, dot, slash
+CMD_SAFE_PATTERN = re.compile(r'^[a-zA-Z0-9 ,_./-]+$')
 
 
 def recv_all(sock: socket.socket, length: int) -> bytes:
@@ -62,14 +69,72 @@ def recv_all(sock: socket.socket, length: int) -> bytes:
     return data
 
 
+def validate_command_string(cmd: str) -> bool:
+    """
+    Validate if a command string contains only safe characters
+
+    Args:
+        cmd: Command string to validate
+
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    # 1. Type check
+    if not isinstance(cmd, str):
+        return False
+
+    # 2. Empty string check
+    if not cmd or not cmd.strip():
+        return False
+
+    # 3. whitelist check
+    if cmd in CMD_STRING_WHITELIST:
+        return True
+
+    # 4. Consecutive dots are not allowed, e.g., '..'
+    if ".." in cmd:
+        return False
+
+    # 5. Additional security checks: check for dangerous patterns
+    # Check for dangerous command combinations
+    dangerous_patterns = [
+        r'[;&|`]',           # Shell operators
+        r'\$\(',             # Command substitution
+        r'\(\(',             # Arithmetic operations
+        r'\$\{',             # Variable substitution
+        r'\n',               # Newline
+        r'\r',               # Carriage return
+        r'\t',               # Tab
+        r'\s+\|\s+',         # Pipe operator
+        r'\s+>\s+',          # Output redirection
+        r'\s+<\s+',          # Input redirection
+        r'&&',               # Logical AND
+        r'\|\|',             # Logical OR
+        r'\\',               # Backslash escape
+        r'\$\w+',            # Variable reference
+    ]
+    for dangerous in dangerous_patterns:
+        if re.search(dangerous, cmd):
+            return False
+
+    # 6. Build allowed character set
+    if not CMD_SAFE_PATTERN.match(cmd):
+        return False
+    return True
+
+
 def run_cmd(cmd):
     """run cmd use subprocess.run"""
+    if not validate_command_string(cmd):
+        return None
     result = subprocess.run(shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     return result
 
 
 def run_popen(cmd):
     """run cmd use subprocess.Popen"""
+    if not validate_command_string(cmd):
+        return None
     pipe = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return pipe
 
@@ -77,6 +142,8 @@ def run_popen(cmd):
 def is_exists_cmd(cmd: str) -> bool:
     """Checking Whether a Command Exists in the Environment"""
     res = run_cmd(f"which {cmd}")
+    if not res:
+        return False
     if res.returncode:
         return False
     return True
@@ -88,6 +155,8 @@ def get_process_pid(process_name):
     if "/" in process_name:
         process_name = process_name.split("/")[-1]
     res = run_cmd('pgrep -x {}'.format(process_name))
+    if not res:
+        return process_pid
     if res.returncode == 0:
         process_pid = res.stdout.decode().strip()
         try:
