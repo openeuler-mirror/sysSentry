@@ -611,6 +611,12 @@ static bool is_valid_task_name(const char *task_name)
 int report_result(const char *task_name, enum RESULT_LEVEL result_level, const char *report_data)
 {
     int ret = RETURN_CODE_FAIL, result_msg_len;
+
+    if (task_name == NULL || report_data == NULL) {
+        fprintf(stderr, "%s: task_name or report_data is NULL\n", __func__);
+        return ret;
+    }
+
     if (result_level < 0 || result_level >= RESULT_LEVEL_NUM) {
         fprintf(stderr, "result_level (%d) is invalid, it must be in [0-5]\n", result_level);
         return ret;
