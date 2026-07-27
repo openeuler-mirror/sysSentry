@@ -657,7 +657,7 @@ int report_result(const char *task_name, enum RESULT_LEVEL result_level, const c
                 "%s%04d%s", RESULT_INFO_HEAD_MAGIC, send_data_len, result_json_string);
     if (result_msg_len < 0 || result_msg_len >= RESULT_INFO_HEAD_LEN + send_data_len + 1) {
         fprintf(stderr, "%s: failed to format message\n", __func__);
-        goto free_json;
+        goto free_msg;
     }
     if (send_data_to_socket(RESULT_REPORT_SOCKET, message)) {
         fprintf(stderr, "%s: failed to send result message (%s) to sysSentry!\n", __func__, message);
