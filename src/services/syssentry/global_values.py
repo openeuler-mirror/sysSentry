@@ -20,7 +20,11 @@ import os
 import shlex
 
 from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
-from .utils import get_current_time_string, run_cmd
+from .utils import (
+    get_current_time_string,
+    run_cmd,
+    is_dangerous_env_key
+)
 from .mod_status import set_runtime_status
 from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS
 
@@ -255,6 +259,9 @@ class InspectTask:
                 if not key or not value:
                     logging.error("env_file = %s format is error, use default environ", self.env_file)
                     return
+                if is_dangerous_env_key(key):
+                    logging.warning("env %s is unsafe and user configuration is forbidden. ignore it", key)
+                    continue
                 self.environ_conf[key] = value
                 logging.debug("environ key=%s, value=%s", key, value)
 

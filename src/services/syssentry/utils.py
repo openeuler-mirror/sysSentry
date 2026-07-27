@@ -21,6 +21,20 @@ from datetime import datetime, timezone, timedelta
 # Security: Maximum allowed message length to prevent DoS attacks
 MAX_MSG_LEN = 10 * 1024 * 1024  # 10MB
 
+ENV_BLACKLIST_PATTERNS = [
+    r"^LD_",                 # LD_PRELOAD, LD_LIBRARY_PATH 等（可劫持动态链接）
+    r"^BASH_ENV$",           # Bash 自动执行脚本
+    r"^ENV$",                # POSIX sh 自动执行脚本
+    r"^IFS$",                # Shell 内部字段分隔符（可能破坏命令解析）
+    r"^PATH$",               # 危险！可让子进程执行恶意程序
+    r"^PYTHONPATH$",         # 可让Python导入恶意模块
+    r"^NODE_PATH$",          # Node.js 模块路径劫持
+    r"^PERL5LIB$",           # Perl 库路径劫持
+    r"^TMPDIR$",             # 某些场景下可能导致文件覆盖
+    r"^HOME$",               # 可能改变配置文件读取路径
+    r"^HISTFILE$",           # 可能覆盖历史记录
+]
+
 
 def recv_all(sock: socket.socket, length: int) -> bytes:
     """Receive exactly `length` bytes from the socket.
@@ -106,3 +120,11 @@ def execute_command(cmd_list):
         return process.stdout
     except OSError:
         logging.error("failed to execute command")
+
+
+def is_dangerous_env_key(env_name):
+    """Check whether the env is in the blacklist."""
+    for pattern in ENV_BLACKLIST_PATTERNS:
+        if re.match(pattern, env_name, re.IGNORECASE):
+            return True
+    return False
