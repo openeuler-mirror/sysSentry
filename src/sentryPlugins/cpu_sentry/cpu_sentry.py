@@ -206,6 +206,8 @@ def main():
             sys.exit(0)
 
         cpu_task_process_pipe = run_popen(cpu_sentry_task_cmd)
+        if not cpu_task_process_pipe:
+            raise ValueError("An exception occurred during command execution, and run_popen returned None.")
         stdout, _ = cpu_task_process_pipe.communicate()
         logging.debug("task output is as follows: \n %s", stdout)
         cpu_sentry_task.handle_cpu_output(stdout)

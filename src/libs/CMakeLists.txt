@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.12.1)
 project(libxalarm)
  
-SET(CMAKE_VERBOSE_MAKEFILE OFF)
+SET(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
 
 add_subdirectory(libxalarm)

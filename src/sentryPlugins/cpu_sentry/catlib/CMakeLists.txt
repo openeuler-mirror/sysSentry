@@ -4,6 +4,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED OFF)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
 set(CMAKE_SKIP_RPATH TRUE)
+SET(CMAKE_VERBOSE_MAKEFILE ON)
+
 # 父子模块都可以直接<include>如下路径下的头文件
 include_directories(PUBLIC
         ${PROJECT_SOURCE_DIR}
@@ -22,8 +24,8 @@ target_sources(cat-cli PUBLIC ${CLI_SRC})
 # cpu_patrol以独立的so链接
 TARGET_LINK_LIBRARIES(cat-cli pthread -ldl  cpu_patrol)
 
-set_target_properties(cat-cli PROPERTIES LINK_FLAGS "-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wtrampolines")
-set_target_properties(cat-cli PROPERTIES COMPILE_FLAGS "-shared -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -Wall -Werror -g")
+set_target_properties(cat-cli PROPERTIES LINK_FLAGS "-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack")
+set_target_properties(cat-cli PROPERTIES COMPILE_FLAGS "-shared -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -Wall -Werror -Wtrampolines -g")
 
 # 安装相关
 install(TARGETS cat-cli

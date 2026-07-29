@@ -15,7 +15,6 @@ callback methods.
 import json
 import logging
 
-
 from .task_map import TasksMap, ONESHOT_TYPE, PERIOD_TYPE
 from .mod_status import EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS, RUNNING_STATUS, WAITING_STATUS
 from .mod_status import set_runtime_status
@@ -56,13 +55,18 @@ def task_get_alarm(data):
     """get alarm by mod name"""
     try:
         if not isinstance(data, dict):
-            return "failed", "data type error, current type is %s" % type(dict)
+            return "failed", "data type error, current type is %s" % type(data)
         task_name, time_range, detailed = None, None, None
         task_name = data['task_name']
-        time_range = data['time_range']
-        detailed = data['detailed']
-    except KeyError:
-        logging.debug("the expected key does not exist in the dictionary")
+        time_range = int(data['time_range'])
+        detailed = bool(data['detailed'])
+    except (KeyError, ValueError, TypeError) as e:
+        logging.error("Data parsing failed with Error: %s", str(e))
+        return "failed", "the expected key does not exist in the dictionary"
+
+    # The 'detailed' parameter is nullable; it accepts either None or a valid value
+    if task_name is None or time_range is None:
+        return "failed", "Required param task_name is None or time_range is missing."
 
     task = TasksMap.get_task_by_name(task_name)
     if not task:
@@ -90,7 +94,9 @@ def task_stop(mod_name):
         if task.runtime_status == WAITING_STATUS:
             set_runtime_status(task.name, EXITED_STATUS)
             return "success", ""
-        task.stop()
+        result, msg = task.stop()
+        ret = "success" if result else "failed"
+        res = msg
     else:
         ret = "failed"
         res = "task not exist"

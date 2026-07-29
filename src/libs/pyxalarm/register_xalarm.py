@@ -19,6 +19,8 @@ PATH_REPORT_ALARM = "/var/run/xalarm/report"
 TIME_UNIT_MILLISECONDS = 1000
 ALARM_REGISTER_INFO = None
 
+_alarm_lock = threading.Lock()
+
 
 class AlarmRegister:
     def __init__(self, id_filter: list, callback: callable):
@@ -117,45 +119,50 @@ class AlarmRegister:
 def xalarm_register(callback: callable, id_filter: list) -> int:
     global ALARM_REGISTER_INFO
 
-    if ALARM_REGISTER_INFO is not None:
-        sys.stderr.write("xalarm_register: alarm has registered\n")
-        return -1
+    with _alarm_lock:
+        if ALARM_REGISTER_INFO is not None:
+            sys.stderr.write("xalarm_register: alarm has registered\n")
+            return -1
 
-    ALARM_REGISTER_INFO = AlarmRegister(id_filter, callback)
-    if not ALARM_REGISTER_INFO.check_params():
-        return -1
+        ALARM_REGISTER_INFO = AlarmRegister(id_filter, callback)
+        if not ALARM_REGISTER_INFO.check_params():
+            ALARM_REGISTER_INFO = None
+            return -1
 
-    ALARM_REGISTER_INFO.start_thread()
-
+        ALARM_REGISTER_INFO.start_thread()
     return 0
 
 
 def xalarm_unregister(clientId: int) -> None:
     global ALARM_REGISTER_INFO
-    if clientId < 0:
-        sys.stderr.write("xalarm_unregister: invalid client\n")
-        return
+
+    with _alarm_lock:
+        if clientId < 0:
+            sys.stderr.write("xalarm_unregister: invalid client\n")
+            return
     
-    if ALARM_REGISTER_INFO is None:
-        sys.stderr.write("xalarm_unregister: alarm has not registered\n")
-        return
+        if ALARM_REGISTER_INFO is None:
+            sys.stderr.write("xalarm_unregister: alarm has not registered\n")
+            return
     
-    ALARM_REGISTER_INFO.stop_thread()
-    ALARM_REGISTER_INFO = None
+        ALARM_REGISTER_INFO.stop_thread()
+        ALARM_REGISTER_INFO = None
 
 
 def xalarm_upgrade(clientId: int, id_filter: list) -> bool:
     global ALARM_REGISTER_INFO
-    if clientId < 0:
-        sys.stderr.write("xalarm_upgrade: invalid client\n")
-        return False
-    if ALARM_REGISTER_INFO is None:
-        sys.stderr.write("xalarm_upgrade: alarm has not registered\n")
-        return False
-    if ALARM_REGISTER_INFO.thread_should_stop:
-        sys.stderr.write("xalarm_upgrade: upgrade failed, alarm thread has stopped\n")
-        return False
-    ALARM_REGISTER_INFO.id_filter = id_filter
+
+    with _alarm_lock:
+        if clientId < 0:
+            sys.stderr.write("xalarm_upgrade: invalid client\n")
+            return False
+        if ALARM_REGISTER_INFO is None:
+            sys.stderr.write("xalarm_upgrade: alarm has not registered\n")
+            return False
+        if ALARM_REGISTER_INFO.thread_should_stop:
+            sys.stderr.write("xalarm_upgrade: upgrade failed, alarm thread has stopped\n")
+            return False
+        ALARM_REGISTER_INFO.id_filter = id_filter
     return True
 
 

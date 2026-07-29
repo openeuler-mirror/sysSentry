@@ -20,7 +20,12 @@ import os
 import shlex
 
 from .result import ResultLevel, RESULT_LEVEL_ERR_MSG_DICT
-from .utils import get_current_time_string, run_cmd
+from .utils import (
+    get_current_time_string,
+    run_cmd,
+    is_dangerous_env_key,
+    validate_command_string
+)
 from .mod_status import set_runtime_status
 from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS
 
@@ -95,13 +100,27 @@ class InspectTask:
         if self.task_pre is None:
             return 0
         pre_cmd_list = self.task_pre.split(";")
+        pre_success = True
         for pre_cmd_i in pre_cmd_list:
-            result = run_cmd(pre_cmd_i)
-            if result.stderr:
-                logging.error("task %s pre cmd (%s) execute failed, error msg is %s",
-                              self.name, pre_cmd_i, result.stderr)
-                self.runtime_status = FAILED_STATUS
+            try:
+                result = run_cmd(pre_cmd_i)
+                if not result:
+                    pre_success = False
+                    logging.error("task %s pre cmd (%s) execute failed, run_cmd() returned None",
+                                  self.name, pre_cmd_i)
+                    return -1
+                if result.stderr:
+                    pre_success = False
+                    logging.error("task %s pre cmd (%s) execute failed, error msg is %s",
+                                  self.name, pre_cmd_i, result.stderr)
+                    return -1
+            except Exception as e:
+                pre_success = False
+                logging.error("task %s pre failed with an exception: %s", self.name, str(e))
                 return -1
+            finally:
+                if not pre_success:
+                    self.runtime_status = FAILED_STATUS
         self.pre_done = True
         logging.info(f"task {self.name} pre cmd success")
         return 0
@@ -116,11 +135,21 @@ class InspectTask:
         post_success = True
         post_cmd_list = self.task_post.split(";")
         for post_cmd_i in post_cmd_list:
-            result = run_cmd(post_cmd_i)
-            if result.stderr:
+            try:
+                result = run_cmd(post_cmd_i)
+                if not result:
+                    post_success = False
+                    logging.error("task %s post cmd (%s) execute failed, run_cmd returned None",
+                                    self.name, post_cmd_i)
+                    continue
+                if result.stderr:
+                    post_success = False
+                    logging.error("task %s post cmd (%s) execute failed, error msg is %s",
+                                    self.name, post_cmd_i, result.stderr)
+                    continue
+            except Exception as e:
                 post_success = False
-                logging.warning("task %s post cmd (%s) execute failed, error msg is %s",
-                                self.name, post_cmd_i, result.stderr)
+                logging.error("task %s post failed with an exception: %s", self.name, str(e))
         if post_success:
             logging.info(f"task {self.name} post cmd success")
         return 0
@@ -135,6 +164,9 @@ class InspectTask:
         self.result_info["end_time"] = ""
         self.result_info["error_msg"] = ""
         self.result_info["details"] = {}
+
+        if not validate_command_string(self.task_start):
+            return False, "task_start cmd validate failed"
 
         if not self.pre_done:
             pre_res = self.pre()
@@ -185,14 +217,25 @@ class InspectTask:
     def stop(self):
         """stop"""
         self.period_enabled = False
-        if self.runtime_status == RUNNING_STATUS:
+        try:
+            if not validate_command_string(self.task_stop):
+                return False, "task_stop cmd validate failed"
+
+            if self.runtime_status != RUNNING_STATUS:
+                return False, "task %s is not running, stop failed" % self.name
+
             cmd_list = shlex.split(self.task_stop)
             if cmd_list[-1] == "$pid":
                 cmd_list[-1] = str(self.pid)
-            try:
-                subprocess.Popen(cmd_list, stdout=subprocess.PIPE, close_fds=True)
-            except OSError:
-                logging.error("task %s stop Popen failed", self.name)
+            subprocess.Popen(cmd_list, stdout=subprocess.PIPE, close_fds=True)
+            return True, "task %s stop success" % self.name
+        except OSError:
+            logging.error("task stop Popen failed, invalid cmd")
+            return False, "Failed to execute the stop command for task %s" % self.name
+        except Exception as e:
+            logging.error("task %s stop failed with an exception: %s", self.name, str(e))
+            return False, "Failed to execute the stop command for task %s" % self.name
+        finally:
             logging.debug("stop task %s", self.name)
             self.post()
 
@@ -255,6 +298,9 @@ class InspectTask:
                 if not key or not value:
                     logging.error("env_file = %s format is error, use default environ", self.env_file)
                     return
+                if is_dangerous_env_key(key):
+                    logging.warning("env %s is unsafe and user configuration is forbidden. ignore it", key)
+                    continue
                 self.environ_conf[key] = value
                 logging.debug("environ key=%s, value=%s", key, value)
 
