@@ -130,7 +130,10 @@ isentry:
 	@if [ -f "$(CURSRCDIR)/services/sentryCollector/ebpf_collector/ebpf_collector" ]; then \
 		install -m 550 $(CURSRCDIR)/services/sentryCollector/ebpf_collector/ebpf_collector $(BINDIR); \
 	fi
-	
+
+	# rasdaemon
+	install -m 600 $(CURCONFIGDIR)/tasks/rasdaemon.mod $(ETCDIR)/sysSentry/tasks/
+
 	# avg_block_io
 	install -d -m 755 $(PYDIR)/sentryPlugins/avg_block_io
 	install -d -m 755 $(PYDIR)/sentryPlugins/avg_block_io/__pycache__

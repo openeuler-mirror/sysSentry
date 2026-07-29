@@ -106,7 +106,8 @@ sentryctl status <module_name>
 | --- | --- |
 | RUNNING | 巡检任务正在运行  |
 | WAITING | 仅period类型巡检任务可设置此状态，表示period巡检任务等待下一次被调度执行  |
-| EXITED | 巡检任务尚未执行，或者oneshot类型的巡检任务执行结束处于此状态 |
+| EXITED | 巡检任务尚未执行，或者oneshot类型的巡检任务执行结束正常退出处于此状态（退出码为0） |
+| NONZERO_EXITED |oneshot类型的巡检任务执行结束正常退出处于此状态（退出码不为0），只有oneshot类型任务才有此状态 |
 | FAILED | 巡检任务未拉起成功，或者巡检任务未正常退出 |
 
 ### 重载指定任务配置
