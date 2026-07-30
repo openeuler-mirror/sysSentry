@@ -2,7 +2,7 @@ import pytest
 
 from unittest.mock import mock_open, patch
 from syssentry.sentry_config import CpuPluginsParamsConfig
-from syssentry.cpu_sentry import CpuSentry
+from sentryPlugins.cpu_sentry.cpu_sentry import CpuSentry
 
 class TestCaseCpuSentry:
 
