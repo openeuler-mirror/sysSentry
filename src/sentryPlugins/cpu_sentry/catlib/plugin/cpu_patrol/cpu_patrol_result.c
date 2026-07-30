@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <limits.h>
 
-#include "register_xalarm.h"
+#include "cpu_alarm.h"
 #include "cat_structs.h"
 #include "cpu_patrol_result.h"
 #include "io_utils.h"
