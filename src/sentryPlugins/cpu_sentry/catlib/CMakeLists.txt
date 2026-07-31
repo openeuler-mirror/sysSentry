@@ -11,10 +11,6 @@ include_directories(PUBLIC
         ${PROJECT_SOURCE_DIR}
         ${PROJECT_SOURCE_DIR}/plugin/cpu_patrol)
 
-link_directories(
-	${CMAKE_CURRENT_SOURCE_DIR}/../../../libs/build/libxalarm
-)
-
 # 导入子模块
 add_subdirectory(plugin)
 
