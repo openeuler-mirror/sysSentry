@@ -46,6 +46,10 @@ int execute_request(struct catcli_request_body *request_body)
     cat_patrol_module module = request_body->patrol_module;
     if (module == CAT_PATROL_CPU) {
         cpu_set_t *cpu_set = __CPU_ALLOC(MAX_CPU_LOGIC_CORE);
+        if (cpu_set == NULL) {
+            printf("cpu patrol execute failed, out of memory\n");
+            return CAT_ERR;
+        }
         ssize_t size = __CPU_ALLOC_SIZE(MAX_CPU_LOGIC_CORE);
         __CPU_ZERO_S(size, cpu_set);
         int ret = lib_cpu_patrol_start(request_body->module_params, request_body->cpu_utility,
