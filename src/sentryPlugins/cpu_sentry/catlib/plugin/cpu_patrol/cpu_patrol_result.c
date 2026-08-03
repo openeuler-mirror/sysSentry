@@ -79,6 +79,10 @@ static cat_return_t parse_patrol_result(char *buf, core_list_st *fault_list)
         }
         char *sub_save_ptr = NULL;
         char *subSplit = strtok_r(split, line_split, &sub_save_ptr);
+        if (subSplit == NULL) {
+            CAT_LOG_E("invalid cpu info: strtok_r returned NULL for segment '%s'\n", split);
+            return CAT_ERR;
+        }
         int coreid_before = (int) strtol(subSplit, NULL, number_base);
         int coreid_after = -1;
         if (sub_save_ptr) {
