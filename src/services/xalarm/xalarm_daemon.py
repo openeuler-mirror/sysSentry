@@ -31,17 +31,34 @@ PID_FILE_FLOCK = None
 
 def chk_and_set_pidfile():
     """
+    Create PID file atomically (O_EXCL) to prevent TOCTOU race.
+    If file already exists, open without O_EXCL and compete for the lock.
+    Truncate only after the lock is acquired to avoid destroying another
+    instance's PID content.
     :return:
     """
     try:
-        pid_file_fd = open(XALARMD_PID_FILE, 'w')
-        os.chmod(XALARMD_PID_FILE, 0o600)
+        pid_file_fd = os.open(XALARMD_PID_FILE, os.O_CREAT | os.O_WRONLY | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        # File already exists — open without O_EXCL or O_TRUNC and compete for the lock
+        try:
+            pid_file_fd = os.open(XALARMD_PID_FILE, os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        except OSError as e:
+            logging.error("Failed to open pidfile: %s", str(e))
+            return False
+    except OSError as e:
+        logging.error("Failed to create pidfile: %s", str(e))
+        return False
+
+    try:
         fcntl.flock(pid_file_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        pid_file_fd.write(str(os.getpid()))
+        os.ftruncate(pid_file_fd, 0)
+        os.write(pid_file_fd, str(os.getpid()).encode())
         global PID_FILE_FLOCK
         PID_FILE_FLOCK = pid_file_fd
         return True
     except IOError:
+        os.close(pid_file_fd)
         logging.error("Failed to get lock on pidfile")
 
     return False
@@ -56,14 +73,15 @@ def release_pidfile():
     if PID_FILE_FLOCK is not None:
         try:
             fcntl.flock(PID_FILE_FLOCK, fcntl.LOCK_UN)
-            PID_FILE_FLOCK.close()
+            os.close(PID_FILE_FLOCK)
         except (IOError, OSError) as e:
             logging.error("Failed to release PID file lock: %s", str(e))
         finally:
             PID_FILE_FLOCK = None
     try:
-        if os.path.exists(XALARMD_PID_FILE):
-            os.unlink(XALARMD_PID_FILE)
+        os.unlink(XALARMD_PID_FILE)
+    except FileNotFoundError:
+        pass
     except OSError as e:
         logging.error("Failed to remove PID file: %s", str(e))
 
@@ -95,7 +113,7 @@ def daemon_init():
     if not chk_and_set_pidfile():
         logging.error("get pid file lock failed, exist")
         if PID_FILE_FLOCK:
-            PID_FILE_FLOCK.close()
+            os.close(PID_FILE_FLOCK)
         sys.exit(17)
 
     logging.info("xalarm daemon init success")
