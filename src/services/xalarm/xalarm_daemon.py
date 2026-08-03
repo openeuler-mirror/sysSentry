@@ -84,7 +84,7 @@ def daemon_init():
         sys.exit(0)
 
     os.chdir('/')
-    os.umask(0)
+    os.umask(0o077)
     os.setsid()
 
     with open('/dev/null') as read_null, open('/dev/null', 'a+') as write_null:
