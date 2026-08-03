@@ -154,8 +154,15 @@ def monitor_sentry_service():
     bus = dbus.SystemBus()
     systemd = bus.get_object('org.freedesktop.systemd1',
                             '/org/freedesktop/systemd1/unit/sysSentry_2eservice')
+    # 获取 systemd 的唯一总线名称
+    systemd_name = bus.get_name_owner('org.freedesktop.systemd1')
 
-    def on_properties_changed(interface, changed, invalidated):
+    def on_properties_changed(interface, changed, invalidated, sender=None):
+        # 验证信号发送者是否是真正的 systemd
+        if sender != systemd_name:
+            logging.warning(f"Ignoring PropertiesChanged signal from unauthorized sender: {sender}")
+            return
+
         if 'ActiveState' in changed:
             state = changed['ActiveState']
             logging.info("sysSentry service state changed to: %s", state)
@@ -167,9 +174,14 @@ def monitor_sentry_service():
                     clear_enabled_events_state()
                 broadcast_sentry_down(alarm_sock, fd_to_socket, fd_to_socket_lock)
 
-    systemd.connect_to_signal(dbus_interface='org.freedesktop.DBus.Properties',
-                              signal_name='PropertiesChanged',
-                              handler_function=on_properties_changed)
+    bus.add_signal_receiver(
+        handler_function=on_properties_changed,
+        signal_name='PropertiesChanged',
+        dbus_interface='org.freedesktop.DBus.Properties',
+        bus_name='org.freedesktop.systemd1',
+        path='/org/freedesktop/systemd1/unit/sysSentry_2eservice',
+        sender_keyword='sender'
+    )
 
     logging.info("sysSentry service monitoring started")
     loop = GLib.MainLoop()
