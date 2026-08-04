@@ -235,7 +235,7 @@ static void tc_ring_one_space_init(void *base, size_t size)
 
 static bool is_core_invalid(struct tc_ring_one_config *config, int core_id)
 {
-    return config->black_list[core_id] || !is_cpu_online(core_id);
+    return (config->black_list && config->black_list[core_id]) || !is_cpu_online(core_id);
 }
 
 static int tc_ring_one_ctrl_var_init(struct tc_ring_one_config *config)

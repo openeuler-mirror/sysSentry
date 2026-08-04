@@ -31,9 +31,9 @@ install(TARGETS cat-cli
         )
 install(TARGETS cpu_patrol LIBRARY DESTINATION lib)
 
-# 创建软链接
-install(CODE "execute_process(COMMAND ln -sf ${CMAKE_INSTALL_PREFIX}/bin/cat-cli /usr/local/bin/cat-cli)")
-install(CODE "execute_process(COMMAND ln -sf ${CMAKE_INSTALL_PREFIX}/lib/libcpu_patrol.so /lib64/libcpu_patrol.so)")
+# 创建软链接（使用-nf防止解引用已有符号链接，避免TOCTOU竞态替换）
+install(CODE "execute_process(COMMAND ln -snf ${CMAKE_INSTALL_PREFIX}/bin/cat-cli /usr/local/bin/cat-cli)")
+install(CODE "execute_process(COMMAND ln -snf ${CMAKE_INSTALL_PREFIX}/lib/libcpu_patrol.so /lib64/libcpu_patrol.so)")
 
 # 成功安装信息
 install(CODE "MESSAGE(\"[INFO] install successfully, run 'cat-cli -h' to test\")")

@@ -262,8 +262,10 @@ class CollectServer():
         try:
             server_fd = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             server_fd.setblocking(False)
-            if os.path.exists(COLLECT_SOCKET_PATH):
+            try:
                 os.remove(COLLECT_SOCKET_PATH)
+            except FileNotFoundError:
+                pass
 
             server_fd.bind(COLLECT_SOCKET_PATH)
             os.chmod(COLLECT_SOCKET_PATH, 0o600)

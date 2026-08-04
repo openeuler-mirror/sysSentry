@@ -119,7 +119,12 @@ static int handle_file_lock(int fd, bool lock)
 static int check_and_set_pid_file(void)
 {
     int ret, fd;
-    fd = open(PID_FILE_PATH, O_CREAT | O_RDWR, 0600);
+    /* Try exclusive create first to prevent TOCTOU race */
+    fd = open(PID_FILE_PATH, O_CREAT | O_RDWR | O_EXCL | O_NOFOLLOW, 0600);
+    if (fd < 0 && errno == EEXIST) {
+        /* File already exists — open without O_EXCL to compete for the lock */
+        fd = open(PID_FILE_PATH, O_RDWR | O_NOFOLLOW, 0600);
+    }
     if (fd < 0) {
         logging_error("open file %s failed!\n", PID_FILE_PATH);
         return -1;

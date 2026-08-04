@@ -664,7 +664,9 @@ static int hbmc_get_memory_type(char *path)
     }
 
     /* Remove the last '\n' */
-    buf[strlen(buf) - 1] = 0;
+    size_t len = strlen(buf);
+    if (len > 0 && buf[len - 1] == '\n')
+        buf[len - 1] = '\0';
 
     if (strcmp(buf, "HBM") == 0)
         type = HBM_HBM_MEMORY;

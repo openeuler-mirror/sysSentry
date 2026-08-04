@@ -48,6 +48,12 @@ void checkset_cpulist(char *getopt_optarg, catcli_request_body *p_request_body, 
             }
             char *subSavePtr = NULL;
             char *subSplit = strtok_r(split, "-", &subSavePtr);
+            if (subSplit == NULL) {
+                strncpy(errs->cpulist_err,
+                    "\"cpulist\" format error: unexpected '-' delimiter, correct \"-l, --cpulist\"\n",
+                    MAX_ERR_LEN);
+                return;
+            }
             long coreid_before = strtol(subSplit, NULL, DECIMAL);
             long coreid_after = -1;
             if (subSavePtr) {
