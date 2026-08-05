@@ -509,9 +509,7 @@ def release_pidfile():
             PID_FILE_FLOCK = None
     try:
         os.unlink(SYSSENTRY_PID_FILE)
-    except FileNotFoundError:
-        pass
-    except OSError as e:
+    except Exception as e:
         logging.error("Failed to remove PID file: %s", str(e))
 
 
