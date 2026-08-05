@@ -192,10 +192,18 @@ def msg_data_process(msg_data):
 
     cmd_param = data_struct['data']
     logging.debug("msg_data_process cmd_type:%s cmd_param:%s", cmd_type, str(cmd_param))
-    if cmd_type in type_func:
-        ret, res_data = type_func[cmd_type](cmd_param)
-    else:
-        ret, res_data = type_func_void[cmd_type]()
+
+    try:
+        if cmd_type in type_func:
+            ret, res_data = type_func[cmd_type](cmd_param)
+        else:
+            ret, res_data = type_func_void[cmd_type]()
+    except Exception as e:
+        logging.error("%s function failed: %s", cmd_type, str(e))
+        res_msg_struct = {"ret": "failed", "data": "cmd failed, config of the %s.mod may be incorrect" % cmd_param}
+        res_msg = json.dumps(res_msg_struct)
+        return res_msg
+
     logging.debug("msg_data_process res_data:%s",str(res_data))
     res_msg_struct = {"ret": ret, "data": res_data}
     res_msg = json.dumps(res_msg_struct)
