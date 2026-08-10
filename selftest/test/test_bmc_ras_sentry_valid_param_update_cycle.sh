@@ -14,18 +14,30 @@ function pre_test() {
     systemctl restart sysSentry.service
 }
 
+ # Check bmc_ras_sentry status based on BMC accessibility.
+# If ipmitool lan print succeeds (exit code 0), BMC is accessible and the
+# task is expected to be RUNNING; otherwise BMC is inaccessible and the
+# task is expected to be RUNNING or WAITING.
+function expect_bmc_ras_sentry_status() {
+    if ipmitool lan print &> /dev/null; then
+        expect_task_status_in "bmc_ras_sentry" "RUNNING"
+    else
+        expect_task_status_in "bmc_ras_sentry" "RUNNING" "WAITING"
+    fi
+}
+
 function do_test() {
 
-    expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+    expect_bmc_ras_sentry_status
 
-    # check log_level config 
+    # check log_level config
     valid_log_level_list=("error" "info" "debug" "warning" "critica"l)
     for arg in "${valid_log_level_list[@]}"; do
         echo > /var/log/sysSentry/bmc_ras_sentry.log
 
         sed -i "s/^log_level.*/log_level=${arg}/g" /etc/sysSentry/plugins/bmc_ras_sentry.ini
 
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_bmc_ras_sentry_status
 
         # sleep BMCPLU_CONFIG_CHECK_CYCLE + 1
         sleep 11
@@ -41,7 +53,7 @@ function do_test() {
 
         sed -i "s/^patrol_second.*/patrol_second=${arg}/g" /etc/sysSentry/plugins/bmc_ras_sentry.ini
 
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_bmc_ras_sentry_status
 
         # sleep BMCPLU_CONFIG_CHECK_CYCLE + 1
         sleep 11
@@ -55,7 +67,7 @@ function do_test() {
 
         sed -i "s/^bmc_events.*/bmc_events=${arg}/g" /etc/sysSentry/plugins/bmc_ras_sentry.ini
 
-        expect_task_status_eq "bmc_ras_sentry" "RUNNING"
+        expect_bmc_ras_sentry_status
 
         # sleep BMCPLU_CONFIG_CHECK_CYCLE + 1
         sleep 11

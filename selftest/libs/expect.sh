@@ -147,6 +147,44 @@ function expect_task_status_eq() {
     expect_str_eq "${status}" "${expect_status}" "current status is ${status}, expect ${expect_status}"
 }
 
+# Check whether the status of a task matches any of the expected statuses.
+# Retries up to 3 times with 1-second intervals to allow for status transitions.
+#
+# Args:
+#   $1        - task name
+#   $2 ... $N - one or more expected statuses
+#
+# Returns:
+#   0 if the task status matches any expected status, 1 otherwise.
+#   Increments the global failure counter on mismatch.
+#
+# Example:
+#   expect_task_status_in "bmc_ras_sentry" "RUNNING" "WAITING"
+function expect_task_status_in() {
+    local task_name="$1"
+    shift
+    local expect_statuses=("$@")
+    local status
+    local matched=false
+    for i in $(seq 3); do
+        status=$(sentryctl status "${task_name}" | awk '{print $2}')
+        for es in "${expect_statuses[@]}"; do
+            if [[ "${status}" == "${es}" ]]; then
+                matched=true
+                break 2
+            fi
+        done
+        sleep 1
+    done
+    if [[ "${matched}" == true ]]; then
+        return 0
+    else
+        ((++syssentry_expects_failed))
+        log_error "expect_task_status_in(${status}, [${expect_statuses[*]}], msg=task ${task_name}) - $(get_file_line)"
+        return 1
+    fi
+}
+
 function expect_service_status_eq() {
     local service_name="$1"
     local expect_status="$2"
