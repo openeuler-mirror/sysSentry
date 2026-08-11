@@ -147,44 +147,13 @@ def monitor_sentry_service():
     Monitor sysSentry service status via systemd D-Bus
     When sysSentry service becomes inactive or failed, broadcast alarm to all clients
     """
+    global alarm_sock
     global fd_to_socket
     global fd_to_socket_lock
 
-    DBusGMainLoop(set_as_default=True)
-    bus = dbus.SystemBus()
-    systemd = bus.get_object('org.freedesktop.systemd1',
-                            '/org/freedesktop/systemd1/unit/sysSentry_2eservice')
-    # 获取 systemd 的唯一总线名称
-    systemd_name = bus.get_name_owner('org.freedesktop.systemd1')
-
-    def on_properties_changed(interface, changed, invalidated, sender=None):
-        # 验证信号发送者是否是真正的 systemd
-        if sender != systemd_name:
-            logging.warning(f"Ignoring PropertiesChanged signal from unauthorized sender: {sender}")
-            return
-
-        if 'ActiveState' in changed:
-            state = changed['ActiveState']
-            logging.info("sysSentry service state changed to: %s", state)
-            if state in ['inactive', 'failed', 'deactivating']:
-                logging.warning("sysSentry service is down, broadcasting alarm to all clients")
-                # Clear enabled_events state since the sentry driver is unloaded,
-                # all previously opened event switches are now invalid
-                with event_state_lock:
-                    clear_enabled_events_state()
-                broadcast_sentry_down(alarm_sock, fd_to_socket, fd_to_socket_lock)
-
-    bus.add_signal_receiver(
-        handler_function=on_properties_changed,
-        signal_name='PropertiesChanged',
-        dbus_interface='org.freedesktop.DBus.Properties',
-        bus_name='org.freedesktop.systemd1',
-        path='/org/freedesktop/systemd1/unit/sysSentry_2eservice',
-        sender_keyword='sender'
-    )
-
-    logging.info("sysSentry service monitoring started")
     loop = GLib.MainLoop()
+    bus = None
+    signal_registered = False
 
     def check_shutdown():
         if xalarm_config.SHUTDOWN_FLAG:
@@ -193,8 +162,81 @@ def monitor_sentry_service():
             return False
         return True
 
-    GLib.timeout_add_seconds(1, check_shutdown)
-    loop.run()
+    try:
+        DBusGMainLoop(set_as_default=True)
+        bus = dbus.SystemBus()
+        # 获取 systemd 的唯一总线名称
+        systemd_name = bus.get_name_owner('org.freedesktop.systemd1')
+
+        def on_properties_changed(interface, changed, invalidated, sender=None):
+            try:
+                # 验证信号发送者是否是真正的 systemd
+                if sender != systemd_name:
+                    logging.warning(f"Ignoring PropertiesChanged signal from unauthorized sender: {sender}")
+                    return
+
+                # 验证属性变更所属的 D-Bus 接口，避免其他接口的同名属性误触发
+                if interface != 'org.freedesktop.systemd1.Unit':
+                    return
+
+                if 'ActiveState' in changed:
+                    state = changed['ActiveState']
+                    # 校验属性值类型，确保为字符串
+                    if not isinstance(state, str):
+                        logging.warning("ActiveState value is not a string: %s (type: %s)",
+                                        state, type(state).__name__)
+                        return
+                    logging.info("sysSentry service state changed to: %s", state)
+                    if state in ['inactive', 'failed', 'deactivating']:
+                        logging.warning("sysSentry service is down, broadcasting alarm to all clients")
+                        # Clear enabled_events state since the sentry driver is unloaded,
+                        # all previously opened event switches are now invalid
+                        with event_state_lock:
+                            clear_enabled_events_state()
+                        with fd_to_socket_lock:
+                            current_alarm_sock = alarm_sock
+                            current_fd_to_socket = fd_to_socket
+                        if current_alarm_sock is not None:
+                            broadcast_sentry_down(current_alarm_sock, current_fd_to_socket, fd_to_socket_lock)
+                        else:
+                            logging.warning("alarm_sock is not initialized, skip broadcasting")
+            except Exception as e:
+                logging.error("Error in on_properties_changed callback: %s", str(e))
+
+        bus.add_signal_receiver(
+            handler_function=on_properties_changed,
+            signal_name='PropertiesChanged',
+            dbus_interface='org.freedesktop.DBus.Properties',
+            bus_name='org.freedesktop.systemd1',
+            path='/org/freedesktop/systemd1/unit/sysSentry_2eservice',
+            sender_keyword='sender'
+        )
+        signal_registered = True
+
+        logging.info("sysSentry service monitoring started")
+        GLib.timeout_add_seconds(1, check_shutdown)
+        loop.run()
+    except dbus.exceptions.DBusException as e:
+        logging.error("Failed to initialize D-Bus monitor for sysSentry service: %s", str(e))
+        logging.error("sysSentry service monitoring is unavailable")
+    except Exception as e:
+        logging.error("Unexpected error in monitor_sentry_service init: %s", str(e))
+        logging.error("sysSentry service monitoring is unavailable")
+    finally:
+        if bus is not None:
+            try:
+                if signal_registered:
+                    bus.remove_signal_receiver(
+                        handler_function=on_properties_changed,
+                        signal_name='PropertiesChanged',
+                        dbus_interface='org.freedesktop.DBus.Properties',
+                        bus_name='org.freedesktop.systemd1',
+                        path='/org/freedesktop/systemd1/unit/sysSentry_2eservice'
+                    )
+            except Exception as e:
+                logging.error("Failed to remove signal receiver: %s", str(e))
+            finally:
+                bus.close()
 
 
 def start_wait_for_conn_thread(alarm_sock_, alarm_epoll_,
