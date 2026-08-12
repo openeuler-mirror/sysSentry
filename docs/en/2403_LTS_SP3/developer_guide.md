@@ -241,7 +241,7 @@ void process_alarm_info(struct alarm_msg* param)
 
 int main(int argc, char **argv)
 {
-    struct alarm_msg* msg;
+    struct alarm_msg msg;
     struct alarm_register* register_info;
     struct alarm_subscription_info id_filter;
 
@@ -256,13 +256,13 @@ int main(int argc, char **argv)
 
     printf("Waiting for plugin msg ... \n");
 
-    ret = xalarm_get_event(msg, register_info);
+    ret = xalarm_get_event(&msg, register_info);
     if (ret < 0) {
         perror("Failed to get msg\n");
         return 1;
     }
 
-    process_alarm_info(msg);
+    process_alarm_info(&msg);
     sleep(SLEEP_TIME);
 
     ret = xalarm_report_event(ALARM_REBOOT_ACK_EVENT, "Reboot ACK");
