@@ -9,6 +9,8 @@ set +e
 tmp_log="tmp_log"
 
 function pre_test() {
+    yum install sentry_msg_monitor -y
+
     systemctl start sysSentry.socket sysSentry.service
     cp /etc/sysSentry/tasks/sentry_msg_monitor.mod /etc/sysSentry/tasks/sentry_msg_monitor.mod_bak
 }
