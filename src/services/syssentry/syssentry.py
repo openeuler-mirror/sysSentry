@@ -519,6 +519,11 @@ def sigchld_handler(signum, _f):
     while True:
         try:
             child_pid, child_status = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            logging.info("No child process left to wait for - all have been reaped")
+            break
+
+        try:
             logging.debug("sigchld pid :%d", child_pid)
             task = get_task_by_pid(child_pid)
             if not task:

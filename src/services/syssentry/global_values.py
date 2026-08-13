@@ -296,8 +296,8 @@ class InspectTask:
                 key, value = line.split("=", 1)
                 value = value.strip('"')
                 if not key or not value:
-                    logging.error("env_file = %s format is error, use default environ", self.env_file)
-                    return
+                    logging.warning("env_file = %s format is error, use default environ", self.env_file)
+                    continue
                 if is_dangerous_env_key(key):
                     logging.warning("env %s is unsafe and user configuration is forbidden. ignore it", key)
                     continue
