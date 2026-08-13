@@ -9,6 +9,8 @@ source "libs/expect.sh"
 source "libs/wait.sh"
 
 function pre_test() {
+    yum install bmc_ras_sentry -y
+
     systemctl restart sysSentry.service
 }
 
