@@ -203,7 +203,7 @@ def monitor_sentry_service():
             except Exception as e:
                 logging.error("Error in on_properties_changed callback: %s", str(e))
 
-        bus.add_signal_receiver(
+        signal_match = bus.add_signal_receiver(
             handler_function=on_properties_changed,
             signal_name='PropertiesChanged',
             dbus_interface='org.freedesktop.DBus.Properties',
@@ -226,13 +226,8 @@ def monitor_sentry_service():
         if bus is not None:
             try:
                 if signal_registered:
-                    bus.remove_signal_receiver(
-                        handler_function=on_properties_changed,
-                        signal_name='PropertiesChanged',
-                        dbus_interface='org.freedesktop.DBus.Properties',
-                        bus_name='org.freedesktop.systemd1',
-                        path='/org/freedesktop/systemd1/unit/sysSentry_2eservice'
-                    )
+                    signal_match.remove()
+                    logging.info("remove signal receiver success")
             except Exception as e:
                 logging.error("Failed to remove signal receiver: %s", str(e))
             finally:
