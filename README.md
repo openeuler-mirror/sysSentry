@@ -71,4 +71,4 @@ sentryctl get_result <module_name>
 sentryctl get_alarm <module_name>
 ```
 
-详细使用说明请参考[openEuler使用文档](docs.openeuler.org)。
+详细使用说明请参考[openEuler使用文档](https://docs.openeuler.openatom.cn/zh/)。
