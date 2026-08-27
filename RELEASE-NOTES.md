@@ -1,5 +1,10 @@
 # Release Notes
 
+## 1.0.4
+1. add sentry_msg_monitor plugins for aarch64, kernel-6.6
+2. add bmc_ras_sentry plugins
+3. some bugfix
+
 ## 1.0.3 - prepare
 1. add cpu_sentry plugins for aarch64, kernel-5.10, cpu920F
 2. add avg_block_io plugins for aarch64/x86_64, kernel-4.19
