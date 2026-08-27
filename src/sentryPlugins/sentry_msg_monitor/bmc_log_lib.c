@@ -121,7 +121,7 @@ static int report_power_off_result_to_bmc(enum sentry_rmrs_result_type res)
     int ret = 0;
 
     char power_off_res_str[POWER_RESULT_STR_MAX_LEN];
-    char power_off_res_hex_str[POWER_RESULT_STR_MAX_LEN * SINGLE_ASCII_HEX_STR_LEN];
+    char power_off_res_hex_str[POWER_RESULT_STR_MAX_LEN * SINGLE_ASCII_HEX_STR_LEN] = {0};
     char command_ascii_str[IPMITOOL_COMMAND_STR_MAX_LEN];
 
     char *rmrs_result_string = get_rmrs_result_string(res);
