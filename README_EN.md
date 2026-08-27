@@ -19,7 +19,7 @@ yum install -y sysSentry pyxalarm
 2. Download the source code.
 
     ```bash
-    git clone https://gitee.com/openeuler/sysSentry.git
+    git  clone https://atomgit.com/openeuler/sysSentry.git
     ```
 
 3. Compile sysSentry.
@@ -82,4 +82,4 @@ yum install -y sysSentry pyxalarm
     sentryctl get_alarm <module_name>
     ```
 
-For details, see [openEuler documentation](docs.openeuler.org).
+For details, see [openEuler documentation](https://docs.openeuler.openatom.cn/en/).
