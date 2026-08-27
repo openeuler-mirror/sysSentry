@@ -1,4 +1,4 @@
-VERSION = 1.0.3
+VERSION = 1.0.4
 .PHONY: all install test
 
 PREFIX          = /usr
