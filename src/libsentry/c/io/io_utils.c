@@ -14,6 +14,11 @@
 
 ssize_t WriteAll(int fd, const char *buf, size_t count)
 {
+    if (count > IO_MAX_SIZE) {
+        errno = EINVAL;
+        return -1;
+    }
+
     const char *ptr = buf;
     size_t remaining = count;
 
@@ -35,7 +40,7 @@ ssize_t WriteAll(int fd, const char *buf, size_t count)
             return -1;
         }
         ptr += ret;
-        remaining -= ret;
+        remaining -= (size_t)ret;
     }
 
     return (ssize_t)count;
@@ -43,6 +48,11 @@ ssize_t WriteAll(int fd, const char *buf, size_t count)
 
 ssize_t SendAll(int fd, const char *buf, size_t len)
 {
+    if (len > IO_MAX_SIZE) {
+        errno = EINVAL;
+        return -1;
+    }
+
     const char *p = buf;
     size_t remaining = len;
 
@@ -64,7 +74,7 @@ ssize_t SendAll(int fd, const char *buf, size_t len)
             return -1;
         }
         p += ret;
-        remaining -= ret;
+        remaining -= (size_t)ret;
     }
 
     return (ssize_t)len;
@@ -72,6 +82,11 @@ ssize_t SendAll(int fd, const char *buf, size_t len)
 
 ssize_t RecvAll(int fd, char *buf, size_t len)
 {
+    if (len > IO_MAX_SIZE) {
+        errno = EINVAL;
+        return -1;
+    }
+
     char *p = buf;
     size_t remaining = len;
 
@@ -98,7 +113,7 @@ ssize_t RecvAll(int fd, char *buf, size_t len)
             return -1;
         }
         p += ret;
-        remaining -= ret;
+        remaining -= (size_t)ret;
     }
 
     return (ssize_t)len;

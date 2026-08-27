@@ -14,6 +14,7 @@
 
 #define RECV_DELAY_MSEC 100
 #define TIME_UNIT_MILLISECONDS 1000
+#define IO_MAX_SIZE (10 * 1024 * 1024)  /* 10 MB, aligned with Python MAX_MSG_LEN */
 
 /**
  * @brief Write all data to a file descriptor, handling partial writes.
