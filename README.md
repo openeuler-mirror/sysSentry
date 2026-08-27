@@ -14,7 +14,7 @@ yum install -y cmake gcc-c++ make python3 python3-setuptools json-c json-c-devel
 
 ### step2. 下载源码
 ```bash
-git clone https://gitee.com/openeuler/sysSentry.git
+git clone https://atomgit.com/openeuler/sysSentry.git
 ```
 
 ### step3. 编译sysSentry
