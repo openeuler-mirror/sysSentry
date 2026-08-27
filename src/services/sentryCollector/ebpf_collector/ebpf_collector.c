@@ -198,7 +198,8 @@ static int print_map_res(int fd, char *stage, int map_size, int *io_dump)
         int first_minor = counter.first_minor;
         dev_t dev = makedev(major, first_minor);    
         char *device_name = find_device_name(dev);
-        logMessage(LOG_LEVEL_DEBUG, "device_name: %s, stage: %s, io_type: %c\n", device_name, stage, io_type);
+        logMessage(LOG_LEVEL_DEBUG, "device_name: %s, stage: %s, io_type: %c\n",
+                   device_name ? device_name : "(null)", stage, io_type);
         if (device_name && io_type) {
             printf("%-7s %10llu %10llu %d %c %s\n",
                 stage, 
@@ -208,9 +209,9 @@ static int print_map_res(int fd, char *stage, int map_size, int *io_dump)
                 io_type,
                 device_name
             );
-            free(device_name);
             fflush(stdout);
         }
+        free(device_name);
     }
 
     return 0; 
