@@ -1,3 +1,5 @@
+ English | [简体中文](./README.md)
+
 # sysSentry
 
 sysSentry is a background inspection framework designed to proactively detect hardware and software faults. By alerting operators before issues escalate into critical production incidents, sysSentry significantly minimizes downtime and enhances overall system reliability.
