@@ -25,10 +25,10 @@
 #include <time.h>
 #include <json-c/json.h>
 #include <libobmm.h>
+#include <ub/sentry/smh_common_type.h>
 
 #include "register_xalarm.h"
 #include "log_utils.h"
-#include "smh_common_type.h"
 #include "ub_fault_lib.h"
 #include "bmc_log_lib.h"
 
@@ -43,6 +43,23 @@
 #define XALARM_GENERAL_MSG_ITEM_CNT 2 // msgid_res
 #define XALARM_PANIC_MSG_ITEM_CNT 4 // msgid_{cna:cna,eid:eid}_res
 #define PYHS_ADDR_HEX_STR_MAX_LEN 20
+
+/*
+ * The main version of the sentry driver.
+ * It increases by 1 whenever there is an interface change in the Sentry driver or sysSentry package
+ */
+#define SMH_VERSION_MAJOR  1
+/*
+ * Defined as the number of message types supported for reporting by the sentry driver.
+ * The current Sentry driver supports reporting the following types of abnormal event msg:
+ * (1) panic
+ * (2) reboot
+ * (3) poweroff
+ * (4) oom
+ * (5) ub mem err
+ * (6) ub link
+ */
+#define SMH_VERSION_MINOR  6
 
 /*
  * Version policy:
