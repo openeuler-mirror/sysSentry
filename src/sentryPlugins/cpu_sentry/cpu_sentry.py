@@ -30,6 +30,7 @@ LOW_LEVEL_INSPECT_CMD = "cat-cli"
 # max length of msg in details
 DETAILS_LOG_MSG_MAX_LEN = 255
 
+
 class CpuSentry:
     """
     cpu sentry script
@@ -163,6 +164,7 @@ class CpuSentry:
         report_result(task_name, result_level, details)
         self.init_send_result()
 
+
 def kill_process(signum, _f, cpu_sentry_obj):
     """kill process by 'pkill -9'"""
     run_cmd(f"pkill -9 {LOW_LEVEL_INSPECT_CMD}")
@@ -171,6 +173,7 @@ def kill_process(signum, _f, cpu_sentry_obj):
     cpu_sentry_obj.send_result["details"]["msg"] = "cpu_sentry task is killed!"
     cpu_sentry_obj.cpu_report_result()
     sys.exit(1)
+
 
 def main():
     """main function"""
