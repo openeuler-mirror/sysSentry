@@ -50,7 +50,7 @@ class CpuSentry:
         if "," in cpu_input:
             cpu_input_list = cpu_input.split(",")
         for cpu_input_i in cpu_input_list:
-            if type(cpu_input_i) != str:
+            if not isinstance(cpu_input_i, str):
                 return []
             cpu_input_i = cpu_input_i.strip()
             if cpu_input_i.isdigit():

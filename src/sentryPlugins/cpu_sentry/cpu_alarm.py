@@ -227,7 +227,7 @@ def check_fixed_param(data, expect):
         if not expect[0] <= int(data) <= expect[1]:
             raise ValueError("expected number range param is not in specified range")
         return int(data)
-    elif type(expect) == type(Enum):
+    elif isinstance(expect, type) and issubclass(expect, Enum):
         if not is_valid_enum_value(expect, int(data)):
             raise ValueError("expected enum value param is not valid")
         return int(data)
