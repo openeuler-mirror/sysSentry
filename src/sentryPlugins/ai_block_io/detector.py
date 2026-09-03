@@ -140,13 +140,14 @@ class DiskDetector:
         iodump_wins = {"read": {}, "write": {}}
         iops_wins = {"read": {}, "write": {}}
         for detector in self._detector_list:
+            io_type_name = detector.metric_name.io_access_type_name
+            io_stage_name = [detector.metric_name.stage_name
             if detector.metric_name.metric_name == 'latency':
-                latency_wins[detector.metric_name.io_access_type_name][detector.metric_name.stage_name] = detector.get_sliding_window_data()
+                latency_wins[io_type_name][io_stage_name] = detector.get_sliding_window_data()
             elif detector.metric_name.metric_name == 'io_dump':
-                iodump_wins[detector.metric_name.io_access_type_name][detector.metric_name.stage_name] = detector.get_sliding_window_data()
+                iodump_wins[io_type_name][io_stage_name] = detector.get_sliding_window_data()
             elif detector.metric_name.metric_name == 'iops':
-                iops_wins[detector.metric_name.io_access_type_name][detector.metric_name.stage_name] =\
-                      detector.get_sliding_window_data()
+                iops_wins[io_type_name][io_stage_name] = detector.get_sliding_window_data()
         return latency_wins, iodump_wins, iops_wins
 
     def get_data_detector_list_window(self):
@@ -154,12 +155,12 @@ class DiskDetector:
         iodump_data_wins = {"read": {}, "write": {}}
         disk_data_wins = {"read": {}, "write": {}}
         for data_detector in self._data_detector_list:
+            io_type_name = data_detector.metric_name.io_access_type_name
+            io_stage_name = data_detector.metric_name.stage_name
             if data_detector.metric_name.metric_name == 'iodump_data':
-                iodump_data_wins[data_detector.metric_name.io_access_type_name][data_detector.metric_name.stage_name] =\
-                      data_detector.get_data_window_data()
+                iodump_data_wins[io_type_name][io_stage_name] = data_detector.get_data_window_data()
             if data_detector.metric_name.metric_name == 'disk_data':
-                disk_data_wins[data_detector.metric_name.io_access_type_name][data_detector.metric_name.stage_name] =\
-                      data_detector.get_data_window_data()
+                disk_data_wins[io_type_name][io_stage_name] = data_detector.get_data_window_data()
         win_data_wins['iodump_data'] = iodump_data_wins
         win_data_wins['disk_data'] = disk_data_wins
         return win_data_wins
