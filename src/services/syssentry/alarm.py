@@ -151,12 +151,12 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool):
             logging.debug("alarm_id does not exist")
             return []
         alarm_list = alarm_list_dict[alarm_id]
-        logging.debug(f"get_alarm_result: alarm_list of {alarm_id} has {len(alarm_list)} elements")
+        logging.debug("get_alarm_result: alarm_list of %s has %d elements", alarm_id, len(alarm_list))
         # clear alarm_info older than clear time threshold
         stop_index = -1
         timestamp = datetime.now().timestamp()
         for i in range(len(alarm_list)):
-            logging.debug(f"timestamp, alarm_list[{i}].timestamp: {timestamp}, {xalarm_gettime(alarm_list[i])}")
+            logging.debug("timestamp, alarm_list[%d].timestamp: %s, %s", i, timestamp, xalarm_gettime(alarm_list[i]))
             if timestamp - (xalarm_gettime(alarm_list[i])) / MILLISECONDS_UNIT_SECONDS > time_range:
                 stop_index = i
                 break
@@ -165,7 +165,7 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool):
                 break
         if stop_index >= 0:
             alarm_list = alarm_list[:stop_index]
-        logging.debug(f"get_alarm_result: final alarm_list of {alarm_id} has {len(alarm_list)} elements")
+        logging.debug("get_alarm_result: final alarm_list of %s has %d elements", alarm_id, len(alarm_list))
 
         def xalarm_to_dict(alarm_info: Xalarm) -> dict:
             timestamp = alarm_info.timetamp.tv_sec + alarm_info.timetamp.tv_usec / 1000000

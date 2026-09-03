@@ -69,7 +69,7 @@ def reverse_byte(data):
 
 
 def parse_hbmc_report(data: str):
-    logging.debug(f"bmc receive raw data is {data}")
+    logging.debug("bmc receive raw data is %s", data)
     repair_type = convert_hex_char_to_int(data, HBMC_REPAIR_TYPE_BIT)
     repair_type += HBMC_REPAIR_TYPE_OFFSET
     if not find_value_is_in_enum(repair_type, HBMCRepairType):

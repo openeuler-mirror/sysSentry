@@ -77,9 +77,8 @@ def parser_cpu_alarm_info(req_data):
 
     if len(cpu_alarm_info) != CPU_ALARM_PARAM_LEN:
         logging.debug(
-            "expected {} params in fixed params, got {}".format(
-                CPU_ALARM_PARAM_LEN, len(cpu_alarm_info)
-            )
+            "expected %d params in fixed params, got %d",
+            CPU_ALARM_PARAM_LEN, len(cpu_alarm_info)
         )
         raise ValueError
 
