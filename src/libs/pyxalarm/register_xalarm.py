@@ -1,6 +1,6 @@
 import os
-import sys
 import socket
+import logging
 import threading
 import time
 import inspect
@@ -33,22 +33,22 @@ class AlarmRegister:
 
     def check_params(self) -> bool:
         if len(self.id_filter) != MAX_NUM_OF_ALARM_ID:
-            sys.stderr.write("check_params: invalid param id_filter\n")
+            logging.error("check_params: invalid param id_filter")
             return False
-        
+
         sig = inspect.signature(self.callback)
         if len(sig.parameters) != 1:
-            sys.stderr.write("check_params: invalid param callback\n")
+            logging.error("check_params: invalid param callback")
             return False
-        
+
         if self.socket is None:
-            sys.stderr.write("check_params: socket create failed\n")
+            logging.error("check_params: socket create failed")
             return False
         return True
-    
+
     def set_id_filter(self, id_filter: list) -> bool:
         if (len(id_filter) > MAX_NUM_OF_ALARM_ID):
-            sys.stderr.write("set_id_filter: invalid param id_filter\n")
+            logging.error("set_id_filter: invalid param id_filter")
             return False
         self.id_filter = id_filter
         return True
@@ -69,7 +69,7 @@ class AlarmRegister:
         sock = None
         try:
             if not os.access(DIR_XALARM, os.F_OK):
-                sys.stderr.write("xalarm directory access failed\n")
+                logging.error("xalarm directory access failed")
                 return None
 
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -79,7 +79,7 @@ class AlarmRegister:
         except (IOError, OSError) as e:
             if sock is not None:
                 sock.close()
-            sys.stderr.write(f"create_unix_socket: create socket error:{e}\n")
+            logging.error("create_unix_socket: create socket error:%s", e)
             return None
 
     def alarm_recv(self):
@@ -87,11 +87,11 @@ class AlarmRegister:
             try:
                 data = self.socket.recv(ALARM_REPORT_LEN)
                 if not data:
-                    sys.stderr.write("connection closed by xalarmd, maybe connections reach max num or service stopped.\n")
+                    logging.error("connection closed by xalarmd, maybe connections reach max num or service stopped.")
                     self.thread_should_stop = True
                     break
                 if len(data) != ALARM_REPORT_LEN:
-                    sys.stderr.write(f"server receive report msg length wrong {len(data)}\n")
+                    logging.warning("server receive report msg length wrong %d", len(data))
                     continue
 
                 alarm_info = alarm_bin2stu(data)
@@ -99,12 +99,12 @@ class AlarmRegister:
             except (BlockingIOError) as e:
                 time.sleep(0.1)
             except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-                sys.stderr.write("Connection closed by the server.\n")
+                logging.error("Connection closed by the server.")
                 self.thread_should_stop = True
             except (ValueError, StructParseError, InterruptedError) as e:
-                sys.stderr.write(f"{e}\n")
+                logging.warning("alarm_recv parse error: %s", e)
             except Exception as e:
-                sys.stderr.write(f"{e}\n")
+                logging.error("alarm_recv unexpected error: %s", e)
                 self.thread_should_stop = True
 
     def start_thread(self) -> None:
@@ -121,7 +121,7 @@ def xalarm_register(callback: callable, id_filter: list) -> int:
 
     with _alarm_lock:
         if ALARM_REGISTER_INFO is not None:
-            sys.stderr.write("xalarm_register: alarm has registered\n")
+            logging.error("xalarm_register: alarm has registered")
             return -1
 
         ALARM_REGISTER_INFO = AlarmRegister(id_filter, callback)
@@ -138,11 +138,11 @@ def xalarm_unregister(clientId: int) -> None:
 
     with _alarm_lock:
         if clientId < 0:
-            sys.stderr.write("xalarm_unregister: invalid client\n")
+            logging.error("xalarm_unregister: invalid client")
             return
-    
+
         if ALARM_REGISTER_INFO is None:
-            sys.stderr.write("xalarm_unregister: alarm has not registered\n")
+            logging.error("xalarm_unregister: alarm has not registered")
             return
     
         ALARM_REGISTER_INFO.stop_thread()
@@ -154,13 +154,13 @@ def xalarm_upgrade(clientId: int, id_filter: list) -> bool:
 
     with _alarm_lock:
         if clientId < 0:
-            sys.stderr.write("xalarm_upgrade: invalid client\n")
+            logging.error("xalarm_upgrade: invalid client")
             return False
         if ALARM_REGISTER_INFO is None:
-            sys.stderr.write("xalarm_upgrade: alarm has not registered\n")
+            logging.error("xalarm_upgrade: alarm has not registered")
             return False
         if ALARM_REGISTER_INFO.thread_should_stop:
-            sys.stderr.write("xalarm_upgrade: upgrade failed, alarm thread has stopped\n")
+            logging.error("xalarm_upgrade: upgrade failed, alarm thread has stopped")
             return False
         ALARM_REGISTER_INFO.id_filter = id_filter
     return True
