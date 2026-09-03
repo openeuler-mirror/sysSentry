@@ -9,7 +9,6 @@
 # PURPOSE.
 # See the Mulan PSL v2 for more details.
 
-import sys
 import logging
 import json
 import signal
@@ -165,6 +164,11 @@ class CpuSentry:
         self.init_send_result()
 
 
+class CpuSentryKilledError(Exception):
+    """raised when cpu_sentry is terminated by SIGINT/SIGTERM"""
+    pass
+
+
 def kill_process(signum, _f, cpu_sentry_obj):
     """kill process by 'pkill -9'"""
     run_cmd(f"pkill -9 {LOW_LEVEL_INSPECT_CMD}")
@@ -172,7 +176,7 @@ def kill_process(signum, _f, cpu_sentry_obj):
     cpu_sentry_obj.send_result["details"]["code"] = 1005
     cpu_sentry_obj.send_result["details"]["msg"] = "cpu_sentry task is killed!"
     cpu_sentry_obj.cpu_report_result()
-    sys.exit(1)
+    raise CpuSentryKilledError()
 
 
 def main():
@@ -188,15 +192,15 @@ def main():
     signal.signal(signal.SIGINT, functools.partial(kill_process, cpu_sentry_obj=cpu_sentry_task))
     signal.signal(signal.SIGTERM, functools.partial(kill_process, cpu_sentry_obj=cpu_sentry_task))
 
-    # The current program is allowed only once in the same environment
-    process_pid = get_process_pid(LOW_LEVEL_INSPECT_CMD)
-    if process_pid > -1:
-        cpu_sentry_task.send_result["result"] = ResultLevel.SKIP
-        logging.warning("An inspection task whose PID is %s already exists.", process_pid)
-        cpu_sentry_task.cpu_report_result()
-        sys.exit(0)
-
     try:
+        # The current program is allowed only once in the same environment
+        process_pid = get_process_pid(LOW_LEVEL_INSPECT_CMD)
+        if process_pid > -1:
+            cpu_sentry_task.send_result["result"] = ResultLevel.SKIP
+            logging.warning("An inspection task whose PID is %s already exists.", process_pid)
+            cpu_sentry_task.cpu_report_result()
+            return 0
+
         # Parse the configuration file to obtain parameter settings and assemble the command.
         cpu_sentry_cmd_args = cpu_params_config_parser.get_param_dict_from_config()
         cpu_sentry_task_cmd = cpu_params_config_parser.join_cpu_start_cmd(cpu_sentry_cmd_args)
@@ -206,7 +210,7 @@ def main():
             cpu_sentry_task.send_result["details"]["code"] = 1003
             cpu_sentry_task.send_result["details"]["msg"] = "Invalid parameter configuration in cpu_sentry.ini !"
             cpu_sentry_task.cpu_report_result()
-            sys.exit(0)
+            return 0
 
         cpu_task_process_pipe = run_popen(cpu_sentry_task_cmd)
         if not cpu_task_process_pipe:
@@ -219,5 +223,8 @@ def main():
         cpu_sentry_task.send_result["details"]["code"] = 1004
         cpu_sentry_task.send_result["details"]["msg"] = "run cmd [%s] raise Error" % cpu_sentry_task_cmd
         cpu_sentry_task.cpu_report_result()
+    except CpuSentryKilledError:
+        return 1
     else:
         cpu_sentry_task.cpu_report_result()
+    return 0
