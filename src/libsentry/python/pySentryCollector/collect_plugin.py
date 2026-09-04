@@ -18,7 +18,7 @@ import logging
 import re
 import os
 
-from syssentry.utils import MAX_MSG_LEN
+from syssentry.utils import MAX_MSG_LEN, recv_all
 
 COLLECT_SOCKET_PATH = "/var/run/sysSentry/collector.sock"
 
@@ -112,7 +112,7 @@ def client_send_and_recv(request_data, data_str_len, protocol):
 
     try:
         client_socket.send(request_msg.encode())
-        res_data = client_socket.recv(len(RES_MAGIC) + CLT_MSG_PRO_LEN + data_str_len)
+        res_data = recv_all(client_socket, len(RES_MAGIC) + CLT_MSG_PRO_LEN + data_str_len)
         res_data = res_data.decode()
     except (OSError, UnicodeError):
         client_socket.close()
@@ -144,7 +144,7 @@ def client_send_and_recv(request_data, data_str_len, protocol):
             client_socket.close()
             logging.error("socket recv data is illegal:%d", res_data_len)
             return None
-        res_msg_data = client_socket.recv(res_data_len)
+        res_msg_data = recv_all(client_socket, res_data_len)
         res_msg_data = res_msg_data.decode()
         return res_msg_data
     except (OSError, ValueError, UnicodeError):

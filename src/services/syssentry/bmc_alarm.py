@@ -129,8 +129,12 @@ def bmc_recv(server_socket: socket.socket):
     logging.debug("Get hbm socket connection request")
     try:
         client_socket, _ = server_socket.accept()
-        logging.debug("cpu alarm fd listen ok")
+    except OSError:
+        logging.error("bmc alarm accept failed")
+        return
 
+    logging.debug("cpu alarm fd listen ok")
+    try:
         data = client_socket.recv(SOCKET_RECEIVE_LEN)
         data = data.decode()
 

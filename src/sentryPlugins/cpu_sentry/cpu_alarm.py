@@ -15,7 +15,7 @@ import logging
 import socket
 from enum import Enum
 
-from syssentry.utils import execute_command, MAX_MSG_LEN
+from syssentry.utils import execute_command, MAX_MSG_LEN, recv_all
 
 MAX_CORE_ID = 1024
 MAX_SOCKET_ID = 255
@@ -244,30 +244,38 @@ def check_fixed_param(data, expect):
 def cpu_alarm_recv(server_socket: socket.socket):
     try:
         client_socket, _ = server_socket.accept()
-        logging.debug("cpu alarm fd listen ok")
+    except OSError:
+        logging.error("cpu alarm accept failed")
+        return
 
-        data = client_socket.recv(PARAM_REP_LEN)
+    logging.debug("cpu alarm fd listen ok")
+    try:
+        data = recv_all(client_socket, PARAM_REP_LEN)
         check_fixed_param(data, "REP")
 
-        data = client_socket.recv(PARAM_TYPE_LEN)
+        data = recv_all(client_socket, PARAM_TYPE_LEN)
         _type = check_fixed_param(data, Type)
 
-        data = client_socket.recv(PARAM_MODULE_LEN)
+        data = recv_all(client_socket, PARAM_MODULE_LEN)
         module = check_fixed_param(data, Module)
 
-        data = client_socket.recv(PARAM_TRANS_TO_LEN)
+        data = recv_all(client_socket, PARAM_TRANS_TO_LEN)
         trans_to = check_fixed_param(data, TransTo)
 
-        data = client_socket.recv(PARAM_DATA_LEN)
+        data = recv_all(client_socket, PARAM_DATA_LEN)
         data_len = check_fixed_param(data, (MIN_DATA_LEN, MAX_DATA_LEN))
 
         if data_len < 0 or data_len > MAX_MSG_LEN:
             client_socket.close()
             logging.error("socket recv data is illegal:%d", data_len)
             return
-        data = client_socket.recv(data_len)
+        data = recv_all(client_socket, data_len)
 
         command, event_type, socket_id, core_id = parser_cpu_alarm_info(data)
+    except ConnectionError:
+        logging.error("connection closed before recv all cpu alarm msg")
+        client_socket.close()
+        return
     except socket.error:
         logging.error("socket error")
         return

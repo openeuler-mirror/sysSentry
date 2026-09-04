@@ -51,9 +51,10 @@ def recv_all(sock: socket.socket, length: int) -> bytes:
     received or the connection is closed / an error occurs.
 
     Returns the received data as bytes.
-    Raises OSError on socket errors.
     Raises ConnectionError if the peer closes the connection before all
     bytes are received.
+    Raises OSError (propagated from sock.recv()) on other socket errors,
+    e.g. timeout or connection reset.
     """
     if length <= 0:
         return b""
