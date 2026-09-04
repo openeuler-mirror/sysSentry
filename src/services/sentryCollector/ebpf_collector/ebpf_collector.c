@@ -381,7 +381,12 @@ int main(int argc, char **argv) {
         }
         snprintf(path, sizeof(path), "/dev/%s", entry->d_name);
         struct stat statbuf;
-        if (lstat(path, &statbuf) != 0 && !S_ISBLK(statbuf.st_mode)) {
+        if (lstat(path, &statbuf) != 0) {
+            logMessage(LOG_LEVEL_ERROR, "lstat %s failed, skip.\n", path);
+            continue;
+        }
+        if (!S_ISBLK(statbuf.st_mode)) {
+            logMessage(LOG_LEVEL_ERROR, "S_ISBLK failed, skip.\n", path);
             continue;
         }
         if (!strncmp(entry->d_name, "dm-", 3) || !strncmp(entry->d_name, "loop", 4) ||
