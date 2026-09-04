@@ -9,7 +9,6 @@
 # PURPOSE.
 # See the Mulan PSL v2 for more details.
 
-import sys
 import logging
 import json
 import signal
@@ -30,6 +29,7 @@ LOW_LEVEL_INSPECT_CMD = "cat-cli"
 # max length of msg in details
 DETAILS_LOG_MSG_MAX_LEN = 255
 
+
 class CpuSentry:
     """
     cpu sentry script
@@ -49,7 +49,7 @@ class CpuSentry:
         if "," in cpu_input:
             cpu_input_list = cpu_input.split(",")
         for cpu_input_i in cpu_input_list:
-            if type(cpu_input_i) != str:
+            if not isinstance(cpu_input_i, str):
                 return []
             cpu_input_i = cpu_input_i.strip()
             if cpu_input_i.isdigit():
@@ -144,10 +144,16 @@ class CpuSentry:
             self.send_result["details"]["msg"] = "Some CPUs are faulty. The faulty cores are isolated successfully."
         else:
             found_fault_cores_set = set(found_fault_cores_list)
-            isolated_cpu_set = set(CpuSentry.cpu_format_convert_to_list(self.send_result["details"]["isolated_cpu_list"]))
+            isolated_cpu_set = set(CpuSentry.cpu_format_convert_to_list(
+                self.send_result["details"]["isolated_cpu_list"])
+            )
             self.send_result["details"]["code"] = 1002
             self.send_result["result"] = ResultLevel.MINOR_ALM
-            self.send_result["details"]["msg"] = "Some cores are isolated successfully and some cores ({}) fail to be isolated.".format(list(found_fault_cores_set - isolated_cpu_set))
+            self.send_result["details"]["msg"] = (
+                "Some cores are isolated successfully and some cores ({}) fail to be isolated.".format(
+                    list(found_fault_cores_set - isolated_cpu_set)
+                )
+            )
 
     def cpu_report_result(self):
         """report result to sysSentry"""
@@ -163,6 +169,12 @@ class CpuSentry:
         report_result(task_name, result_level, details)
         self.init_send_result()
 
+
+class CpuSentryKilledError(Exception):
+    """raised when cpu_sentry is terminated by SIGINT/SIGTERM"""
+    pass
+
+
 def kill_process(signum, _f, cpu_sentry_obj):
     """kill process by 'pkill -9'"""
     run_cmd(f"pkill -9 {LOW_LEVEL_INSPECT_CMD}")
@@ -170,7 +182,8 @@ def kill_process(signum, _f, cpu_sentry_obj):
     cpu_sentry_obj.send_result["details"]["code"] = 1005
     cpu_sentry_obj.send_result["details"]["msg"] = "cpu_sentry task is killed!"
     cpu_sentry_obj.cpu_report_result()
-    sys.exit(1)
+    raise CpuSentryKilledError()
+
 
 def main():
     """main function"""
@@ -185,15 +198,15 @@ def main():
     signal.signal(signal.SIGINT, functools.partial(kill_process, cpu_sentry_obj=cpu_sentry_task))
     signal.signal(signal.SIGTERM, functools.partial(kill_process, cpu_sentry_obj=cpu_sentry_task))
 
-    # The current program is allowed only once in the same environment
-    process_pid = get_process_pid(LOW_LEVEL_INSPECT_CMD)
-    if process_pid > -1:
-        cpu_sentry_task.send_result["result"] = ResultLevel.SKIP
-        logging.warning("An inspection task whose PID is %s already exists.", process_pid)
-        cpu_sentry_task.cpu_report_result()
-        sys.exit(0)
-
     try:
+        # The current program is allowed only once in the same environment
+        process_pid = get_process_pid(LOW_LEVEL_INSPECT_CMD)
+        if process_pid > -1:
+            cpu_sentry_task.send_result["result"] = ResultLevel.SKIP
+            logging.warning("An inspection task whose PID is %s already exists.", process_pid)
+            cpu_sentry_task.cpu_report_result()
+            return 0
+
         # Parse the configuration file to obtain parameter settings and assemble the command.
         cpu_sentry_cmd_args = cpu_params_config_parser.get_param_dict_from_config()
         cpu_sentry_task_cmd = cpu_params_config_parser.join_cpu_start_cmd(cpu_sentry_cmd_args)
@@ -203,7 +216,7 @@ def main():
             cpu_sentry_task.send_result["details"]["code"] = 1003
             cpu_sentry_task.send_result["details"]["msg"] = "Invalid parameter configuration in cpu_sentry.ini !"
             cpu_sentry_task.cpu_report_result()
-            sys.exit(0)
+            return 0
 
         cpu_task_process_pipe = run_popen(cpu_sentry_task_cmd)
         if not cpu_task_process_pipe:
@@ -216,5 +229,8 @@ def main():
         cpu_sentry_task.send_result["details"]["code"] = 1004
         cpu_sentry_task.send_result["details"]["msg"] = "run cmd [%s] raise Error" % cpu_sentry_task_cmd
         cpu_sentry_task.cpu_report_result()
+    except CpuSentryKilledError:
+        return 1
     else:
         cpu_sentry_task.cpu_report_result()
+    return 0

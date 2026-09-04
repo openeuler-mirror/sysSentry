@@ -141,7 +141,8 @@ class CollectDisk:
             major_version = struct.unpack('<I', data[0:4])[0]
             minor_version = struct.unpack('<I', data[4:8])[0]
             if major_version != 1 or minor_version != 0:
-                logging.warning(f"Disk {self.disk_name} NVMe log version is {major_version}.{minor_version}, expected 1.0.")
+                logging.warning("Disk %s NVMe log version is %s.%s, expected 1.0.",
+                                self.disk_name, major_version, minor_version)
                 return False
             return True
         except Exception as e:

@@ -1,3 +1,14 @@
+# coding: utf-8
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# sysSentry is licensed under the Mulan PSL v2.
+# You can use this software according to the terms and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#     http://license.coscl.org.cn/MulanPSL2
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
+# PURPOSE.
+# See the Mulan PSL v2 for more details.
+
 import re
 import math
 import logging
@@ -66,9 +77,8 @@ def parser_cpu_alarm_info(req_data):
 
     if len(cpu_alarm_info) != CPU_ALARM_PARAM_LEN:
         logging.debug(
-            "expected {} params in fixed params, got {}".format(
-                CPU_ALARM_PARAM_LEN, len(cpu_alarm_info)
-            )
+            "expected %d params in fixed params, got %d",
+            CPU_ALARM_PARAM_LEN, len(cpu_alarm_info)
         )
         raise ValueError
 
@@ -216,7 +226,7 @@ def check_fixed_param(data, expect):
         if not expect[0] <= int(data) <= expect[1]:
             raise ValueError("expected number range param is not in specified range")
         return int(data)
-    elif type(expect) == type(Enum):
+    elif isinstance(expect, type) and issubclass(expect, Enum):
         if not is_valid_enum_value(expect, int(data)):
             raise ValueError("expected enum value param is not valid")
         return int(data)
@@ -261,7 +271,7 @@ def cpu_alarm_recv(server_socket: socket.socket):
     except socket.error:
         logging.error("socket error")
         return
-    except (ValueError, OSError, UnicodeError, TypeError, NotImplementedError):
+    except (ValueError, OSError, TypeError, NotImplementedError):
         logging.error("server recv cpu alarm msg failed!")
         client_socket.close()
         return
