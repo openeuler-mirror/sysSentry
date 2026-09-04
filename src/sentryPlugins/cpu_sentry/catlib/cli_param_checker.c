@@ -26,7 +26,12 @@ void checkset_cpu_usage_percentage(char *getopt_optarg, catcli_request_body *p_r
 void checkset_cpulist(char *getopt_optarg, catcli_request_body *p_request_body, struct option_errs *errs)
 {
     regex_t reg = { 0 };
-    regcomp(&reg, CPULIST_REGEX, REG_EXTENDED); // 编译正则模式串
+    // 编译正则模式串
+    if (regcomp(&reg, CPULIST_REGEX, REG_EXTENDED) != 0 ) {
+        strncpy(errs->cpulist_err, "regcomp failed\n", MAX_ERR_LEN);
+        errs->cpulist_err[MAX_ERR_LEN - 1] = '\0';
+        return;
+    }
     const size_t nmatch = 1;                    // 定义匹配结果最大允许数
     regmatch_t pmatch[1];                       // 定义匹配结果在待匹配串中的下标范围
     char getopt_optarg_copy[strlen(getopt_optarg) + 1];
