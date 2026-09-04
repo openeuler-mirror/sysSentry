@@ -184,15 +184,12 @@ static int print_map_res(int fd, char *stage, int map_size, int *io_dump)
             logMessage(LOG_LEVEL_ERROR, "failed to lookup %s map_res: %d\n", stage, err);
             return -1; 
         }
-        
-        size_t length = strlen(counter.io_type);
-        char io_type;
-        if (length > 0) {
+
+        char io_type = counter.io_type[0];
+        if (io_type != '\0') {
             logMessage(LOG_LEVEL_DEBUG, "io_type have value.\n");
-            io_type = counter.io_type[0];
         } else {
             logMessage(LOG_LEVEL_DEBUG, "io_type not value.\n");
-            io_type = '\0';
         }
         int major = counter.major;
         int first_minor = counter.first_minor;
