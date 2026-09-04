@@ -278,6 +278,7 @@ def cpu_alarm_recv(server_socket: socket.socket):
         return
     except socket.error:
         logging.error("socket error")
+        client_socket.close()
         return
     except (ValueError, OSError, TypeError, NotImplementedError):
         logging.error("server recv cpu alarm msg failed!")
