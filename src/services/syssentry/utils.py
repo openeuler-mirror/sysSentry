@@ -25,6 +25,7 @@ MAX_MSG_LEN = 10 * 1024 * 1024  # 10MB
 
 ENV_BLACKLIST_PATTERNS = [
     r"^LD_",                 # LD_PRELOAD, LD_LIBRARY_PATH 等（可劫持动态链接）
+    r"^MALLOC_",             # 一系列控制堆内存分配行为的变量，可能被用于触发非预期状态或拒绝服务
     r"^BASH_ENV$",           # Bash 自动执行脚本
     r"^ENV$",                # POSIX sh 自动执行脚本
     r"^IFS$",                # Shell 内部字段分隔符（可能破坏命令解析）
@@ -32,9 +33,14 @@ ENV_BLACKLIST_PATTERNS = [
     r"^PYTHONPATH$",         # 可让Python导入恶意模块
     r"^NODE_PATH$",          # Node.js 模块路径劫持
     r"^PERL5LIB$",           # Perl 库路径劫持
+    r"^PERL5OPT$",           # Perl解释器的启动选项环境变量
     r"^TMPDIR$",             # 某些场景下可能导致文件覆盖
     r"^HOME$",               # 可能改变配置文件读取路径
     r"^HISTFILE$",           # 可能覆盖历史记录
+    r"^JAVA_TOOL_OPTIONS$",  # 此变量可以传入JVM启动参数，在程序运行前执行任意代码
+    r"^LUA_INIT$",           # Lua解释器会在运行主脚本前执行此变量中的代码或指定的文件
+    r"^RUBYOPT$",            # Ruby解释器预设命令行参数，如果被攻击者控制，就可能被用来注入恶意代码
+    r"^R_PROFILE_USER$",     # 该变量指向的文件‌不校验所有权或签名‌，若被恶意篡改，任意R代码会静默执行，可能导致命令注入
 ]
 
 CMD_STRING_WHITELIST = ["kill $pid"]
