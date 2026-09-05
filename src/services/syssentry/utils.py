@@ -142,7 +142,7 @@ def run_popen(cmd):
 
 def is_exists_cmd(cmd: str) -> bool:
     """Checking Whether a Command Exists in the Environment"""
-    res = run_cmd(f"which {cmd}")
+    res = run_cmd(f"/usr/bin/which {cmd}")
     if not res:
         return False
     if res.returncode:
@@ -155,7 +155,7 @@ def get_process_pid(process_name):
     process_pid = -1
     if "/" in process_name:
         process_name = process_name.split("/")[-1]
-    res = run_cmd('pgrep -x {}'.format(process_name))
+    res = run_cmd('/usr/bin/pgrep -x {}'.format(process_name))
     if not res:
         return process_pid
     if res.returncode == 0:
