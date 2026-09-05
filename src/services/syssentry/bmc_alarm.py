@@ -114,8 +114,11 @@ def parse_hbmc_report(data: str):
     logging.info(f"Send bmc alarm command is {cmd_list}")
 
     ret = execute_command(cmd_list)
+    if ret is None:
+        logging.error("execute ipmitool failed")
+        raise ValueError
     if HBMC_SEND_SUCCESS_CODE not in ret:
-        logging.warning(f"Send bmc alarm failed, error code is {ret}")
+        logging.warning("Send bmc alarm failed, error code is %s", ret)
         raise ValueError
     logging.debug("Send bmc alarm success")
 
