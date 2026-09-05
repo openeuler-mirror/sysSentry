@@ -400,6 +400,12 @@ std::pair<std::map<std::string, uint8_t>, std::vector<std::vector<std::string> >
 
         if (i == 1) {
             auto head = SplitBySpace(line);
+            // 列数远超真实表头(几十列以内)说明输出异常(不可信工具输出被构造),
+            // 列索引以uint8_t存储, 上限需与之匹配; 拒绝而非继续解析, 防止越界/截断
+            if (head.size() > UINT8_MAX) {
+                BMC_LOG_ERROR << "cmd map head columns exceeded, column count: " << head.size();
+                return {};
+            }
             for (uint8_t j = 0; j < head.size(); j++) {
                 mapHead.emplace(head[j], j);
             }
