@@ -51,32 +51,29 @@ static char* get_rmrs_result_string(enum sentry_rmrs_result_type rmrs_res_type)
     return (char*) rmrs_result_strings[rmrs_res_type];
 }
 
-static int string_to_ascii_hex(const char* raw_string, char* ascii_string, int ascii_string_size)
+static int string_to_ascii_hex(const char* raw_string, int raw_len, char* ascii_string, int ascii_string_size)
 {
-    if (!raw_string || !ascii_string || ascii_string_size <= 0) {
+    if (!raw_string || !ascii_string || raw_len < 0 || ascii_string_size <= 0) {
         logging_error("%s: invalid args.\n", __func__);
         return -1;
     }
 
-    int len = strlen(raw_string);
-    for (int i = 0; i < len; i++) {
-        char hex[SINGLE_ASCII_HEX_STR_LEN];
-        int n = snprintf(hex, sizeof(hex), "0x%02x ", (unsigned char)raw_string[i]);
-        if (n <= 0 || n >= sizeof(hex)) {
-            logging_error("snprintf failed, raw character is %c\n", raw_string[i]);
-            return -1;
-        }
-        int available = ascii_string_size - strlen(ascii_string) - 1;
-        if (available < SINGLE_ASCII_HEX_STR_LEN) {
-            logging_error("ascii string len is too short to add new ascii character\n");
-            return -1;
-        }
-        strncat(ascii_string, hex, SINGLE_ASCII_HEX_STR_LEN);
+    if (raw_len == 0) {
+        logging_warn("raw string is empty, nothing to convert\n");
+        ascii_string[0] = '\0';
+        return 0;
     }
 
-    if (len > 0) {
-        ascii_string[strlen(ascii_string) - 1] = '\0';
+    int pos = 0;
+    for (int i = 0; i < raw_len; i++) {
+        if (pos + SINGLE_ASCII_HEX_STR_LEN >= ascii_string_size) {
+            logging_error("ascii string buffer too short to add new ascii character\n");
+            return -1;
+        }
+        pos += snprintf(ascii_string + pos, SINGLE_ASCII_HEX_STR_LEN,
+                        "0x%02x ", (unsigned char)raw_string[i]);
     }
+    ascii_string[pos - 1] = '\0';  // remove the trailing space
     return 0;
 }
 
@@ -136,8 +133,12 @@ static int report_power_off_result_to_bmc(enum sentry_rmrs_result_type res)
         logging_error("snprintf failed\n");
         return ret;
     }
+    if (ret >= (int)sizeof(power_off_res_str)) {
+        logging_error("power off result string truncated\n");
+        return -1;
+    }
 
-    ret = string_to_ascii_hex(power_off_res_str, power_off_res_hex_str, sizeof(power_off_res_hex_str));
+    ret = string_to_ascii_hex(power_off_res_str, ret, power_off_res_hex_str, sizeof(power_off_res_hex_str));
     if (ret < 0) {
         logging_error("Failed to convert power off res raw string to ascii string\n");
         return ret;
