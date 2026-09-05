@@ -86,6 +86,10 @@ static const uint32_t tc_ring_one_pattern[32] = {
     0x00000000, 0x00000000, 0x00000000, 0x00000000,
 };
 
+// 约束: pattern 必须恰好铺满一个数据单元，否则 space_init 的按单元写入会越界或留空隙
+_Static_assert(sizeof(tc_ring_one_pattern) == TC_RING_ONE_DATA_UNIT,
+               "tc_ring_one_pattern size must equal TC_RING_ONE_DATA_UNIT");
+
 static const uint32_t g_tc_ring_one_special_bits[] = {394, 397, 405, 343, 394, 393, 392, 377};
 
 static void* tc_ring_one_thread_entry(void* arg);
@@ -224,13 +228,21 @@ static void *numa_alloc_fallback(int numa_node, int preferred_node, size_t size)
     return ptr;
 }
 
-static void tc_ring_one_space_init(void *base, size_t size)
+static int tc_ring_one_space_init(void *base, size_t size)
 {
-    int i;
+    size_t i;
+
+    // 非对齐的尾部单元若跳过会留下未初始化区域，导致后续扫描误报内存故障，这里直接拒绝
+    if (size % TC_RING_ONE_DATA_UNIT != 0) {
+        logging_error("size %#lx is not aligned to %#x\n", size, TC_RING_ONE_DATA_UNIT);
+        return TC_RING_ONE_PRAMA_ERR;
+    }
 
     for (i = 0; i < size; i += TC_RING_ONE_DATA_UNIT) {
         memcpy((char*)base + i, tc_ring_one_pattern, sizeof(tc_ring_one_pattern));
     }
+
+    return TC_RING_ONE_SUCCESS;
 }
 
 static bool is_core_invalid(struct tc_ring_one_config *config, int core_id)
@@ -316,7 +328,11 @@ static int tc_ring_one_init(struct tc_ring_one_config *config)
             goto numa_alloc_fail;
         }
 
-        tc_ring_one_space_init(ptr, config->mem_size);
+        if (tc_ring_one_space_init(ptr, config->mem_size) != TC_RING_ONE_SUCCESS) {
+            numa_free(ptr, config->mem_size);
+            ret = TC_RING_ONE_PRAMA_ERR;
+            goto numa_alloc_fail;
+        }
         config->test_space_base[i] = ptr;
     }
 
