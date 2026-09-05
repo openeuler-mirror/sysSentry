@@ -194,6 +194,12 @@ def upload_bmc(_type, module, command, event_type, socket_id, core_id_logical):
         if cpu_num_per_group > DEFAULT_CORE_ID_ARRAY_CAPACITY:
             core_id_array_capacity = math.ceil(cpu_num_per_group / 8) * 8
 
+        if core_id + 1 > core_id_array_capacity:
+            logging.error(
+                "core id %d exceeds bitmap capacity %d", core_id, core_id_array_capacity
+            )
+            return
+
         core_id_bin_str = bin(1 << core_id)[BIN_PREFIX_LEN:].zfill(
             core_id_array_capacity
         )
