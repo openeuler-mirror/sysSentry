@@ -180,7 +180,7 @@ def get_current_time_string():
     return current_utc_time.astimezone(utc8_timezone).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def execute_command(cmd_list):
+def execute_command(cmd_list, timeout=None):
     try:
         process = subprocess.run(
             cmd_list,
@@ -188,14 +188,19 @@ def execute_command(cmd_list):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             encoding="utf-8",
+            timeout=timeout,
         )
         returncode = process.returncode
         if returncode != 0:
             logging.error("execute command with illegal returncode")
             return None
         return process.stdout
-    except OSError:
-        logging.error("failed to execute command")
+    except subprocess.TimeoutExpired:
+        logging.error("execute command timeout: %s", cmd_list[0] if cmd_list else "")
+        return None
+    except Exception as e:
+        logging.error("failed to execute command with error: %s", str(e))
+        return None
 
 
 def is_dangerous_env_key(env_name):
