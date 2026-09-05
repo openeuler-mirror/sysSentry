@@ -231,9 +231,16 @@ bool HexAsciiToChar(const std::string& hexStr, std::string& asciiStr)
         BMC_LOG_ERROR << "input str length for hex ascii to char must be 2, str: " << hexStr;
         return false;
     }
-    
+
+    // endPtr完整性检查: 确认整个字符串被完整消费, 防御strtoul的宽松解析
+    // (前导空白/正负号/部分解析取前缀值)在前置白名单被改动后静默失效
     uint8_t asciiVal = 0;
-    unsigned long temp = std::stoul(hexStr, nullptr, 16);
+    char* endPtr = nullptr;
+    unsigned long temp = std::strtoul(hexStr.c_str(), &endPtr, 16);
+    if (endPtr != hexStr.c_str() + hexStr.length()) {
+        BMC_LOG_ERROR << "input str is not fully consumed as hex, str: " << hexStr;
+        return false;
+    }
     if (temp > UINT8_MAX) {
         BMC_LOG_ERROR << "input str value out of 255, str: " << hexStr;
         return false;
