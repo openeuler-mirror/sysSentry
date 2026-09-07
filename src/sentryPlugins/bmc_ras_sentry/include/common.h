@@ -44,6 +44,7 @@ std::string ByteToHex(uint8_t byte);
 bool HexAsciiToChar(const std::string& hexStr, std::string& asciiStr);
 std::vector<std::string> SplitString(const std::string& str, const std::string& split);
 std::vector<std::string> SplitBySpace(const std::string& str);
+bool IsValidSafeToken(const std::string& str);
 std::map<std::string, std::vector<std::string> > ParseStorcliCmd(const std::string& cmd);
 std::pair<std::map<std::string, uint8_t>, std::vector<std::vector<std::string> > > ParseCmdMap(
     const std::vector<std::string>& inputVec);

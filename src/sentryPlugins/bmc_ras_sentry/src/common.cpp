@@ -231,9 +231,16 @@ bool HexAsciiToChar(const std::string& hexStr, std::string& asciiStr)
         BMC_LOG_ERROR << "input str length for hex ascii to char must be 2, str: " << hexStr;
         return false;
     }
-    
+
+    // endPtr完整性检查: 确认整个字符串被完整消费, 防御strtoul的宽松解析
+    // (前导空白/正负号/部分解析取前缀值)在前置白名单被改动后静默失效
     uint8_t asciiVal = 0;
-    unsigned long temp = std::stoul(hexStr, nullptr, 16);
+    char* endPtr = nullptr;
+    unsigned long temp = std::strtoul(hexStr.c_str(), &endPtr, 16);
+    if (endPtr != hexStr.c_str() + hexStr.length()) {
+        BMC_LOG_ERROR << "input str is not fully consumed as hex, str: " << hexStr;
+        return false;
+    }
     if (temp > UINT8_MAX) {
         BMC_LOG_ERROR << "input str value out of 255, str: " << hexStr;
         return false;
@@ -282,6 +289,61 @@ std::vector<std::string> SplitBySpace(const std::string& str)
     }
 
     return result;
+}
+
+/**
+ * IsValidSafeToken - 校验外部工具输出中解析出的字符串是否只含安全字符
+ *
+ * 使用场景(为什么需要本函数):
+ *   本插件以root权限运行, 会解析raid卡管理工具(storcli64/hiraidadm)的输出,
+ *   从中提取 ctrlId/VDId/encId/slotId/VDName 等字段, 再经 format_string 拼接成
+ *   新的命令字符串, 最终由 ExecCommand() -> popen() 以shell方式执行。
+ *   若上述工具的输出被恶意构造(如raid卡固件被劫持、盘柜背板数据被篡改,
+ *   或工具二进制被替换), 字段中携带 "; rm -rf /" 之类的shell元字符即可
+ *   注入任意命令。因此所有取自外部工具输出、将要拼入命令的字符串,
+ *   必须先通过本函数校验。
+ *
+ * 校验规则(白名单):
+ *   - 字母、数字          : 编号、盘名、序列号的主体字符
+ *   - ':'                 : storcli EID:Slt 字段分隔符, 如 "259:0"
+ *   - '/'                 : 设备路径与 DG/VD 字段分隔符, 如 "/dev/sda"、"0/0"
+ *   - '-'                 : 设备名连字符, 如 "nvme0n1-e1"; 也是 "N/A" 的组成部分
+ *   - '_'                 : 设备名下划线, 如部分厂商的RAID VD名, 无shell语义
+ *   - 空串                : 合法。工具输出中字段可能为空(如直通盘无VD名称),
+ *                          空值不会注入任何内容, 拼入命令后只是一个空参数位置
+ *   - "NA" / "N/A"        : 合法。raid工具对无值字段的惯用占位符(不适用/未检出),
+ *                          仅含字母与斜杠, 无注入风险
+ *   - 其余任何字符均拒绝  : 包括但不限于 ; | & ` $ ( ) < > " ' \ 空白符和控制字符,
+ *                          这些是shell语法字符或可破坏命令语义的字符
+ *
+ * 使用约定:
+ *   - 新增解析外部输出的字段时, 若该字段会拼入命令, 必须先经本函数校验;
+ *     仅进入JSON上报的字段也建议校验, 防止告警内容注入
+ *   - 需要放行新字符时, 先确认该字符无shell语义(参考POSIX shell语法中的
+ *     特殊字符表), 且当前 storcli/hiraidadm 版本的真实输出确实包含该字符,
+ *     再添加到白名单
+ *
+ * 注意: 本函数是纵深防御的一层, 根治方案是 ExecCommand 改用 execvp 直接
+ *   执行(argv数组, 不经shell解析), 若后续改造请同步评估本函数的保留价值
+ */
+bool IsValidSafeToken(const std::string& str)
+{
+    // 空串与raid工具的惯用占位符均为合法输入
+    if (str.empty() || str == "NA" || str == "N/A") {
+        return true;
+    }
+
+    for (const auto& ch : str) {
+        if (std::isalnum(static_cast<unsigned char>(ch))) {
+            continue;
+        }
+        if (ch == ':' || ch == '/' || ch == '-' || ch == '_') {
+            continue;
+        }
+        return false;
+    }
+
+    return true;
 }
 
 std::map<std::string, std::vector<std::string> > ParseStorcliCmd(const std::string& cmd)
@@ -338,6 +400,12 @@ std::pair<std::map<std::string, uint8_t>, std::vector<std::vector<std::string> >
 
         if (i == 1) {
             auto head = SplitBySpace(line);
+            // 列数远超真实表头(几十列以内)说明输出异常(不可信工具输出被构造),
+            // 列索引以uint8_t存储, 上限需与之匹配; 拒绝而非继续解析, 防止越界/截断
+            if (head.size() > UINT8_MAX) {
+                BMC_LOG_ERROR << "cmd map head columns exceeded, column count: " << head.size();
+                return {};
+            }
             for (uint8_t j = 0; j < head.size(); j++) {
                 mapHead.emplace(head[j], j);
             }

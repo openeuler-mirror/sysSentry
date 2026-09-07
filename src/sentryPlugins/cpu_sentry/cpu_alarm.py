@@ -15,7 +15,7 @@ import logging
 import socket
 from enum import Enum
 
-from syssentry.utils import execute_command, MAX_MSG_LEN
+from syssentry.utils import execute_command, MAX_MSG_LEN, recv_all
 
 MAX_CORE_ID = 1024
 MAX_SOCKET_ID = 255
@@ -32,6 +32,11 @@ PARAM_TYPE_LEN = 1
 PARAM_MODULE_LEN = 1
 PARAM_TRANS_TO_LEN = 2
 PARAM_DATA_LEN = 3
+
+# Timeout (seconds) for external commands in the cpu alarm flow, so a hung
+# child process (e.g. ipmitool waiting on an unresponsive BMC) cannot block
+# the single-threaded alarm loop forever.
+CMD_TIMEOUT = 10
 
 
 class Type(Enum):
@@ -73,14 +78,16 @@ def parser_cpu_alarm_info(req_data):
     if not req_data:
         raise ValueError("recv empty data")
 
-    cpu_alarm_info = list(map(int, req_data.split()))
+    try:
+        cpu_alarm_info = list(map(int, req_data.split()))
+    except ValueError as e:
+        raise ValueError("non-integer param in cpu alarm info: %s" % e) from e
 
     if len(cpu_alarm_info) != CPU_ALARM_PARAM_LEN:
-        logging.debug(
-            "expected %d params in fixed params, got %d",
-            CPU_ALARM_PARAM_LEN, len(cpu_alarm_info)
+        raise ValueError(
+            "expected %d params in cpu alarm info, got %d"
+            % (CPU_ALARM_PARAM_LEN, len(cpu_alarm_info))
         )
-        raise ValueError
 
     check_input_param(cpu_alarm_info)
 
@@ -89,7 +96,7 @@ def parser_cpu_alarm_info(req_data):
 
 def get_cpu_num():
     cmd_list = ["/usr/bin/lscpu"]
-    ret = execute_command(cmd_list)
+    ret = execute_command(cmd_list, timeout=CMD_TIMEOUT)
     if not ret:
         return -1
     matches = list(re.finditer(r"^\s*(CPU|CPU\(s\)):\s*\d+$", ret, re.MULTILINE))
@@ -106,7 +113,7 @@ def get_cpu_num():
 
 def get_cpu_interval():
     cmd_list = ["/usr/sbin/dmidecode", "-t", "processor"]
-    ret = execute_command(cmd_list)
+    ret = execute_command(cmd_list, timeout=CMD_TIMEOUT)
     if not ret:
         logging.error("dmidecode cmd failed")
         return [], -1
@@ -187,6 +194,12 @@ def upload_bmc(_type, module, command, event_type, socket_id, core_id_logical):
         if cpu_num_per_group > DEFAULT_CORE_ID_ARRAY_CAPACITY:
             core_id_array_capacity = math.ceil(cpu_num_per_group / 8) * 8
 
+        if core_id + 1 > core_id_array_capacity:
+            logging.error(
+                "core id %d exceeds bitmap capacity %d", core_id, core_id_array_capacity
+            )
+            return
+
         core_id_bin_str = bin(1 << core_id)[BIN_PREFIX_LEN:].zfill(
             core_id_array_capacity
         )
@@ -213,9 +226,11 @@ def upload_bmc(_type, module, command, event_type, socket_id, core_id_logical):
             "{:#04X}".format(socket_id),
         ]
         cmd_list.extend(core_id_cmd)
-        execute_command(cmd_list)
-    except (ValueError, TypeError):
-        logging.error("failed to resolve bmc params")
+        ret = execute_command(cmd_list, timeout=CMD_TIMEOUT)
+        if ret is None:
+            logging.error("failed to upload cpu alarm to bmc via ipmitool")
+    except (ValueError, TypeError) as e:
+        logging.error("failed to upload cpu alarm to bmc: %s", e)
 
 
 def check_fixed_param(data, expect):
@@ -244,32 +259,41 @@ def check_fixed_param(data, expect):
 def cpu_alarm_recv(server_socket: socket.socket):
     try:
         client_socket, _ = server_socket.accept()
-        logging.debug("cpu alarm fd listen ok")
+    except OSError:
+        logging.error("cpu alarm accept failed")
+        return
 
-        data = client_socket.recv(PARAM_REP_LEN)
+    logging.debug("cpu alarm fd listen ok")
+    try:
+        data = recv_all(client_socket, PARAM_REP_LEN)
         check_fixed_param(data, "REP")
 
-        data = client_socket.recv(PARAM_TYPE_LEN)
+        data = recv_all(client_socket, PARAM_TYPE_LEN)
         _type = check_fixed_param(data, Type)
 
-        data = client_socket.recv(PARAM_MODULE_LEN)
+        data = recv_all(client_socket, PARAM_MODULE_LEN)
         module = check_fixed_param(data, Module)
 
-        data = client_socket.recv(PARAM_TRANS_TO_LEN)
+        data = recv_all(client_socket, PARAM_TRANS_TO_LEN)
         trans_to = check_fixed_param(data, TransTo)
 
-        data = client_socket.recv(PARAM_DATA_LEN)
+        data = recv_all(client_socket, PARAM_DATA_LEN)
         data_len = check_fixed_param(data, (MIN_DATA_LEN, MAX_DATA_LEN))
 
         if data_len < 0 or data_len > MAX_MSG_LEN:
             client_socket.close()
             logging.error("socket recv data is illegal:%d", data_len)
             return
-        data = client_socket.recv(data_len)
+        data = recv_all(client_socket, data_len)
 
         command, event_type, socket_id, core_id = parser_cpu_alarm_info(data)
+    except ConnectionError:
+        logging.error("connection closed before recv all cpu alarm msg")
+        client_socket.close()
+        return
     except socket.error:
         logging.error("socket error")
+        client_socket.close()
         return
     except (ValueError, OSError, TypeError, NotImplementedError):
         logging.error("server recv cpu alarm msg failed!")

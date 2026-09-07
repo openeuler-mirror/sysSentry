@@ -184,15 +184,12 @@ static int print_map_res(int fd, char *stage, int map_size, int *io_dump)
             logMessage(LOG_LEVEL_ERROR, "failed to lookup %s map_res: %d\n", stage, err);
             return -1; 
         }
-        
-        size_t length = strlen(counter.io_type);
-        char io_type;
-        if (length > 0) {
+
+        char io_type = counter.io_type[0];
+        if (io_type != '\0') {
             logMessage(LOG_LEVEL_DEBUG, "io_type have value.\n");
-            io_type = counter.io_type[0];
         } else {
             logMessage(LOG_LEVEL_DEBUG, "io_type not value.\n");
-            io_type = '\0';
         }
         int major = counter.major;
         int first_minor = counter.first_minor;
@@ -381,7 +378,12 @@ int main(int argc, char **argv) {
         }
         snprintf(path, sizeof(path), "/dev/%s", entry->d_name);
         struct stat statbuf;
-        if (lstat(path, &statbuf) != 0 && !S_ISBLK(statbuf.st_mode)) {
+        if (lstat(path, &statbuf) != 0) {
+            logMessage(LOG_LEVEL_ERROR, "lstat %s failed, skip.\n", path);
+            continue;
+        }
+        if (!S_ISBLK(statbuf.st_mode)) {
+            logMessage(LOG_LEVEL_ERROR, "S_ISBLK failed, skip.\n", path);
             continue;
         }
         if (!strncmp(entry->d_name, "dm-", 3) || !strncmp(entry->d_name, "loop", 4) ||

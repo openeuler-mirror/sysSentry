@@ -278,7 +278,7 @@ class InspectTask:
 
         if self.conflict == "kill" and pid_list:
             for pid in pid_list:
-                subprocess.run(["kill", str(pid)], shell=False)
+                subprocess.run(["/usr/bin/kill", str(pid)], shell=False)
                 logging.debug("the program is killed, pid=%d", pid)
         elif self.conflict == "down" and pid_list:
             logging.warning("the conflict field is set to down, so program = [%s] is exited!", self.name)

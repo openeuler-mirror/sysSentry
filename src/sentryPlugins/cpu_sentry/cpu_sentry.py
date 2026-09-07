@@ -177,7 +177,7 @@ class CpuSentryKilledError(Exception):
 
 def kill_process(signum, _f, cpu_sentry_obj):
     """kill process by 'pkill -9'"""
-    run_cmd(f"pkill -9 {LOW_LEVEL_INSPECT_CMD}")
+    run_cmd(f"/usr/bin/pkill -9 {LOW_LEVEL_INSPECT_CMD}")
     cpu_sentry_obj.send_result["result"] = ResultLevel.FAIL
     cpu_sentry_obj.send_result["details"]["code"] = 1005
     cpu_sentry_obj.send_result["details"]["msg"] = "cpu_sentry task is killed!"

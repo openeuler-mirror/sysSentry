@@ -155,6 +155,11 @@ std::pair<std::string, std::vector<PhysicalDiskAddress> > CBMCRasSentry::GetStor
     std::vector<PhysicalDiskAddress> PDAddresses;
     std::string VDName;
 
+    if (!IsValidSafeToken(ctrlId) || !IsValidSafeToken(VDId)) {
+        BMC_LOG_WARNING << "unsafe ctrlId or VDId rejected, ctrlId: " << ctrlId << ", VDId: " << VDId;
+        return {"", {}};
+    }
+
     auto getVDInfoCmd = format_string(STORCLI_GET_VD_INFO_CMD, ctrlId.c_str(), VDId.c_str());
     auto VDInfo = ParseStorcliCmd(getVDInfoCmd);
     auto PDListHead = format_string(STORCLI_PD_LIST, VDId.c_str());
@@ -178,7 +183,15 @@ std::pair<std::string, std::vector<PhysicalDiskAddress> > CBMCRasSentry::GetStor
         return {"", {}};
     }
     auto VDNameResult = SplitString(VDNameIt->second, "/");
+    if (VDNameResult.empty()) {
+        BMC_LOG_WARNING << "parse " << STORCLI_VD_DRIVE_NAME << " value failed, cmd: " << getVDInfoCmd;
+        return {"", {}};
+    }
     VDName = VDNameResult.back();
+    if (!IsValidSafeToken(VDName)) {
+        BMC_LOG_WARNING << "unsafe " << STORCLI_VD_DRIVE_NAME << " value rejected, cmd: " << getVDInfoCmd;
+        return {"", {}};
+    }
 
     auto PDMap = ParseCmdMap(PDListIt->second);
     auto PDMapHead = PDMap.first;
@@ -200,6 +213,10 @@ std::pair<std::string, std::vector<PhysicalDiskAddress> > CBMCRasSentry::GetStor
             BMC_LOG_WARNING << "parse " << STORCLI_ENC_SLOT << " value failed, cmd: " << getVDInfoCmd;
             continue;
         }
+        if (!IsValidSafeToken(EncSlotResult[0]) || !IsValidSafeToken(EncSlotResult[1])) {
+            BMC_LOG_WARNING << "unsafe " << STORCLI_ENC_SLOT << " value rejected, cmd: " << getVDInfoCmd;
+            continue;
+        }
         PhysicalDiskAddress PDAddress;
         PDAddress.encId = EncSlotResult[0];
         PDAddress.slotId = EncSlotResult[1];
@@ -213,6 +230,11 @@ std::vector<std::string> CBMCRasSentry::GetStorcliPDSN(
     const std::vector<PhysicalDiskAddress>& PDAddresses, const std::string& ctrlId)
 {
     std::vector<std::string> PDSNs;
+
+    if (!IsValidSafeToken(ctrlId)) {
+        BMC_LOG_WARNING << "unsafe ctrlId rejected, ctrlId: " << ctrlId;
+        return PDSNs;
+    }
 
     for (const auto& PDAddress : PDAddresses) {
         auto getPDInfoCmd = format_string(STORCLI_GET_PD_INFO_CMD,
@@ -239,6 +261,11 @@ std::vector<std::string> CBMCRasSentry::GetStorcliPDSN(
 
 std::string CBMCRasSentry::GetStorcliCtrlSN(const std::string& ctrlId)
 {
+    if (!IsValidSafeToken(ctrlId)) {
+        BMC_LOG_WARNING << "unsafe ctrlId rejected, ctrlId: " << ctrlId;
+        return "";
+    }
+
     auto getCtrlDetailsCmd = format_string(STORCLI_GET_CTRL_DETAILS_CMD, ctrlId.c_str());
     auto ctrlDetails = ParseStorcliCmd(getCtrlDetailsCmd);
     auto headMessageIt = ctrlDetails.find(STORCLI_HEAD_MESSAGE);
@@ -296,6 +323,12 @@ void CBMCRasSentry::GetStorcliRaidInfo()
             continue;
         }
 
+        if (!IsValidSafeToken(ctrlVDResult[0]) || !IsValidSafeToken(ctrlVDResult[1])) {
+            BMC_LOG_WARNING << "unsafe " << STORCLI_CTRL_VD << " value rejected, value: " << ctrlVDId
+                            << ", cmd: " << STORCLI_GET_CTRL_INFO_CMD;
+            continue;
+        }
+
         auto ctrlInfoIt = ctrlInfoMap.find(ctrlVDResult[0]);
         if (ctrlInfoIt == ctrlInfoMap.end()) {
             ctrlInfoMap[ctrlVDResult[0]] = {ctrlVDResult[1]};
@@ -345,7 +378,17 @@ std::pair<std::string, std::vector<PhysicalDiskAddress> > CBMCRasSentry::GetHira
         return {"", {}};
     }
     auto VDNameResult = SplitString(json_object_get_string(VDNameObj), "/");
+    if (VDNameResult.empty()) {
+        BMC_LOG_WARNING << "parse " << HIRAIDADM_VD_NAME << " value failed, cmd: " << getVdInfoCmd;
+        json_object_put(VDInfoDataObj);
+        return {"", {}};
+    }
     VDName = VDNameResult.back();
+    if (!IsValidSafeToken(VDName)) {
+        BMC_LOG_WARNING << "unsafe " << HIRAIDADM_VD_NAME << " value rejected, cmd: " << getVdInfoCmd;
+        json_object_put(VDInfoDataObj);
+        return {"", {}};
+    }
     json_object_put(VDInfoDataObj);
 
     auto getPDListCmd = format_string(HIRAIDADM_GET_PD_LIST_CMD, ctrlId, VDId);
@@ -375,6 +418,11 @@ std::pair<std::string, std::vector<PhysicalDiskAddress> > CBMCRasSentry::GetHira
         PhysicalDiskAddress PDAddress;
         PDAddress.encId = pdsLine[encNum];
         PDAddress.slotId = pdsLine[slotNum];
+        if (!IsValidSafeToken(PDAddress.encId) || !IsValidSafeToken(PDAddress.slotId)) {
+            BMC_LOG_WARNING << "unsafe PD address rejected, encId: " << PDAddress.encId
+                            << ", slotId: " << PDAddress.slotId << ", cmd: " << getPDListCmd;
+            continue;
+        }
         PDAddresses.push_back(PDAddress);
     }
 

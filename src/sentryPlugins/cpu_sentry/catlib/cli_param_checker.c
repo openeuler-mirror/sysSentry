@@ -17,6 +17,7 @@ void checkset_cpu_usage_percentage(char *getopt_optarg, catcli_request_body *p_r
     if (cpu_utility <= 0 || cpu_utility > CPU_USAGE_PERCENTAGE_MAX || strchr(getopt_optarg, '.') != NULL) {
         strncpy(errs->patrol_module_err,
             "\"cpu_utility \" must be an integer greater in the range (0,100],correct \"-u, --cpu_utility\"\n", MAX_ERR_LEN);
+        errs->patrol_module_err[MAX_ERR_LEN - 1] = '\0';
     	p_request_body->cpu_utility = 0;
     } else {
     	p_request_body->cpu_utility = (int)cpu_utility;
@@ -26,7 +27,12 @@ void checkset_cpu_usage_percentage(char *getopt_optarg, catcli_request_body *p_r
 void checkset_cpulist(char *getopt_optarg, catcli_request_body *p_request_body, struct option_errs *errs)
 {
     regex_t reg = { 0 };
-    regcomp(&reg, CPULIST_REGEX, REG_EXTENDED); // 编译正则模式串
+    // 编译正则模式串
+    if (regcomp(&reg, CPULIST_REGEX, REG_EXTENDED) != 0 ) {
+        strncpy(errs->cpulist_err, "regcomp failed\n", MAX_ERR_LEN);
+        errs->cpulist_err[MAX_ERR_LEN - 1] = '\0';
+        return;
+    }
     const size_t nmatch = 1;                    // 定义匹配结果最大允许数
     regmatch_t pmatch[1];                       // 定义匹配结果在待匹配串中的下标范围
     char getopt_optarg_copy[strlen(getopt_optarg) + 1];
@@ -37,6 +43,7 @@ void checkset_cpulist(char *getopt_optarg, catcli_request_body *p_request_body, 
         strncpy(errs->cpulist_err,
             "\"cpulist\" is invalid format,the correct format should be like '0-3,7',correct \"-l, --cpulist\"\n",
             MAX_ERR_LEN);
+        errs->cpulist_err[MAX_ERR_LEN - 1] = '\0';
     } else {
         long total_core = sysconf(_SC_NPROCESSORS_CONF);
         char *savePtr = NULL;
@@ -52,6 +59,7 @@ void checkset_cpulist(char *getopt_optarg, catcli_request_body *p_request_body, 
                 strncpy(errs->cpulist_err,
                     "\"cpulist\" format error: unexpected '-' delimiter, correct \"-l, --cpulist\"\n",
                     MAX_ERR_LEN);
+                errs->cpulist_err[MAX_ERR_LEN - 1] = '\0';
                 return;
             }
             long coreid_before = strtol(subSplit, NULL, DECIMAL);
@@ -64,12 +72,14 @@ void checkset_cpulist(char *getopt_optarg, catcli_request_body *p_request_body, 
                     "The specified \"cpulist\" contain cpu core id which has exceeded the max cpu core id,correct "
                     "\"-l, --cpulist\"\n",
                     MAX_ERR_LEN);
+                errs->cpulist_err[MAX_ERR_LEN - 1] = '\0';
                 return;
             }
             if (coreid_after >= 0 && coreid_before > coreid_after) {
                 strncpy(errs->cpulist_err,
                     "\"cpulist\" must not contain descending cpuid segment such as \"8-2\",correct \"-l, --cpulist\"\n",
                     MAX_ERR_LEN);
+                errs->cpulist_err[MAX_ERR_LEN - 1] = '\0';
                 return;
             }
         }
@@ -84,6 +94,7 @@ void checkset_patrol_time(char *getopt_optarg, catcli_request_body *p_request_bo
         strncpy(errs->patrol_time_err,
             "\"patrol_second\" must be a number in the range of (0,INT_MAX] ,correct \"-t, --patrol_second\"\n",
             MAX_ERR_LEN);
+        errs->patrol_time_err[MAX_ERR_LEN - 1] = '\0';
     } else {
     	p_request_body->patrol_second = (int)second;
     }
@@ -102,6 +113,7 @@ void checkset_patrol_type(char *getopt_optarg, catcli_request_body *p_request_bo
     } else {
         p_request_body->patrol_module = CAT_PATROL_UNKNOWN;
         strncpy(errs->patrol_module_err, "unknown patrol module,correct \"-m, --patrol_module\"\n", MAX_ERR_LEN);
+        errs->patrol_module_err[MAX_ERR_LEN - 1] = '\0';
     }
 }
 

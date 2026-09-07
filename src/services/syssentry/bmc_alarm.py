@@ -114,8 +114,11 @@ def parse_hbmc_report(data: str):
     logging.info(f"Send bmc alarm command is {cmd_list}")
 
     ret = execute_command(cmd_list)
+    if ret is None:
+        logging.error("execute ipmitool failed")
+        raise ValueError
     if HBMC_SEND_SUCCESS_CODE not in ret:
-        logging.warning(f"Send bmc alarm failed, error code is {ret}")
+        logging.warning("Send bmc alarm failed, error code is %s", ret)
         raise ValueError
     logging.debug("Send bmc alarm success")
 
@@ -129,8 +132,12 @@ def bmc_recv(server_socket: socket.socket):
     logging.debug("Get hbm socket connection request")
     try:
         client_socket, _ = server_socket.accept()
-        logging.debug("cpu alarm fd listen ok")
+    except OSError:
+        logging.error("bmc alarm accept failed")
+        return
 
+    logging.debug("cpu alarm fd listen ok")
+    try:
         data = client_socket.recv(SOCKET_RECEIVE_LEN)
         data = data.decode()
 
@@ -152,6 +159,7 @@ def bmc_recv(server_socket: socket.socket):
 
     except socket.error:
         logging.error("socket error")
+        client_socket.close()
         return
     except (ValueError, OSError, TypeError, IndexError, NotImplementedError):
         logging.error("server recv bmc msg failed!")
