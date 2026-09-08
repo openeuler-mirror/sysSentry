@@ -233,7 +233,7 @@ static int convert_ubus_type_to_sentry_type(enum ras_err_type ubus_type)
 static int convert_power_off_smh_smg_to_str(const struct sentry_msg_helper_msg* smh_msg, char* str)
 {
     int res;
-    res = snprintf(str, MSG_STR_MAX_LEN, "%lu", smh_msg->msgid);
+    res = snprintf(str, MSG_STR_MAX_LEN, "%llu", smh_msg->msgid);
     if ((size_t)res >= MSG_STR_MAX_LEN) {
         logging_warn("msg str size exceeds the max value\n");
         return -1;
@@ -264,7 +264,7 @@ static int convert_oom_smh_smg_to_str(const struct sentry_msg_helper_msg* smh_ms
         offset += res;
     }
     res = snprintf(str, MSG_STR_MAX_LEN,
-                   "%lu_{nr_nid:%d,nid:[%s],sync:%d,timeout:%d,reason:%d}",
+                   "%llu_{nr_nid:%d,nid:[%s],sync:%d,timeout:%d,reason:%d}",
                    smh_msg->msgid,
                    smh_msg->helper_msg_info.oom_info.nr_nid,
                    nid_str,
@@ -282,7 +282,7 @@ static int convert_oom_smh_smg_to_str(const struct sentry_msg_helper_msg* smh_ms
 
 static int convert_remote_smh_smg_to_str(const struct sentry_msg_helper_msg* smh_msg, char* str)
 {
-    int res = snprintf(str, MSG_STR_MAX_LEN, "%lu_{cna:%u,eid:%s}",
+    int res = snprintf(str, MSG_STR_MAX_LEN, "%llu_{cna:%u,eid:%s}",
                        smh_msg->msgid,
                        smh_msg->helper_msg_info.remote_info.cna,
                        smh_msg->helper_msg_info.remote_info.eid);
@@ -357,7 +357,7 @@ static int convert_ub_mem_err_smh_msg_to_str(struct sentry_msg_helper_msg* smh_m
 
 static int convert_link_event_smh_msg_to_str(const struct sentry_msg_helper_msg* smh_msg, char* str)
 {
-    int res = snprintf(str, MSG_STR_MAX_LEN, "%lu_{port_id:%u,scna:%u,event:%s}",
+    int res = snprintf(str, MSG_STR_MAX_LEN, "%llu_{port_id:%u,scna:%u,event:%s}",
                        smh_msg->msgid,
                        smh_msg->helper_msg_info.link_info.port_id,
                        smh_msg->helper_msg_info.link_info.scna,
@@ -403,7 +403,7 @@ static int convert_str_to_smh_msg(struct alarm_msg *al_msg, struct sentry_msg_he
     switch (alarm_ack_type) {
         case ALARM_REBOOT_ACK_EVENT:
         case ALARM_OOM_ACK_EVENT:
-            if (!(sscanf(al_msg->pucParas, "%lu_%lu%n",
+            if (!(sscanf(al_msg->pucParas, "%llu_%lu%n",
                          &(smh_msg->msgid),
                          &(smh_msg->res),
                          &n) == XALARM_GENERAL_MSG_ITEM_CNT) || strlen(al_msg->pucParas) != n) {
@@ -413,7 +413,7 @@ static int convert_str_to_smh_msg(struct alarm_msg *al_msg, struct sentry_msg_he
             break;
         case ALARM_PANIC_ACK_EVENT:
         case ALARM_KERNEL_REBOOT_ACK_EVENT:
-            if (!(sscanf(al_msg->pucParas, "%lu_{cna:%u,eid:%39[^}]}_%lu%n",
+            if (!(sscanf(al_msg->pucParas, "%llu_{cna:%u,eid:%39[^}]}_%lu%n",
                 &(smh_msg->msgid),
                 &(smh_msg->helper_msg_info.remote_info.cna),
                 smh_msg->helper_msg_info.remote_info.eid,
