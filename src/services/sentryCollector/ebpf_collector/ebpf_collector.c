@@ -346,9 +346,9 @@ int main(int argc, char **argv) {
 
     char *level = read_config_value(CONFIG_FILE, "log", "level");
     if (level != NULL) {
-        if (level[strlen(level) - 1] == '\r') {
-            size_t len = strlen(level);
-            level[len - 1] = '\0'; 
+        size_t len = strlen(level);
+        if (len > 0 && level[len - 1] == '\r') {
+            level[len - 1] = '\0';
         }
         setLogLevel(level);
         free(level);
