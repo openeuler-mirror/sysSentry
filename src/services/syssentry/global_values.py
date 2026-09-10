@@ -274,7 +274,9 @@ class InspectTask:
                 continue
             try:
                 pid = int(line.split()[1])
-            except (IndexError, ValueError):
+            except (IndexError, ValueError) as e:
+                logging.error("task %s failed to parse pid from ps line: %s; error: %s",
+                              self.name, line, str(e))
                 continue
             pid_list.append(pid)
         logging.debug("current pid_list = %s", pid_list)
