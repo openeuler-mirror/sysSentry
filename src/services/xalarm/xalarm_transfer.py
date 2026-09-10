@@ -110,6 +110,18 @@ def wait_for_connection(server_sock, epoll, fd_to_socket, conn_thread_should_sto
                         if reg_data:
                             handle_client_event(connection.fileno(), reg_data)
                         connection.setblocking(False)
+                    except socket.timeout:
+                        # client did not send any registration message, it means
+                        # the client does not use xalarm_register_event API
+                        # (eg. sysSentry via pyxalarm), just keep the connection
+                        # and forward alarms to it
+                        logging.warning(
+                                "client fd %d does not send registration message "
+                                "in %s ms, treat it as alarm receiver only",
+                                connection.fileno(),
+                                int(connection.gettimeout() * 1000)
+                        )
+                        connection.setblocking(False)
                     except socket.error as e:
                         logging.warning(
                                 "Failed to receive registration from client: %d, reason is %s",

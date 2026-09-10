@@ -242,13 +242,6 @@ int xalarm_Register(alarm_callback_func callback, struct alarm_subscription_info
         return -1;
     }
 
-    if (send_event_registration(g_register_info.register_fd, id_filter) < 0) {
-        printf("%s: send_event_registration failed\n", __func__);
-        (void)close(g_register_info.register_fd);
-        g_register_info.register_fd = -1;
-        return -1;
-    }
-
     g_register_info.thread_should_stop = 0;
     g_register_info.register_tid = create_thread();
     if (g_register_info.register_tid == ULONG_MAX) {
