@@ -272,7 +272,12 @@ class InspectTask:
         for line in output_lines:
             if self.task_start not in line:
                 continue
-            pid = int(line.split()[1])
+            try:
+                pid = int(line.split()[1])
+            except (IndexError, ValueError) as e:
+                logging.error("task %s failed to parse pid from ps line: %s; error: %s",
+                              self.name, line, str(e))
+                continue
             pid_list.append(pid)
         logging.debug("current pid_list = %s", pid_list)
 
