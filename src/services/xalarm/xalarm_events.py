@@ -216,6 +216,14 @@ def parse_event_message(data: bytes) -> tuple:
     """
     Parse client event message to get action and event IDs.
 
+    Only "register_events" is accepted. There is intentionally no
+    "unregister_events" action: unsubscription happens automatically when
+    the client connection is closed (see unregister_client_events callers
+    in xalarm_transfer.py). Removing the remote unregister interface
+    prevents any local process with socket access from arbitrarily
+    disabling kernel event switches (power_off, panic, ...) subscribed
+    by other clients.
+
     Args:
         data: JSON format event message
 
@@ -231,7 +239,7 @@ def parse_event_message(data: bytes) -> tuple:
         msg = json.loads(msg_str)
 
         action = msg.get("action")
-        if action not in ["register_events", "unregister_events"]:
+        if action != "register_events":
             logging.warning("Invalid action in event message: %s", action)
             return (None, [])
 
@@ -258,7 +266,11 @@ def parse_event_message(data: bytes) -> tuple:
 
 def handle_client_event(client_fd: int, data: bytes) -> None:
     """
-    Handle client event message (registration or unregistration).
+    Handle client event registration message.
+
+    There is no remote unregister action: a client unsubscribes by simply
+    closing its connection, which triggers automatic cleanup
+    (unregister_client_events) in xalarm_transfer.py.
 
     Args:
         client_fd: Client socket file descriptor
@@ -272,9 +284,6 @@ def handle_client_event(client_fd: int, data: bytes) -> None:
     if action == "register_events":
         logging.info("start register event")
         register_client_events(client_fd, event_ids)
-    elif action == "unregister_events":
-        logging.info("start unregister event")
-        unregister_client_events(client_fd, event_ids)
 
 
 def clear_enabled_events_state() -> None:

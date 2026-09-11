@@ -221,8 +221,6 @@ bool xalarm_Upgrade(struct alarm_subscription_info id_filter, int client_id)
     return true;
 }
 
-static int send_event_registration(int fd, struct alarm_subscription_info id_filter);
-
 int xalarm_Register(alarm_callback_func callback, struct alarm_subscription_info id_filter)
 {
     if (g_register_info.is_registered || (g_register_info.register_fd != -1) ||
@@ -561,7 +559,7 @@ free_json:
 }
 
 
-static int send_event_message(int fd, struct alarm_subscription_info id_filter, const char *action)
+static int send_event_registration(int fd, struct alarm_subscription_info id_filter)
 {
     json_object *root = json_object_new_object();
     json_object *ids_array = json_object_new_array();
@@ -576,7 +574,7 @@ static int send_event_message(int fd, struct alarm_subscription_info id_filter, 
         return -1;
     }
 
-    json_object_object_add(root, "action", json_object_new_string(action));
+    json_object_object_add(root, "action", json_object_new_string("register_events"));
 
     for (i = 0; i < id_filter.len; i++) {
         if (id_filter.id_list[i] == ALARM_REBOOT_EVENT ||
@@ -593,20 +591,14 @@ static int send_event_message(int fd, struct alarm_subscription_info id_filter, 
     json_str = json_object_to_json_string(root);
     ret = SendAll(fd, json_str, strlen(json_str));
     if (ret < 0) {
-        fprintf(stderr, "%s: send %s msg of client fd %d failed\n", __func__, action, fd);
+        fprintf(stderr, "%s: send register msg of client fd %d failed\n", __func__, fd);
         json_object_put(root);
         return -1;
     }
 
-    fprintf(stdout, "%s: send %s msg of client fd %d success\n", __func__, action, fd);
+    fprintf(stdout, "%s: send register msg of client fd %d success\n", __func__, fd);
     json_object_put(root);
     return 0;
-}
-
-
-static int send_event_registration(int fd, struct alarm_subscription_info id_filter)
-{
-    return send_event_message(fd, id_filter, "register_events");
 }
 
 
