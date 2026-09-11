@@ -30,9 +30,25 @@ function do_test() {
 
     sleep 3
 
-    yum remove sysSentry -y
+    # 检查sysSentry安装包
+    installed_syssentry_rpm=$(rpm -qa sysSentry)
+    if [ -n "$installed_syssentry_rpm" ]; then
+        yum remove -y sysSentry
+    else
+        make uninstall
+    fi
 
-    yum install sysSentry sentry_msg_monitor -y
+    # 移除后重新加载systemd配置
+    systemctl daemon-reload
+
+    if [ -n "$installed_syssentry_rpm" ]; then
+        yum install -y sentry_msg_monitor
+    else
+        make clean && make && make install
+    fi
+
+    # 安装后重新加载systemd配置
+    systemctl daemon-reload
 
     systemctl start xalarmd.socket xalarmd.service
     expect_eq $? 0 "xalarmd service start failed"

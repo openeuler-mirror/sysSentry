@@ -5,3 +5,8 @@
 # if it's skipped on part of the arch:
 # testsuite:arch1
 # testsuite:arch2
+test_sentry_msg_monitor_oom_proc_set_function_valid_param:x86_64
+test_sentry_msg_monitor_status:x86_64
+test_bmc_ras_sentry_alarm_info_on_vm_test:x86_64
+test_bmc_ras_sentry_valid_param_update_cycle:x86_64
+test_bmc_ras_sentry_invalid_param:x86_64
