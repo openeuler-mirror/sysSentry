@@ -66,7 +66,7 @@ struct tc_ring_one_config {
 #define TC_RING_ONE_DATA_UNIT                       128
 #define TC_RING_ONE_CACHELINE_SIZE                  64
 
-#define TC_RING_ONE_PRAMA_ERR                       -1
+#define TC_RING_ONE_PARAM_ERR                       -1
 #define TC_RING_ONE_FAIL                            -2
 #define TC_RING_ONE_SUCCESS                         0
 
@@ -235,7 +235,7 @@ static int tc_ring_one_space_init(void *base, size_t size)
     // 非对齐的尾部单元若跳过会留下未初始化区域，导致后续扫描误报内存故障，这里直接拒绝
     if (size % TC_RING_ONE_DATA_UNIT != 0) {
         logging_error("size %#lx is not aligned to %#x\n", size, TC_RING_ONE_DATA_UNIT);
-        return TC_RING_ONE_PRAMA_ERR;
+        return TC_RING_ONE_PARAM_ERR;
     }
 
     for (i = 0; i < size; i += TC_RING_ONE_DATA_UNIT) {
@@ -264,7 +264,7 @@ static int tc_ring_one_ctrl_var_init(struct tc_ring_one_config *config)
 
     if (pthread_mutexattr_init(&attr) != 0) {
         logging_error("Failed to initialize mutex attribute\n");
-        return TC_RING_ONE_PRAMA_ERR;
+        return TC_RING_ONE_PARAM_ERR;
     }
 
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
@@ -301,7 +301,7 @@ mutex_init_fail:
 
 mutex_alloc_fail:
     pthread_mutexattr_destroy(&attr);
-    return TC_RING_ONE_PRAMA_ERR;
+    return TC_RING_ONE_PARAM_ERR;
 }
 
 static int tc_ring_one_init(struct tc_ring_one_config *config)
@@ -311,26 +311,26 @@ static int tc_ring_one_init(struct tc_ring_one_config *config)
 
     if (numa_available() < 0) {
         logging_error("NUMA is not available on this system\n");
-        return TC_RING_ONE_PRAMA_ERR;
+        return TC_RING_ONE_PARAM_ERR;
     }
 
     // 为每个 NUMA 节点分配测试内存空间
     config->test_space_base = (void **)calloc(config->numa_node, sizeof(void *));
     if (config->test_space_base == NULL) {
         logging_error("Failed to allocate memory for test_space_base\n");
-        return TC_RING_ONE_PRAMA_ERR;
+        return TC_RING_ONE_PARAM_ERR;
     }
 
     for (i = 0; i < config->numa_node; i++) {
         ptr = numa_alloc_fallback(config->numa_node, i, config->mem_size);
         if (ptr == NULL) {
-            ret = TC_RING_ONE_PRAMA_ERR;
+            ret = TC_RING_ONE_PARAM_ERR;
             goto numa_alloc_fail;
         }
 
         if (tc_ring_one_space_init(ptr, config->mem_size) != TC_RING_ONE_SUCCESS) {
             numa_free(ptr, config->mem_size);
-            ret = TC_RING_ONE_PRAMA_ERR;
+            ret = TC_RING_ONE_PARAM_ERR;
             goto numa_alloc_fail;
         }
         config->test_space_base[i] = ptr;
@@ -339,7 +339,7 @@ static int tc_ring_one_init(struct tc_ring_one_config *config)
     config->node_update_flag = (uint32_t *)calloc(config->numa_node, sizeof(uint32_t));
     if (config->node_update_flag == NULL) {
         logging_error("Failed to allocate memory for node_update_flag\n");
-        ret = TC_RING_ONE_PRAMA_ERR;
+        ret = TC_RING_ONE_PARAM_ERR;
         goto numa_alloc_fail;
     }
 
@@ -402,7 +402,7 @@ static int bind_thread_to_core(pthread_t thread, int core_id)
     ret = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
     if (ret != 0) {
         logging_error("pthread_setaffinity_np failed\n");
-        ret = TC_RING_ONE_PRAMA_ERR;
+        ret = TC_RING_ONE_PARAM_ERR;
     }
 
     return ret;

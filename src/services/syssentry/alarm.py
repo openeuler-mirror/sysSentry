@@ -172,7 +172,7 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool):
         logging.debug("get_alarm_result: final alarm_list of %s has %d elements", alarm_id, len(alarm_list))
 
         def xalarm_to_dict(alarm_info: Xalarm) -> dict:
-            timestamp = alarm_info.timetamp.tv_sec + alarm_info.timetamp.tv_usec / 1000000
+            timestamp = alarm_info.timestamp.tv_sec + alarm_info.timestamp.tv_usec / 1000000
             dt_object = datetime.fromtimestamp(int(timestamp))
             return {
                 'alarm_id': xalarm_getid(alarm_info),

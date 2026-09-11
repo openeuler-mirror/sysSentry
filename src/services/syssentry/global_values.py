@@ -81,7 +81,7 @@ class InspectTask:
         }
         # pull task
         self.onstart = False
-        # ccnfig env_file
+        # config env_file
         self.env_file = ""
         # env conf to popen arg
         self.environ_conf = None

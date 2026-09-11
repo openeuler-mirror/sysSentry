@@ -318,7 +318,7 @@ def server_loop(alarm_config):
                     continue
                 alarm_info = alarm_bin2stu(data)
                 alarm_str = alarm_stu2str(alarm_info)
-                logging.info("server recieve report msg, %s", alarm_str)
+                logging.info("server receive report msg, %s", alarm_str)
                 if not check_filter(alarm_info, alarm_config):
                     continue
                 transmit_alarm(

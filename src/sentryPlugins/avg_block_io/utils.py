@@ -136,7 +136,7 @@ def log_slow_win(msg, reason):
 
 
 def update_avg_and_check_abnormal(data, io_key, win_size, io_avg_value, io_data):
-    """update avg and check abonrmal, return true if win_size full"""
+    """update avg and check abnormal, return true if win_size full"""
     period_value = get_nested_value(data, io_key)
     old_avg = get_nested_value(io_avg_value, io_key)
 

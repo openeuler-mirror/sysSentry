@@ -187,7 +187,7 @@ def xalarm_gettype(alarm_info: Xalarm) -> int:
 def xalarm_gettime(alarm_info: Xalarm) -> int:
     if not alarm_info:
         return 0
-    return alarm_info.timetamp.tv_sec * TIME_UNIT_MILLISECONDS + alarm_info.timetamp.tv_usec / TIME_UNIT_MILLISECONDS
+    return alarm_info.timestamp.tv_sec * TIME_UNIT_MILLISECONDS + alarm_info.timestamp.tv_usec / TIME_UNIT_MILLISECONDS
 
 def xalarm_getdesc(alarm_info: Xalarm) -> str:
     if not alarm_info:

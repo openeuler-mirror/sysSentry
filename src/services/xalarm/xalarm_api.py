@@ -55,7 +55,7 @@ class Xalarm:
         self._alarm_id = alarm_id
         self._alarm_type = alarm_type
         self._alarm_level = alarm_level
-        self.timetamp = TimevalStu(tv_sec, tv_usec)
+        self.timestamp = TimevalStu(tv_sec, tv_usec)
         self._msg1 = msg1
 
     @property
@@ -124,8 +124,8 @@ def alarm_bin2stu(bin_data):
     alarm_info.alarm_id = struct_data[0]
     alarm_info.alarm_level = struct_data[1]
     alarm_info.alarm_type = struct_data[2]
-    alarm_info.timetamp.tv_sec = struct_data[3]
-    alarm_info.timetamp.tv_usec = struct_data[4]
+    alarm_info.timestamp.tv_sec = struct_data[3]
+    alarm_info.timestamp.tv_usec = struct_data[4]
     alarm_info.msg1 = struct_data[5]
 
     return alarm_info
@@ -141,8 +141,8 @@ def alarm_stu2bin(alarm_info: Xalarm):
         alarm_info.alarm_id,
         alarm_info.alarm_level,
         alarm_info.alarm_type,
-        alarm_info.timetamp.tv_sec,
-        alarm_info.timetamp.tv_usec,
+        alarm_info.timestamp.tv_sec,
+        alarm_info.timestamp.tv_usec,
         alarm_msg.encode('utf-8'))
 
 
@@ -153,7 +153,7 @@ def alarm_stu2str(alarm_info: Xalarm):
     alarm_id = alarm_info.alarm_id
     alarm_level = ALARM_LEVEL_DICT[alarm_info.alarm_level] if alarm_info.alarm_level in ALARM_LEVEL_DICT else "UNKNOWN"
     alarm_type = ALARM_TYPE_DICT[alarm_info.alarm_type] if alarm_info.alarm_type in ALARM_TYPE_DICT else "UNKNOWN"
-    alarm_time = alarm_info.timetamp.tv_sec + alarm_info.timetamp.tv_usec / TIME_UNIT_MILLISECONDS
+    alarm_time = alarm_info.timestamp.tv_sec + alarm_info.timestamp.tv_usec / TIME_UNIT_MILLISECONDS
     try:
         alarm_msg = alarm_info.msg1.rstrip(b'\x00').decode('utf-8')
     except (AttributeError, UnicodeDecodeError, TypeError):
