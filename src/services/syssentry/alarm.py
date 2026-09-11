@@ -42,11 +42,15 @@ MILLISECONDS_UNIT_SECONDS = 1000
 MAX_NUM_OF_ALARM_ID = 128
 MIN_ALARM_ID = 1001
 MAX_ALARM_ID = (MIN_ALARM_ID + MAX_NUM_OF_ALARM_ID - 1)
+SYSSENTRY_DOWN_ALARM_ID = 1128
 
 def update_alarm_list(alarm_info: Xalarm):
     alarm_id = xalarm_getid(alarm_info)
     if alarm_id < MIN_ALARM_ID or alarm_id > MAX_ALARM_ID:
         logging.warning(f"Invalid alarm_id {alarm_id}")
+        return
+    if alarm_id == SYSSENTRY_DOWN_ALARM_ID:
+        logging.info("received sysSentry down notification (alarm_id=%d), skip processing", alarm_id)
         return
     timestamp = xalarm_gettime(alarm_info)
     if not timestamp:

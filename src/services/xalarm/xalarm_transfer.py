@@ -33,6 +33,13 @@ TEST_CONNECT_BUFFER_SIZE = 32
 MAX_RETRY_TIMES = 3
 SYSSENTRY_DOWN_ALARM_ID = 1128
 REG_MSG_BUFFER_SIZE = 1024
+# Clients using xalarm_register_event send the registration JSON synchronously right
+# after connect() (see register_xalarm.c), so the message normally arrives within
+# milliseconds. 50ms is ~45x the observed p99 (~1ms) and tolerates heavy scheduler
+# jitter while keeping the window in which a legacy-API client (no registration msg)
+# cannot receive alarms small. The previous 500ms value caused real alarm loss for
+# such clients on every connect.
+REG_MSG_TIMEOUT = 0.05
 
 
 def check_filter(alarm_info, alarm_filter):
@@ -105,10 +112,22 @@ def wait_for_connection(server_sock, epoll, fd_to_socket, conn_thread_should_sto
                     # receive event registration message
                     try:
                         connection.setblocking(True)
-                        connection.settimeout(0.5)
+                        connection.settimeout(REG_MSG_TIMEOUT)
                         reg_data = connection.recv(REG_MSG_BUFFER_SIZE)
                         if reg_data:
                             handle_client_event(connection.fileno(), reg_data)
+                        connection.setblocking(False)
+                    except socket.timeout:
+                        # client did not send any registration message, it means
+                        # the client does not use xalarm_register_event API
+                        # (eg. sysSentry via pyxalarm), just keep the connection
+                        # and forward alarms to it
+                        logging.warning(
+                                "client fd %d does not send registration message "
+                                "in %s ms, treat it as alarm receiver only",
+                                connection.fileno(),
+                                int(connection.gettimeout() * 1000)
+                        )
                         connection.setblocking(False)
                     except socket.error as e:
                         logging.warning(
