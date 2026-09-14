@@ -206,6 +206,10 @@ class CollectServer():
             logging.error("server recv HEAD failed")
             return
 
+        if head_info is None:
+            client_socket.close()
+            logging.error("msg head parse failed")
+            return
         protocol_id = head_info[0]
         data_len = head_info[1]
         logging.debug("msg protocol id: %d, data length: %d", protocol_id, data_len)
