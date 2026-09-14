@@ -42,7 +42,7 @@
 #define RETRY_PERIOD 1
 #define XALARM_GENERAL_MSG_ITEM_CNT 2 // msgid_res
 #define XALARM_PANIC_MSG_ITEM_CNT 4 // msgid_{cna:cna,eid:eid}_res
-#define PYHS_ADDR_HEX_STR_MAX_LEN 20
+#define PHYS_ADDR_HEX_STR_MAX_LEN 20
 
 /*
  * The main version of the sentry driver.
@@ -297,7 +297,7 @@ static int convert_ub_mem_err_smh_msg_to_str(struct sentry_msg_helper_msg* smh_m
 {
     enum ras_err_type raw_err_type = smh_msg->helper_msg_info.ub_mem_info.raw_ubus_mem_err_type;
     int sentry_err_type = convert_ubus_type_to_sentry_type(raw_err_type);
-    // return -1 indicates that only logs are recorded, and no alerts are sent to xalam.
+    // return -1 indicates that only logs are recorded, and no alerts are sent to xalarm.
     if (sentry_err_type == SENTRY_MEM_ERR_NO_REPORT) {
         logging_info("received kernel event raw_ubus_mem_err_type is %d\n", raw_err_type);
         return -1;
@@ -315,7 +315,7 @@ static int convert_ub_mem_err_smh_msg_to_str(struct sentry_msg_helper_msg* smh_m
     unsigned long obmm_offset;
     int result = obmm_query_memid_by_pa(pa, &id, &obmm_offset);
     if (result < 0) {
-        logging_error("query memid falied, result: %d, errno: %d (%s)\n", result, errno, strerror(errno));
+        logging_error("query memid failed, result: %d, errno: %d (%s)\n", result, errno, strerror(errno));
         return -1;
     }
 
@@ -325,7 +325,7 @@ static int convert_ub_mem_err_smh_msg_to_str(struct sentry_msg_helper_msg* smh_m
         find_and_send_sigbus_to_thread(id, obmm_offset);
     }
 
-    char hex_str[PYHS_ADDR_HEX_STR_MAX_LEN];
+    char hex_str[PHYS_ADDR_HEX_STR_MAX_LEN];
     int ret = snprintf(hex_str, sizeof(hex_str), "0x%lx", (long)pa);
     if (ret < 0) {
         logging_error("convert pa to string failed\n");

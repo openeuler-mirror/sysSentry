@@ -143,7 +143,7 @@ def parse_heartbeat_conf(mod_conf):
         heartbeat_interval = -1
 
     if heartbeat_interval < 60:
-        logging.warning("hearbeat_interval cannot be less than 60, set to 60")
+        logging.warning("heartbeat_interval cannot be less than 60, set to 60")
         heartbeat_interval = 60
 
     return heartbeat_interval

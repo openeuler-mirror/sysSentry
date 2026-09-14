@@ -53,7 +53,7 @@ static void print_opts_help()
 
 static void soc_ring_sentry_case_get()
 {
-    printf("1. [soc stl] ring data bit line scan tescase.\n");
+    printf("1. [soc stl] ring data bit line scan testcase.\n");
 }
 
 static bool soc_ring_sentry_envtoull(char *env, uint64_t *value)
