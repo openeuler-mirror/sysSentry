@@ -131,7 +131,6 @@ release_socket:
 
 static void *alarm_recv(void *arg)
 {
-    int recvlen = 0;
     struct alarm_info info;
     int ret = 0;
 
@@ -142,17 +141,23 @@ static void *alarm_recv(void *arg)
         return NULL;
     }
     while (!g_register_info.thread_should_stop) {
-        recvlen = recv(g_register_info.register_fd, &info, sizeof(struct alarm_info), 0);
-        if (recvlen == (int)sizeof(struct alarm_info)) {
+        /* register_fd is a stream socket: a single recv() may return a partial
+         * message and the leftover bytes would desync every subsequent message.
+         * RecvAll keeps reading until the whole alarm_info arrives (retrying on
+         * EINTR/EAGAIN internally), so each loop iteration consumes exactly one
+         * message.
+         */
+        ssize_t recvlen = RecvAll(g_register_info.register_fd, (char *)&info, sizeof(struct alarm_info));
+        if (recvlen == (ssize_t)sizeof(struct alarm_info)) {
             put_alarm_info(&info);
-        } else if (recvlen < 0) {
-            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-                usleep(RECV_DELAY_MSEC * TIME_UNIT_MILLISECONDS);
-                continue;
-            }
-            printf("recv error len:%d errno:%d\n", recvlen, errno);
         } else if (recvlen == 0) {
             printf("connection closed by xalarmd, maybe connections reach max num or service stopped.\n");
+            g_register_info.thread_should_stop = 1;
+            break;
+        } else {
+            /* unrecoverable recv error (e.g. ECONNRESET on partial message,
+             * EBADF): the connection is broken, stop instead of busy spinning */
+            printf("recv error, errno:%d\n", errno);
             g_register_info.thread_should_stop = 1;
             break;
         }
