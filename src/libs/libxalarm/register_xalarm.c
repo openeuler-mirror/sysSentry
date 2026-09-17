@@ -141,25 +141,55 @@ static void *alarm_recv(void *arg)
         return NULL;
     }
     while (!g_register_info.thread_should_stop) {
-        /* register_fd is a stream socket: a single recv() may return a partial
-         * message and the leftover bytes would desync every subsequent message.
-         * RecvAll keeps reading until the whole alarm_info arrives (retrying on
-         * EINTR/EAGAIN internally), so each loop iteration consumes exactly one
-         * message.
+        /* register_fd is a non-blocking SOCK_STREAM socket: a single recv()
+         * may return a partial message and the leftover bytes would desync
+         * every subsequent message. Accumulate bytes until a complete
+         * alarm_info arrives, but check thread_should_stop on every
+         * EAGAIN/EWOULDBLOCK so xalarm_UnRegister's pthread_join can actually
+         * stop this thread.
+         *
+         * RecvAll() cannot be used here: it retries EAGAIN/EWOULDBLOCK
+         * internally with a 100ms sleep and never returns, so once the
+         * thread entered RecvAll on an idle socket pthread_join would block
+         * forever (regression introduced when alarm_recv was switched to
+         * RecvAll), which made xalarm_UnRegister hang and broke
+         * test_xalarm_register_timeout.
          */
-        ssize_t recvlen = RecvAll(g_register_info.register_fd, (char *)&info, sizeof(struct alarm_info));
-        if (recvlen == (ssize_t)sizeof(struct alarm_info)) {
-            put_alarm_info(&info);
-        } else if (recvlen == 0) {
-            printf("connection closed by xalarmd, maybe connections reach max num or service stopped.\n");
-            g_register_info.thread_should_stop = 1;
-            break;
-        } else {
-            /* unrecoverable recv error (e.g. ECONNRESET on partial message,
+        char *p = (char *)&info;
+        size_t remaining = sizeof(struct alarm_info);
+        while (remaining > 0) {
+            if (g_register_info.thread_should_stop) {
+                break;
+            }
+            ssize_t recvlen = recv(g_register_info.register_fd, p, remaining, 0);
+            if (recvlen > 0) {
+                p += recvlen;
+                remaining -= (size_t)recvlen;
+                continue;
+            }
+            if (recvlen == 0) {
+                /* connection closed by xalarmd, maybe connections reach max
+                 * num or service stopped. Stop the receive thread so
+                 * xalarm_UnRegister's pthread_join can return. */
+                printf("connection closed by xalarmd, maybe connections reach max num or service stopped.\n");
+                g_register_info.thread_should_stop = 1;
+                break;
+            }
+            /* recvlen < 0 */
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+                usleep(RECV_DELAY_MSEC * TIME_UNIT_MILLISECONDS);
+                continue;
+            }
+            /* unrecoverable recv error (e.g. ECONNRESET on a partial message,
              * EBADF): the connection is broken, stop instead of busy spinning */
             printf("recv error, errno:%d\n", errno);
             g_register_info.thread_should_stop = 1;
             break;
+        }
+        /* Only dispatch when a whole message was received; on stop or error
+         * discard any partial bytes and exit the outer loop. */
+        if (remaining == 0) {
+            put_alarm_info(&info);
         }
     }
     return NULL;
