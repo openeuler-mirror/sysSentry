@@ -24,7 +24,9 @@ from .utils import (
     get_current_time_string,
     run_cmd,
     is_dangerous_env_key,
-    validate_command_string
+    validate_command_string,
+    cmdline_matches,
+    kill_and_verify,
 )
 from .mod_status import set_runtime_status
 from .mod_status import RUNNING_STATUS, EXITED_STATUS, NONZERO_EXITED_STATUS, FAILED_STATUS
@@ -259,32 +261,45 @@ class InspectTask:
         return True
 
     def check_conflict(self):
-        logging.debug("load_env_file detail, task_name: %s, conflict: %s, env_file: %s",
-                      self.name, self.conflict, self.env_file)
-        pid_list = []
-        check_cmd = ["ps", "aux"]
+        logging.debug("check conflict, task_name: %s, conflict: %s", self.name, self.conflict)
         try:
-            result = subprocess.run(check_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"failed with return code {e.returncode}")
+            target_argv = shlex.split(self.task_start)
+        except ValueError as e:
+            logging.error("task %s failed to parse task_start: %s", self.name, str(e))
+            return False
+        if not target_argv:
+            logging.error("task %s: task_start is empty", self.name)
+            return False
 
-        output_lines = result.stdout.decode("utf-8").splitlines()
-        for line in output_lines:
-            if self.task_start not in line:
+        pid_list = []
+        self_pid = os.getpid()
+        try:
+            proc_entries = os.listdir("/proc")
+        except OSError as e:
+            logging.error("task %s failed to list /proc: %s", self.name, str(e))
+            return False
+        for entry in proc_entries:
+            if not entry.isdigit():
                 continue
-            try:
-                pid = int(line.split()[1])
-            except (IndexError, ValueError) as e:
-                logging.error("task %s failed to parse pid from ps line: %s; error: %s",
-                              self.name, line, str(e))
+            pid = int(entry)
+            # never treat the syssentry process itself as a conflict
+            if pid == self_pid:
                 continue
-            pid_list.append(pid)
+            if cmdline_matches(pid, target_argv):
+                pid_list.append(pid)
         logging.debug("current pid_list = %s", pid_list)
 
         if self.conflict == "kill" and pid_list:
+            kill_failed = False
             for pid in pid_list:
-                subprocess.run(["/usr/bin/kill", str(pid)], shell=False)
-                logging.debug("the program is killed, pid=%d", pid)
+                if not cmdline_matches(pid, target_argv):
+                    continue
+                if not kill_and_verify(pid, target_argv, self.name):
+                    kill_failed = True
+            if kill_failed:
+                logging.error("task %s: failed to kill some conflict processes, refuse to start",
+                              self.name)
+                return False
         elif self.conflict == "down" and pid_list:
             logging.warning("the conflict field is set to down, so program = [%s] is exited!", self.name)
             return False
