@@ -13,15 +13,22 @@
 some common function
 """
 import logging
+import os
+import signal
 import socket
 import subprocess
 import shlex
 import re
+import time
 
 from datetime import datetime, timezone, timedelta
 
 # Security: Maximum allowed message length to prevent DoS attacks
 MAX_MSG_LEN = 10 * 1024 * 1024  # 10MB
+
+# Timeouts used when killing a conflicting process and verifying it has exited.
+KILL_VERIFY_TIMEOUT = 2.0
+KILL_POLL_INTERVAL = 0.05
 
 ENV_BLACKLIST_PATTERNS = [
     r"^LD_",                 # LD_PRELOAD, LD_LIBRARY_PATH 等（可劫持动态链接）
@@ -209,3 +216,80 @@ def is_dangerous_env_key(env_name):
         if re.match(pattern, env_name, re.IGNORECASE):
             return True
     return False
+
+
+def cmdline_path(pid):
+    """get the path of the /proc cmdline file of process pid"""
+    return "/proc/%d/cmdline" % pid
+
+
+def cmdline_matches(pid, target_argv):
+    """check whether the command line of process pid equals target_argv exactly.
+
+    A process is a conflict only when its argv (command and every argument) is
+    identical to target_argv: no more and no fewer tokens. An empty target_argv
+    never matches, so processes with no arguments are never reported.
+    """
+    if not target_argv:
+        return False
+    try:
+        with open(cmdline_path(pid), "rb") as cmdline_file:
+            raw = cmdline_file.read()
+    except OSError:
+        return False
+    argv = [token.decode("utf-8", "replace") for token in raw.split(b"\0") if token]
+    return argv == target_argv
+
+
+def send_signal(pid, sig, task_name=""):
+    """send signal to pid. Returns True on success or when the process is
+    already gone; False on failure (permission denied or other error).
+
+    task_name is only used for logging context.
+    """
+    try:
+        os.kill(pid, sig)
+    except ProcessLookupError:
+        return True
+    except PermissionError as e:
+        logging.error("task %s: permission denied to signal pid %d: %s",
+                      task_name, pid, str(e))
+        return False
+    except OSError as e:
+        logging.error("task %s: failed to signal pid %d: %s",
+                      task_name, pid, str(e))
+        return False
+    return True
+
+
+def wait_exit(pid, target_argv):
+    """poll until pid's cmdline no longer matches target_argv or the
+    KILL_VERIFY_TIMEOUT deadline is reached.
+
+    Returns True if the process is gone (exited/zombie/recycled),
+    False on timeout.
+    """
+    deadline = time.monotonic() + KILL_VERIFY_TIMEOUT
+    while time.monotonic() < deadline:
+        if not cmdline_matches(pid, target_argv):
+            return True
+        time.sleep(KILL_POLL_INTERVAL)
+    return False
+
+
+def kill_and_verify(pid, target_argv, task_name=""):
+    """send SIGTERM, verify the process exits, escalate to SIGKILL if needed.
+
+    Returns True if the process is gone; False on failure.
+
+    task_name is only used for logging context.
+    """
+    if not send_signal(pid, signal.SIGTERM, task_name):
+        return False
+    if wait_exit(pid, target_argv):
+        return True
+    logging.warning("task %s: pid %d did not exit after SIGTERM, escalating to SIGKILL",
+                    task_name, pid)
+    if not send_signal(pid, signal.SIGKILL, task_name):
+        return False
+    return wait_exit(pid, target_argv)
