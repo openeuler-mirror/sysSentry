@@ -10,6 +10,8 @@ set +e
 #测试发送消息的场景，参数合法性校验以及关闭xalarmd之后的场景
 
 function pre_test() {
+    [ ! -f /usr/include/xalarm/register_xalarm.h ] && yum install libxalarm-devel -y
+
     rm -rf ./checklog ./tmp_log test/xalarm/send_demo test/xalarm/reg_demo
     gcc test/xalarm/send_demo.c -o test/xalarm/send_demo -lxalarm
     gcc test/xalarm/reg_demo.c -o test/xalarm/reg_demo -lxalarm

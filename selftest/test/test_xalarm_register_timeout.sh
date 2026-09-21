@@ -18,6 +18,8 @@ XALARM_LOG="/var/log/sysSentry/xalarm.log"
 TRANSFER_SRC="../src/services/xalarm/xalarm_transfer.py"
 
 function pre_test() {
+    [ ! -f /usr/include/xalarm/register_xalarm.h ] && yum install libxalarm-devel -y
+
     rm -rf ./checklog ./tmp_log test/xalarm/reg_demo test/xalarm/send_demo test/RA_mock/RA_mock
     gcc test/xalarm/reg_demo.c -o test/xalarm/reg_demo -lxalarm
     gcc test/xalarm/send_demo.c -o test/xalarm/send_demo -lxalarm

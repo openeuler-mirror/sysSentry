@@ -42,7 +42,9 @@ function do_test() {
     systemctl daemon-reload
 
     if [ -n "$installed_syssentry_rpm" ]; then
-        yum install -y sentry_msg_monitor
+        # 需要将测试用例中会使用到的sysSentry子包都装上，前面卸载sysSentry的时候会将这些子包也卸载
+        # 不再安装的话可能会影响后续用例执行（如果后续用例有使用到已经卸载的子包）
+        yum install -y sentry_msg_monitor bmc_ras_sentry cpu_sentry ai_block_io avg_block_io >/dev/null 
     else
         make clean && make && make install
     fi

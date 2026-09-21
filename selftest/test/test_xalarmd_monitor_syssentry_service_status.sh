@@ -11,6 +11,8 @@ set +e
 tmp_log="tmp_log"
 
 function pre_test() {
+    [ ! -f /usr/include/xalarm/register_xalarm.h ] && yum install libxalarm-devel -y
+
     # 编译ra_mock程序
     gcc test/RA_mock/RA_mock_delay.c -Wall -O2 -lxalarm -o test/RA_mock/RA_mock
 
