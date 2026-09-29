@@ -10,6 +10,8 @@ set +e
 #测试unregister的场景，其他用户解注册已有clientId和没出现的clientId，重复注册
 
 function pre_test() {
+    [ ! -f /usr/include/xalarm/register_xalarm.h ] && yum install libxalarm-devel -y
+
     rm -rf ./checklog test/xalarm/unreg_demo test/xalarm/send_demo test/xalarm/reg_demo
     gcc test/xalarm/reg_demo.c -o test/xalarm/reg_demo -lxalarm
     gcc test/xalarm/unreg_demo.c -o test/xalarm/unreg_demo -lxalarm

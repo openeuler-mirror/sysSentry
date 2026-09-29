@@ -10,6 +10,8 @@ set +e
 #测试upgrade场景:更新生效的场景、错误的clientId、错误的alarm id
 
 function pre_test() {
+    [ ! -f /usr/include/xalarm/register_xalarm.h ] && yum install libxalarm-devel -y
+
     rm -rf ./checklog test/xalarm/upgrade_demo test/xalarm/send_demo
     gcc test/xalarm/upgrade_demo.c -o test/xalarm/upgrade_demo -lxalarm
     gcc test/xalarm/send_demo.c -o test/xalarm/send_demo -lxalarm
