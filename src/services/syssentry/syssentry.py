@@ -42,7 +42,7 @@ from .heartbeat import (heartbeat_timeout_chk, heartbeat_recv)
 from .result import RESULT_MSG_HEAD_LEN, RESULT_MSG_MAGIC_LEN, RESULT_MAGIC
 from .result import RESULT_LEVEL_ERR_MSG_DICT, RESULT_RESPONSE_MSG_LEN, ResultLevel
 from .utils import get_current_time_string, MAX_MSG_LEN, recv_all
-from .alarm import alarm_register
+from .alarm import alarm_register, stop_alarm_clear_thread
 
 from xalarm.register_xalarm import xalarm_unregister
 
@@ -649,6 +649,7 @@ def main():
     except Exception:
         logging.error("Error occurred in the main function of sysSentry service: %s", traceback.format_exc())
     finally:
+        stop_alarm_clear_thread()
         if client_id != -1:
             xalarm_unregister(client_id)
         clean_child()

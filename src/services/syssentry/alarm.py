@@ -14,7 +14,7 @@ use for report alarm
 """
 import threading
 from typing import Dict, List
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import json
 import sys
@@ -43,6 +43,94 @@ MAX_NUM_OF_ALARM_ID = 128
 MIN_ALARM_ID = 1001
 MAX_ALARM_ID = (MIN_ALARM_ID + MAX_NUM_OF_ALARM_ID - 1)
 SYSSENTRY_DOWN_ALARM_ID = 1128
+
+ALARM_CLEAR_CHECK_INTERVAL = 60
+ALARM_CLEAR_THREAD_JOIN_TIMEOUT = 5
+_alarm_clear_stop = threading.Event()
+_alarm_clear_thread = None
+
+
+def _clear_expired_alarms():
+    """Background sweep: evict alarms older than alarm_clear_time from all buckets.
+
+    On-insert (update_alarm_list) and on-query (get_alarm_result) clearing
+    only run when a new alarm arrives or a get_alarm query is made for a given
+    alarm_id. This sweep ensures stale alarms are evicted even when neither
+    happens, bounding memory usage by alarm_clear_time.
+
+    The global alarm_list_lock is acquired once per bucket and released
+    between buckets, so a concurrent update_alarm_list / get_alarm_result
+    caller is only blocked for the bucket currently being swept, not for the
+    full sweep. The alarm_list_dict key set is established at alarm_register()
+    time and does not change during the sweep, so snapshotting the keys once
+    outside the lock is safe. current_time is recomputed per bucket inside
+    the lock so the age comparison reflects the moment of eviction rather than
+    the moment the sweep started.
+    """
+    for alarm_id in list(alarm_list_dict.keys()):
+        with alarm_list_lock:
+            alarm_list = alarm_list_dict.get(alarm_id)
+            if not alarm_list:
+                continue
+            clear_time = alarm_id_clear_time_dict.get(alarm_id, 0)
+            if clear_time <= 0:
+                continue
+            current_time = datetime.now(tz=timezone.utc).timestamp()
+            clear_index = -1
+            for i, alarm in enumerate(alarm_list):
+                if current_time - xalarm_gettime(alarm) / MILLISECONDS_UNIT_SECONDS > clear_time:
+                    clear_index = i
+                    break
+            if clear_index >= 0:
+                alarm_list_dict[alarm_id] = alarm_list[:clear_index]
+                logging.info(
+                    "auto-clear: removed %d expired alarms for alarm_id %d",
+                    len(alarm_list) - clear_index, alarm_id
+                )
+
+
+def _alarm_clear_loop():
+    while not _alarm_clear_stop.is_set():
+        try:
+            _clear_expired_alarms()
+        except Exception as e:
+            logging.error("alarm auto-clear loop error: %s", str(e))
+        _alarm_clear_stop.wait(ALARM_CLEAR_CHECK_INTERVAL)
+
+
+def _start_alarm_clear_thread():
+    global _alarm_clear_thread
+    if _alarm_clear_thread is not None and _alarm_clear_thread.is_alive():
+        return
+    _alarm_clear_stop.clear()
+    _alarm_clear_thread = threading.Thread(target=_alarm_clear_loop, daemon=True, name="alarm-auto-clear")
+    _alarm_clear_thread.start()
+    logging.info("alarm auto-clear thread started, interval=%ds", ALARM_CLEAR_CHECK_INTERVAL)
+
+
+def stop_alarm_clear_thread():
+    """Signal the auto-clear thread to exit and wait for it.
+
+    Called from syssentry.py main() finally block on service shutdown so the
+    thread exits cleanly instead of being killed by the OS at process exit.
+    The thread sleeps via Event.wait(), which returns immediately once the
+    stop Event is set, so it normally exits in milliseconds; the join timeout
+    is only a safety bound.
+    """
+    global _alarm_clear_thread
+    if _alarm_clear_thread is None:
+        return
+    if not _alarm_clear_thread.is_alive():
+        _alarm_clear_thread = None
+        return
+    _alarm_clear_stop.set()
+    _alarm_clear_thread.join(timeout=ALARM_CLEAR_THREAD_JOIN_TIMEOUT)
+    if _alarm_clear_thread.is_alive():
+        logging.warning("alarm auto-clear thread did not exit within timeout")
+    else:
+        logging.info("alarm auto-clear thread stopped")
+    _alarm_clear_thread = None
+
 
 def update_alarm_list(alarm_info: Xalarm):
     alarm_id = xalarm_getid(alarm_info)
@@ -130,6 +218,7 @@ def alarm_register():
         logging.info(f'register xalarm: failed')
         return clientId
     logging.info('register xalarm: success')
+    _start_alarm_clear_thread()
     return clientId
 
 
