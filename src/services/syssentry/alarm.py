@@ -156,15 +156,28 @@ def get_alarm_result(task_name: str, time_range: int, detailed: bool):
             return []
         alarm_list = alarm_list_dict[alarm_id]
         logging.debug("get_alarm_result: alarm_list of %s has %d elements", alarm_id, len(alarm_list))
-        # clear alarm_info older than clear time threshold
-        stop_index = -1
         timestamp = datetime.now().timestamp()
+
+        # Evict alarms older than clear_time and persist the trimmed list to
+        # the cache, so a query reclaims expired entries instead of relying
+        # only on the on-insert path (update_alarm_list). clear_time is the
+        # configured cache lifetime (alarm_clear_time).
+        clear_index = -1
+        for i in range(len(alarm_list)):
+            if timestamp - xalarm_gettime(alarm_list[i]) / MILLISECONDS_UNIT_SECONDS > clear_time:
+                clear_index = i
+                break
+        if clear_index >= 0:
+            alarm_list = alarm_list[:clear_index]
+            alarm_list_dict[alarm_id] = alarm_list
+
+        # Return only alarms within the requested time_range. Query view, NOT
+        # persisted: a narrow time_range must not evict alarms that are still
+        # within clear_time, otherwise a later wider query would lose them.
+        stop_index = -1
         for i in range(len(alarm_list)):
             logging.debug("timestamp, alarm_list[%d].timestamp: %s, %s", i, timestamp, xalarm_gettime(alarm_list[i]))
-            if timestamp - (xalarm_gettime(alarm_list[i])) / MILLISECONDS_UNIT_SECONDS > time_range:
-                stop_index = i
-                break
-            if timestamp - (xalarm_gettime(alarm_list[i])) / MILLISECONDS_UNIT_SECONDS > clear_time:
+            if timestamp - xalarm_gettime(alarm_list[i]) / MILLISECONDS_UNIT_SECONDS > time_range:
                 stop_index = i
                 break
         if stop_index >= 0:
