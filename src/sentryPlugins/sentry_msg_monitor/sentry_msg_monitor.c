@@ -255,7 +255,7 @@ static int convert_oom_smh_smg_to_str(const struct sentry_msg_helper_msg* smh_ms
         res = snprintf(nid_str + offset, MSG_STR_MAX_LEN - offset, "%d%s",
                        smh_msg->helper_msg_info.oom_info.nid[i],
                        (i < OOM_EVENT_MAX_NUMA_NODES - 1) ? "," : "");
-        if ((size_t)res >= MSG_STR_MAX_LEN) {
+        if ((size_t)res >= MSG_STR_MAX_LEN - offset) {
             logging_warn("msg str size exceeds the max value\n");
             free(nid_str);
             nid_str = NULL;
