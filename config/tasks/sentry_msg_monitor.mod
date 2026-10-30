@@ -9,3 +9,5 @@ interval=10
 onstart=yes
 env_file=/etc/sysconfig/sentry_msg_monitor.env
 conflict=up
+alarm_id=1017
+alarm_clear_time=600

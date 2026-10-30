@@ -187,6 +187,12 @@ UVB通信组件初始化参数说明：
 
 该事件用于上报灵衢总线的链路状态变化（包括链路断开与恢复），属于单向事件，无需回复（无 ACK 应答）。
 
+#### TX信用证耗尽事件配置
+
+TX信用证耗尽事件（NL SSU link credit overtime error）默认处于关闭状态。当用户订阅 ALARM_LOCAL_RAS_EVENT 事件时，xalarmd 服务会自动开启该事件开关。
+
+该事件用于上报TX信用证耗尽错误记录（经GHES上报），属于单向事件，无需回复（无 ACK 应答）。插件接收到事件后通过 xalarm_Report 接口上报，用户可通过 `sentryctl get_alarm sentry_msg_monitor -s 100 -d` 查看告警详细信息。
+
 ### 故障事件上报和回复消息格式
 
 #### 故障事件对应的告警id
@@ -203,6 +209,7 @@ UVB通信组件初始化参数说明：
 | 带内reboot事件回复|1010（ALARM_KERNEL_REBOOT_ACK_EVENT） |
 | UB内存故障事件|1013 （ALARM_UBUS_MEM_EVENT） |
 | 链路（link）事件|1016 （ALARM_LINK_EVENT） |
+| TX信用证耗尽事件|1017 （ALARM_LOCAL_RAS_EVENT） |
 
 #### 故障事件上报的消息格式
 
@@ -214,6 +221,29 @@ UVB通信组件初始化参数说明：
 | 带内reboot事件 | msgid_{cna:cna,eid:eid}  | msgid:uint64_t类型，表示消息对应的id<br>  cna:故障节点的CNA信息<br>  eid:故障节点的eid信息 |
 | UB内存故障事件| json格式| 见下面"UB内存故障事件对应的消息字段说明"，示例：{"msgid":123,"sentry_ubus_mem_err_type":0,"ras_ubus_mem_err_type":1,"pa":"0x12345678","memid":1} |
 | 链路（link）事件| msgid_{port_id:port_id,scna:scna,event:up/down}| msgid:uint64_t类型，表示消息对应的id<br>  port_id:uint16_t类型，表示发生链路状态变化的端口标识<br>  scna:unsigned int类型，表示发生链路状态变化的源CNA标识<br>  event:字符串类型，取值为"up"（链路恢复）或"down"（链路断开） |
+| TX信用证耗尽事件| json格式| 见下面"TX信用证耗尽事件对应的消息字段说明"，示例：{"alarm_source":"sentry_msg_monitor","msgid":123,"event_id":1017,"details":{"Table version":"1","SOC ID":"0","Socket ID":"0","Nimbus ID":"1","Module ID":"2","Sub Module":"NL PORT","Core ID":"0","Port ID":"port1","Error severity":"fatal","Error type":"3","val_bits":"00000000000000000000101000000000"}} |
+
+TX信用证耗尽事件对应的消息字段说明：
+
+| 参数名称 | 位置 | 类型 | 取值说明|
+| --- | --- | --- | ---|
+|alarm_source|alarm_info|字符串|告警来源，固定为"sentry_msg_monitor"|
+|msgid|alarm_info|整型|消息对应的id|
+|event_id|alarm_info|整型|事件告警id，固定为1017（ALARM_LOCAL_RAS_EVENT）|
+|details|alarm_info|对象|TX信用证耗尽错误记录详细信息，见下表|
+|Table version|details|字符串|TX信用证耗尽错误记录表版本号|
+|SOC ID|details|字符串|SOC ID|
+|Socket ID|details|字符串|Socket ID|
+|Nimbus ID|details|字符串|Nimbus ID|
+|Module ID|details|字符串|Module ID|
+|Sub Module|details|字符串|子模块，0x4显示为"NL PORT"|
+|Core ID|details|字符串|Core ID|
+|Port ID|details|字符串|端口标识，格式为"port"+端口号，例如"port1"|
+|Error severity|details|字符串|错误严重程度字符串描述，取值为recoverable/fatal/corrected/none；当val_bits未置ERR_SEVERITY位时显示"unknown"|
+|Error type|details|字符串|错误类型；当val_bits未置ERR_TYPE位时显示"unknown"|
+|val_bits|details|字符串|内核下发的有效字段位掩码，显示为32位定宽二进制字符串（高位在前、不足补零），例如"00000000000000000000101000000000"。各有效位含义：bit0=SOC ID、bit1=Socket ID、bit2=Totem ID、bit3=Nimbus ID、bit4=Sub System ID、bit5=Module ID、bit6=Sub Module ID、bit7=Core ID、bit8=Port ID、bit9=Error type、bit10=Error info、bit11=Error severity、bit12=Register size。`Error severity` 与 `Error type` 是否显示为"unknown"即由 bit11/bit9 是否置位决定|
+
+> 说明：alarm_info 中除 `msgid` 与 `event_id` 为整型外，其余字段（含 details 中各字段）均为字符串。`Error severity` 与 `Error type` 仅在内核 `val_bits` 对应有效位置位时才显示正常值，否则显示"unknown"。
 
 UB内存故障事件对应的消息字段说明：
 
