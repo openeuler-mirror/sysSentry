@@ -138,7 +138,7 @@ Used to report event alarms to the xalarmd service.
 | Description  | sysSentry alarm reporting interface, which is used to report alarms to be forwarded to the xalarmd service.    |
 | Parameter  | `usAlarmId`: alarm ID<br>`usAlarmLevel`: alarm severity. The value can be `MINOR_ALM` (minor alarm), `MAJOR_ALM` (major alarm), or `CRITICAL_ALM` (critical alarm).<br>`ucAlarmType`: alarm type. The value can be `ALARM_TYPE_OCCUR` (alarm generation) or `ALARM_TYPE_RECOVER` (fault recovery).<br>`pucParas`: alarm description. The maximum length is 8191 characters.|
 | Restrictions  | 1. The alarm ID ranges from 1001 to 1128. Currently, IDs 1001 (memory inspection) and 1002 (slow I/O detection) have been occupied. It is not advised to use them.<br>2. The alarm description can contain a maximum of 8191 characters.|
-| Return value| If `0` is returned, the interface invoking is successful. If `-1` is returned, the interface invoking fails.|
+| Return value| If the alarm is reported successfully, `0` is returned; otherwise, a value less than `0` is returned.<br>1. `-EINVAL`: invalid argument (`usAlarmId`, `ucAlarmLevel`, or `ucAlarmType` out of range, or `pucParas` is NULL or exceeds the 8191-character limit). This is a permanent failure; retrying will not help.<br>2. `-ENOTCONN`: failed to build the report socket address. Send the message again.<br>3. `-ECOMM`: failed to send the socket message, or the datagram was incomplete. Send the message again.<br>4. `-ENODEV`: failed to create the socket. Send the message again.|
 
 ###### Example
 
@@ -173,7 +173,7 @@ int main(int argc, char **argv)
 
     int ret = xalarm_Report(alarmId, level, type, msg);
     
-    if (ret == -1) {
+    if (ret < 0) {
         printf("send failed.\n");
     }
 

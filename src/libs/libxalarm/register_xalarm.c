@@ -363,6 +363,19 @@ static int init_report_addr(struct sockaddr_un *alarm_addr, char *report_path)
     return 0;
 }
 
+/**
+ * @brief Report an alarm to the xalarmd service for forwarding (one-way).
+ *
+ * Return values follow the same convention as xalarm_report_event:
+ *   0        success
+ *  -EINVAL   invalid argument (id/level/type out of range, or pucParas
+ *            NULL / over MAX_PARAS_LEN) -- permanent, callers must NOT retry
+ *  -ENODEV   socket() creation failed -- transient, retry may help
+ *  -ENOTCONN failed to build the report address -- retry may help
+ *  -ECOMM    sendto failed or sent a partial datagram -- transient, retry
+ *
+ * @return 0 on success, or a negative errno as listed above.
+ */
 int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
     unsigned char ucAlarmType, char *pucParas)
 {
@@ -374,12 +387,12 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
         (ucAlarmLevel < MINOR_ALM || ucAlarmLevel > CRITICAL_ALM) ||
         (ucAlarmType < ALARM_TYPE_OCCUR || ucAlarmType > ALARM_TYPE_RECOVER)) {
         fprintf(stderr, "%s: alarm info invalid\n", __func__);
-        return -1;
+        return -EINVAL;
     }
 
     if (pucParas == NULL || (int)strlen(pucParas) > MAX_PARAS_LEN) {
         fprintf(stderr, "%s: alarm info invalid\n", __func__);
-        return -1;
+        return -EINVAL;
     }
 
     memset(&info, 0, sizeof(struct alarm_info));
@@ -391,7 +404,7 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
         ret = snprintf(info.pucParas, sizeof(info.pucParas), "%s", pucParas);
         if (ret < 0 || ret >= sizeof(info.pucParas)) {
             fprintf(stderr, "%s: snprintf failed", __func__);
-            return -1;
+            return -EINVAL;
         }
     }
 
@@ -404,7 +417,7 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
     ret = init_report_addr(&alarm_addr, PATH_REPORT_ALARM);
     if (ret == -1) {
         close(fd);
-        return -1;
+        return -ENOTCONN;
     }
 
     while (true) {
@@ -414,21 +427,21 @@ int xalarm_Report(unsigned short usAlarmId, unsigned char ucAlarmLevel,
             if (errno == EINTR) {
                 /* interrupted by signal, ignore */
                 continue;
-            } else {
-                fprintf(stderr, "%s: sendto failed errno: %d\n", __func__, errno);
             }
+            fprintf(stderr, "%s: sendto failed errno: %d\n", __func__, errno);
         } else if (ret == 0) {
             fprintf(stderr, "%s: sendto failed, ret is 0\n", __func__);
-        } else {
-            if (ret != (int)sizeof(struct alarm_info)) {
-                fprintf(stderr, "%s sendto failed, ret:%d, len:%zu\n", __func__, ret, sizeof(struct alarm_info));
-            }
+        } else if (ret != (int)sizeof(struct alarm_info)) {
+            fprintf(stderr, "%s sendto failed, ret:%d, len:%zu\n", __func__, ret, sizeof(struct alarm_info));
         }
         break;
     }
     close(fd);
 
-    return (ret > 0) ? 0 : -1;
+    if (ret != (int)sizeof(struct alarm_info)) {
+        return -ECOMM;
+    }
+    return 0;
 }
 
 /**

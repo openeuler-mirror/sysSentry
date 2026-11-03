@@ -199,7 +199,7 @@ if __name__ == "__main__":
 | 描述   | sysSentry告警上报接口，用于向xalarmd上报需要转发的告警     |
 | 参数   | usAlarmId -- 告警id<br/>usAlarmLevel -- 告警级别，枚举类型，取值为：MINOR_ALM（一般告警）、MAJOR_ALM（严重告警）或CRITICAL_ALM（致命告警）<br/>ucAlarmType -- 告警类别，取值范围为ALARM_TYPE_OCCUR（告警产生）或ALARM_TYPE_RECOVER（故障恢复）<br/>pucParas -- 告警描述信息，长度上限为8191个字符 |
 | 限制   | 1. 告警id限制取值范围为1001-1128。目前1001（内存巡检）、1002（慢IO检测）已被占用，不建议使用<br/>2. 告警描述信息最大长度为8191 |
-| 返回值 | 返回0表示成功，失败返回-1 |
+| 返回值 | 若上报告警成功，则返回值为0，否则返回值小于0。<br/>1.返回值为-EINVAL，表示传入参数非法（告警id、告警级别或告警类别超出取值范围，或pucParas为NULL及超过8191的长度限制），此类错误必然失败，无需重试。<br/>2.返回值为-ENOTCONN，构造上报socket地址失败，建议重新发送消息。<br/>3.返回值为-ECOMM，发送socket消息失败或发送不完整，建议重新发送消息。<br/>4.返回值为-ENODEV，socket创建失败，建议重新发送消息。 |
 
 ###### 使用示例
 
@@ -234,7 +234,7 @@ int main(int argc, char **argv)
 
     int ret = xalarm_Report(alarmId, level, type, msg);
     
-    if (ret == -1) {
+    if (ret < 0) {
         printf("send failed.\n");
     }
 
