@@ -17,8 +17,6 @@ Create: 2023-11-02
 import socket
 import logging
 import threading
-import errno
-from time import sleep
 
 from .xalarm_events import (
     unregister_client_events,
@@ -30,7 +28,6 @@ MIN_ID_NUMBER = 1001
 MAX_ID_NUMBER = 1128
 MAX_CONNECTION_NUM = 100
 TEST_CONNECT_BUFFER_SIZE = 32
-MAX_RETRY_TIMES = 3
 SYSSENTRY_DOWN_ALARM_ID = 1128
 REG_MSG_BUFFER_SIZE = 1024
 # Clients using xalarm_register_event send the registration JSON synchronously right
@@ -40,6 +37,26 @@ REG_MSG_BUFFER_SIZE = 1024
 # cannot receive alarms small. The previous 500ms value caused real alarm loss for
 # such clients on every connect.
 REG_MSG_TIMEOUT = 0.05
+# How long a single 8216-byte alarm frame may take to send to one client.
+#
+# transmit_alarm runs on the single server_loop main thread and holds
+# fd_to_socket_lock for the whole broadcast, so a stuck subscriber stalls
+# (a) later subscribers in the same broadcast, (b) the next incoming alarm,
+# and (c) connection management — all bounded by this value per stuck peer.
+# The lock cannot be released during send: transmit_alarm (main thread) and
+# broadcast_sentry_down (monitor thread) send concurrently, and the lock is
+# what serializes them so two threads do not interleave bytes into one socket
+# (which would reintroduce the stream-desync bug). So we bound the stall by
+# timeout instead.
+#
+# 0.1s is ~1000x a normal AF_UNIX send of 8KB (microseconds): the default
+# send buffer holds dozens of frames, so sendall returns instantly unless the
+# peer has stopped reading long enough to fill that backlog. Only genuinely
+# stuck subscribers (not momentarily-slow ones) hit this; a slow-but-alive
+# peer reading >8KB/100ms (80KB/s — trivially slow) never times out. On
+# timeout the connection is dropped rather than corrupting the stream
+# (see _send_alarm_one).
+SEND_TIMEOUT_SEC = 0.1
 
 
 def check_filter(alarm_info, alarm_filter):
@@ -182,6 +199,70 @@ def broadcast_sentry_down(server_socket, fd_to_socket, fd_to_socket_lock):
             logging.info(f"cleaned up connection {fileno} for client lost connection.")
 
 
+def _send_alarm_one(connection, bin_data, fileno, alarm_str):
+    """Send one alarm frame to a single client connection.
+
+    The client sockets in fd_to_socket are non-blocking (set in
+    wait_for_connection). On a non-blocking socket, socket.sendall() raises
+    BlockingIOError/EAGAIN the moment the send buffer fills up — even if it
+    has already handed part of bin_data to the kernel. The previous code
+    reacted to that by re-calling sendall(bin_data) from offset 0, which
+    re-sent the *entire* frame after the bytes already delivered. The
+    subscriber then saw [partial head][full frame] on its SOCK_STREAM,
+    permanently desyncing the fixed-size 8216-byte framing used by
+    libxalarm's RecvAll: every subsequent alarm landed on garbage offsets
+    and was silently dropped by the id filter — the "subscriber never
+    receives the OOM event" symptom.
+
+    To make a single frame atomic, switch the socket to blocking mode with a
+    short timeout just for this send. sendall() then blocks until the whole
+    frame is flushed (or the timeout fires / the peer dies), so no partial
+    send can leak. The timeout bounds how long one slow subscriber may stall
+    the main loop; on timeout the caller drops the connection rather than
+    corrupting the stream.
+
+    Caller must NOT hold fd_to_socket_lock while this runs for a connection
+    other than the one being sent to (it doesn't touch the dict, only the
+    socket), but the caller does hold the lock around the whole broadcast —
+    that is fine because each send is time-bounded.
+
+    Returns True if the full frame was delivered, False if the connection
+    is dead or could not be flushed within SEND_TIMEOUT_SEC (caller should
+    remove it).
+    """
+    try:
+        connection.setblocking(True)
+        connection.settimeout(SEND_TIMEOUT_SEC)
+        connection.sendall(bin_data)
+        logging.info("Broadcast msg success, fd is %d, alarm msg is %s", fileno, alarm_str)
+        return True
+    except (BlockingIOError, socket.timeout) as e:
+        # Timed out flushing a full frame to a slow/stuck subscriber. Dropping
+        # the connection is correct: a half-sent frame would desync the stream,
+        # and we never sent a partial frame here (sendall is all-or-nothing on
+        # a blocking socket — on timeout nothing more is queued after what the
+        # kernel already accepted, but since the frame was not fully handed
+        # over we cannot retry from offset 0, so the connection must go).
+        logging.warning("Send timed out after %ss, fd is %d, alarm msg is %s, reason is: %s; "
+                        "dropping connection to protect stream framing",
+                        SEND_TIMEOUT_SEC, fileno, alarm_str, str(e))
+        return False
+    except (BrokenPipeError, ConnectionResetError) as e:
+        logging.info("Connection reset while sending, fd is %d, alarm msg is %s, reason is: %s",
+                     fileno, alarm_str, str(e))
+        return False
+    except OSError as e:
+        logging.info("Sending msg failed, fd is %d, alarm msg is %s, reason is: %s",
+                     fileno, alarm_str, str(e))
+        return False
+    finally:
+        # Restore non-blocking mode; wait_for_connection/cleanup assume it.
+        try:
+            connection.setblocking(False)
+        except OSError:
+            pass
+
+
 def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data, alarm_str, fd_to_socket_lock):
     """
     this function is to broadcast alarm data to client, if fail to send data, remove connections held by fd_to_socket
@@ -191,36 +272,14 @@ def transmit_alarm(server_sock, epoll, fd_to_socket, bin_data, alarm_str, fd_to_
     :param bin_data: binary instance, alarm info data in C-style struct format defined in xalarm_api.py
     """
     to_remove = []
-    to_retry = []
 
     with fd_to_socket_lock:
         for fileno, connection in fd_to_socket.items():
-            if connection is not server_sock:
-                try:
-                    connection.sendall(bin_data)
-                    logging.info("Broadcast msg success, fd is %d, alarm msg is %s",
-                            fileno, alarm_str)
-                except (BrokenPipeError, ConnectionResetError):
-                    to_remove.append(fileno)
-                except socket.error as e:
-                    if e.errno == errno.EAGAIN:
-                        to_retry.append(connection)
-                    else:
-                        logging.info("Sending msg failed, fd is %d, alarm msg is %s, reason is: %s",
-                            fileno, alarm_str, str(e))
-                except Exception as e:
-                    logging.info("Sending msg failed, fd is %d, alarm msg is %s, reason is: %s",
-                            fileno, alarm_str, str(e))
-
-        for connection in to_retry:
-            for i in range(MAX_RETRY_TIMES):
-                try:
-                    connection.sendall(bin_data)
-                    break
-                except Exception as e:
-                    sleep(0.1)
-                    logging.info("Sending msg failed for %d times, fd is %d, alarm msg is %s, reason is: %s",
-                        i, connection.fileno(), alarm_str, str(e))
+            if connection is server_sock:
+                continue
+            ok = _send_alarm_one(connection, bin_data, fileno, alarm_str)
+            if not ok:
+                to_remove.append(fileno)
 
         for fileno in to_remove:
             unregister_client_events(fileno, list(fd_to_events.get(fileno, set())))
