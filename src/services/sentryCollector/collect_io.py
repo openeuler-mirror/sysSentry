@@ -34,6 +34,7 @@ EBPF_GLOBAL_DATA = []
 EBPF_PROCESS = None
 EBPF_STAGE_LIST = ["wbt", "rq_driver", "bio", "gettag"]
 EBPF_SUPPORT_VERSION = ["6.6.0"]
+EBPF_BIN_PATH = "/usr/bin/ebpf_collector"
 
 #iodump data limit
 IO_DUMP_DATA_LIMIT = 10
@@ -58,7 +59,7 @@ class CollectIo():
         self.window_value = {}
         self.disk_data_window_value = {}
 
-        self.ebpf_base_path = 'ebpf_collector'
+        self.ebpf_base_path = EBPF_BIN_PATH
 
         self.loop_all = False
         self.io_threshold_config = module_config.get_io_threshold()
@@ -327,7 +328,7 @@ class CollectIo():
                     IO_DUMP_DATA[disk_name][stage][category] = []
                     self.window_value[disk_name][stage][category] = [[0,0,0], [0,0,0]]
 
-        return major_version in EBPF_SUPPORT_VERSION and os.path.exists('/usr/bin/ebpf_collector') and len(IO_GLOBAL_DATA) != 0 
+        return major_version in EBPF_SUPPORT_VERSION and os.path.exists(EBPF_BIN_PATH) and len(IO_GLOBAL_DATA) != 0
     
     def get_ebpf_raw_data(
         self
