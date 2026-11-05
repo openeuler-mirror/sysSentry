@@ -236,23 +236,29 @@ class CollectServer():
             logging.error("server recv MSG failed")
             return
 
-        res_data = self.msg_data_process(msg_data_decode, protocol_id)
-        logging.debug("res data %s", res_data)
-
-        # server send
-        res_head = RES_MAGIC
-        res_head += str(protocol_id).zfill(CLT_MSG_PRO_LEN)
-        res_data_len = str(len(res_data)).zfill(CLT_MSG_LEN_LEN)
-        res_head += res_data_len
-        logging.debug("res head %s", res_head)
-
-        res_msg = res_head + res_data
-        logging.debug("res msg %s", res_msg)
-
         try:
+            res_data = self.msg_data_process(msg_data_decode, protocol_id)
+            logging.debug("res data %s", res_data)
+
+            # server send
+            res_head = RES_MAGIC
+            res_head += str(protocol_id).zfill(CLT_MSG_PRO_LEN)
+            res_data_len = str(len(res_data)).zfill(CLT_MSG_LEN_LEN)
+            res_head += res_data_len
+            logging.debug("res head %s", res_head)
+
+            res_msg = res_head + res_data
+            logging.debug("res msg %s", res_msg)
+
             client_socket.send(res_msg.encode())
         except OSError:
-            logging.error("server recv failed")
+            logging.error("server send response failed")
+        except Exception:
+            # msg_data_process may raise on malformed but JSON-decodable requests
+            # (KeyError/ValueError/TypeError/JSONDecodeError on inner field access,
+            # or NameError on an unmatched protocol id). Catch here so a single bad
+            # request never leaks the client fd and exhausts the server's fd table.
+            logging.exception("server process msg failed, client socket closed")
         finally:
             client_socket.close()
         return
