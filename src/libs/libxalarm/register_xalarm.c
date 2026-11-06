@@ -731,12 +731,17 @@ int xalarm_get_event(struct alarm_msg* msg, struct alarm_register *register_info
              * ENOMEM means out of memory
              * EFAULT means invalid buffer address
              */
+            printf("xalarm_get_event: client fd %d recv failed, errno=%d (%s)\n",
+                   register_info->register_fd, errno, strerror(errno));
             close(register_info->register_fd);
             return -errno;
         }
         // recvlen == 0 means the connection has been properly closed, 
         // and the remote end has no more data to send.
         if (recvlen == 0) {
+            printf("xalarm_get_event: client fd %d connection closed by xalarmd "
+                   "(maybe connections reach max num or service stopped)\n",
+                   register_info->register_fd);
             close(register_info->register_fd);
             return -ENOTCONN;
         }
@@ -748,6 +753,9 @@ int xalarm_get_event(struct alarm_msg* msg, struct alarm_register *register_info
         // alarm_info).
         // check if this is sysSentry down notification
         if (info.usAlarmId == SYSSENTRY_DOWN_ALARM_ID) {
+            printf("xalarm_get_event: client fd %d received sysSentry-down notification "
+                   "(alarmId=%u)\n",
+                   register_info->register_fd, (unsigned int)info.usAlarmId);
             close(register_info->register_fd);
             return -EBADF;
         }
@@ -764,6 +772,12 @@ int xalarm_get_event(struct alarm_msg* msg, struct alarm_register *register_info
         }
         msg->usAlarmId = info.usAlarmId;
         msg->AlarmTime = info.AlarmTime;
+        /* Log which client received which alarm. Useful for diagnosing cases
+         * where a subscriber reports it never received an event (e.g. OOM):
+         * if this line never appears for a given AlarmId the message did not
+         * reach the client; if it appears, receipt is confirmed. */
+        printf("xalarm_get_event: client fd %d received alarm, alarmId=%u, msg_len=%d\n",
+               register_info->register_fd, (unsigned int)msg->usAlarmId, ret);
         // no need to close fd because get_event() can be reused after recv one msg
         return 0;
     }
