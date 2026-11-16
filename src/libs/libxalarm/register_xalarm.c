@@ -630,7 +630,8 @@ static int send_event_registration(int fd, struct alarm_subscription_info id_fil
                 id_filter.id_list[i] == ALARM_PANIC_EVENT ||
                 id_filter.id_list[i] == ALARM_KERNEL_REBOOT_EVENT ||
                 id_filter.id_list[i] == ALARM_UBUS_MEM_EVENT ||
-                id_filter.id_list[i] == ALARM_LINK_EVENT) {
+                id_filter.id_list[i] == ALARM_LINK_EVENT ||
+                id_filter.id_list[i] == ALARM_LOCAL_RAS_EVENT) {
             json_object_array_add(ids_array, json_object_new_int(id_filter.id_list[i]));
         }
     }

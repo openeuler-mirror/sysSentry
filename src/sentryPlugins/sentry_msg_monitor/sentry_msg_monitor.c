@@ -43,6 +43,8 @@
 #define XALARM_GENERAL_MSG_ITEM_CNT 2 // msgid_res
 #define XALARM_PANIC_MSG_ITEM_CNT 4 // msgid_{cna:cna,eid:eid}_res
 #define PHYS_ADDR_HEX_STR_MAX_LEN 20
+#define UINT_STRING_MAX_LEN 16
+#define VAL_BITS_BIN_STR_MAX_LEN 33 /* __u32 val_bits -> 32 binary digits + '\0' */
 
 /*
  * The main version of the sentry driver.
@@ -58,8 +60,9 @@
  * (4) oom
  * (5) ub mem err
  * (6) ub link
+ * (7) TX信用证耗尽事件 (NL SSU link credit overtime error)
  */
-#define SMH_VERSION_MINOR  6
+#define SMH_VERSION_MINOR  7
 
 /*
  * Version policy:
@@ -369,6 +372,153 @@ static int convert_link_event_smh_msg_to_str(const struct sentry_msg_helper_msg*
     return 0;
 }
 
+/*
+ * TX信用证耗尽事件 (NL SSU link credit overtime error) severity values,
+ * matching the kernel hisi_ubus_err_severity enum
+ * (drivers/ub/sentry/sentry_local_ras.h). The uapi header only carries the
+ * raw err_severity byte, so the mapping is duplicated
+ * here for userspace reporting.
+ */
+#define LOCAL_RAS_SEV_RECOVERABLE 0
+#define LOCAL_RAS_SEV_FATAL       1
+#define LOCAL_RAS_SEV_CORRECTED   2
+#define LOCAL_RAS_SEV_NONE        3
+
+/*
+ * Valid-field bits for local_ras_info.val_bits, matching the kernel
+ * HISI_UBUS_LOCAL_VALID_* bits in sentry_local_ras.h. The kernel validates
+ * the locating fields itself before forwarding, but err_severity/err_type are
+ * not range-checked; userspace uses these bits to decide whether each field
+ * carries a meaningful value (bit set) or should be reported as "unknown".
+ */
+#define LOCAL_RAS_VALID_ERR_TYPE       (1U << 9)
+#define LOCAL_RAS_VALID_ERR_SEVERITY   (1U << 11)
+
+#define LOCAL_RAS_ERR_REASON "对端消息未处理, 链路可能存在异常或者硬件可能存在窝包"
+
+/*
+ * Map the TX信用证耗尽事件 (NL SSU link credit overtime error) err_severity to a human-readable string
+ * for the alarm details. The alarm level is reported as MINOR_ALM regardless
+ * of severity.
+ */
+static const char *convert_local_ras_severity_to_str(unsigned char err_severity)
+{
+    switch (err_severity) {
+        case LOCAL_RAS_SEV_RECOVERABLE:
+            return "recoverable";
+        case LOCAL_RAS_SEV_FATAL:
+            return "fatal";
+        case LOCAL_RAS_SEV_CORRECTED:
+            return "corrected";
+        case LOCAL_RAS_SEV_NONE:
+            return "none";
+        default:
+            return "unknown";
+    }
+}
+
+/*
+ * Add an unsigned integer value to a json object as its decimal string form.
+ * Per the TX信用证耗尽事件 (NL SSU link credit overtime error) alarm message contract, every alarm_info
+ * field except event_id and msgid is reported as a string so get_alarm
+ * renders stable text regardless of the consuming parser.
+ */
+static void json_object_add_uint_str(struct json_object *obj, const char *key, unsigned int val)
+{
+    char buf[UINT_STRING_MAX_LEN];
+    snprintf(buf, sizeof(buf), "%u", val);
+    json_object_object_add(obj, key, json_object_new_string(buf));
+}
+
+/*
+ * Render local_ras_info.val_bits (__u32) as a fixed-width binary string for the
+ * alarm details, MSB first so the displayed bits line up with the kernel
+ * HISI_UBUS_LOCAL_VALID_* bit numbers (e.g. bit 11 = ERR_SEVERITY). All 32 bits
+ * are shown (with leading zeros) regardless of which valid-field bits the
+ * kernel currently defines, so the field's meaning stays stable if new bits are
+ * added later. Example: val_bits 0x0a00 -> "00000000000000000000101000000000".
+ */
+static void json_object_add_val_bits_str(struct json_object *obj, const char *key, unsigned int val_bits)
+{
+    char buf[VAL_BITS_BIN_STR_MAX_LEN];
+    for (int i = 0; i < 32; i++)
+        buf[i] = (val_bits & (1U << (31 - i))) ? '1' : '0';
+    buf[32] = '\0';
+    json_object_object_add(obj, key, json_object_new_string(buf));
+}
+
+/*
+ * Convert a TX信用证耗尽事件 (NL SSU link credit overtime error) smh message to the JSON string
+ * expected by xalarm_Report.
+ *
+ * The local_ras_info fields are placed under the "details" object so that
+ * `sentryctl get_alarm sentry_msg_monitor -d` renders them as detailed alarm
+ * info; "alarm_source" must equal the task name so get_alarm_result() can
+ * attribute the alarm to this plugin.
+ */
+static int convert_local_ras_smh_msg_to_str(const struct sentry_msg_helper_msg* smh_msg, char* str)
+{
+    struct json_object *root = json_object_new_object();
+    if (root == NULL) {
+        logging_error("Failed to allocate json object for NL SSU link credit overtime error\n");
+        return -1;
+    }
+
+    struct json_object *details = json_object_new_object();
+    if (details == NULL) {
+        logging_error("Failed to allocate json details for NL SSU link credit overtime error\n");
+        json_object_put(root);
+        return -1;
+    }
+
+    json_object_add_uint_str(details, "Table version", smh_msg->helper_msg_info.local_ras_info.version);
+    json_object_add_uint_str(details, "SOC ID", smh_msg->helper_msg_info.local_ras_info.soc_id);
+    json_object_add_uint_str(details, "Socket ID", smh_msg->helper_msg_info.local_ras_info.socket_id);
+    json_object_add_uint_str(details, "Nimbus ID", smh_msg->helper_msg_info.local_ras_info.nimbus_id);
+    json_object_add_uint_str(details, "Module ID", smh_msg->helper_msg_info.local_ras_info.module_id);
+    json_object_object_add(details, "Sub Module",
+        json_object_new_string(smh_msg->helper_msg_info.local_ras_info.sub_module_name));
+    json_object_add_uint_str(details, "Core ID", smh_msg->helper_msg_info.local_ras_info.core_id);
+    char port_str[UINT_STRING_MAX_LEN];
+    snprintf(port_str, sizeof(port_str), "port%u", smh_msg->helper_msg_info.local_ras_info.port_id);
+    json_object_object_add(details, "Port ID", json_object_new_string(port_str));
+    /* err_severity/err_type are only meaningful when their val_bits bit is set;
+     * otherwise report "unknown" rather than a possibly-garbage raw value. */
+    const char *sev_str = (smh_msg->helper_msg_info.local_ras_info.val_bits & LOCAL_RAS_VALID_ERR_SEVERITY)
+        ? convert_local_ras_severity_to_str(smh_msg->helper_msg_info.local_ras_info.err_severity)
+        : "unknown";
+    json_object_object_add(details, "Error severity", json_object_new_string(sev_str));
+    if (smh_msg->helper_msg_info.local_ras_info.val_bits & LOCAL_RAS_VALID_ERR_TYPE)
+        json_object_add_uint_str(details, "Error type", smh_msg->helper_msg_info.local_ras_info.err_type);
+    else
+        json_object_object_add(details, "Error type", json_object_new_string("unknown"));
+    /* Report val_bits as a 32-bit binary string (MSB first) so the
+     * "Error severity"/"Error type" -> "unknown" logic above is auditable from
+     * the alarm itself (bit 11 = ERR_SEVERITY, bit 9 = ERR_TYPE). */
+    json_object_add_val_bits_str(details, "val_bits", smh_msg->helper_msg_info.local_ras_info.val_bits);
+    json_object_object_add(details, "reason", json_object_new_string(LOCAL_RAS_ERR_REASON));
+
+    json_object_object_add(root, "alarm_source", json_object_new_string(TOOL_NAME));
+    json_object_object_add(root, "msgid", json_object_new_int64((int64_t)smh_msg->msgid));
+    json_object_object_add(root, "event_id", json_object_new_int(ALARM_LOCAL_RAS_EVENT));
+    json_object_object_add(root, "details", details);
+
+    const char* json_str = json_object_to_json_string(root);
+    if (json_str == NULL) {
+        logging_error("NL SSU link credit overtime error json_str return NULL\n");
+        json_object_put(root);
+        return -1;
+    }
+
+    int len = snprintf(str, MSG_STR_MAX_LEN, "%s", json_str);
+    json_object_put(root);
+    if (len < 0 || (size_t)len >= MSG_STR_MAX_LEN) {
+        logging_error("NL SSU link credit overtime error msg str size exceeds the max value\n");
+        return -1;
+    }
+    return 0;
+}
+
 static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* str)
 {
     int res;
@@ -388,6 +538,9 @@ static int convert_smh_msg_to_str(struct sentry_msg_helper_msg* smh_msg, char* s
             break;
         case SMH_MESSAGE_LINK_EVENT:
             res = convert_link_event_smh_msg_to_str(smh_msg, str);
+            break;
+        case SMH_MESSAGE_LOCAL_RAS:
+            res = convert_local_ras_smh_msg_to_str(smh_msg, str);
             break;
         default:
             logging_warn("Unknown msg type: %d\n", smh_msg->type);
@@ -451,6 +604,9 @@ static unsigned short convert_msg_type_to_xalarm_type(enum sentry_msg_helper_msg
             break;
         case SMH_MESSAGE_LINK_EVENT:
             xalarm_type = ALARM_LINK_EVENT;
+            break;
+        case SMH_MESSAGE_LOCAL_RAS:
+            xalarm_type = ALARM_LOCAL_RAS_EVENT;
             break;
         default:
             logging_warn("Unknown msg type: %d\n", msg_type);
@@ -529,7 +685,17 @@ static void* sender_thread(void* arg)
         }
         retry_num = 0;
         for (int i = 0; i < MAX_RETRY_NUM; i++) {
-            ret = xalarm_report_event(alarm_type, str, strlen(str));
+            if (smh_msg.type == SMH_MESSAGE_LOCAL_RAS) {
+                /*
+                 * TX信用证耗尽事件 (NL SSU link credit overtime error) is reported via xalarm_Report;
+                 * the alarm level is fixed at MINOR_ALM, and the local_ras_info
+                 * payload is carried as JSON in pucParas (with details for
+                 * get_alarm).
+                 */
+                ret = xalarm_Report(alarm_type, MINOR_ALM, ALARM_TYPE_OCCUR, str);
+            } else {
+                ret = xalarm_report_event(alarm_type, str, strlen(str));
+            }
             if (ret == 0) {
                 logging_info("Send msg success: alarm_type: %d\n", alarm_type);
                 break;
@@ -538,6 +704,13 @@ static void* sender_thread(void* arg)
                 logging_warn("Send msg to xalarmd failed: (%d) Invalid input value, skip it\n", ret);
                 break;
             } else if (ret == -ENOTCONN || ret == -ECOMM || ret == -ENODEV) {
+                /*
+                 * Transient connection/communication failure (xalarmd stopped,
+                 * socket creation failed, or sendto failed). Both xalarm_Report
+                 * and xalarm_report_event return these errno-based codes for the
+                 * retryable cases; permanent bad-argument failures return
+                 * -EINVAL and are handled by the branch above (no retry).
+                 */
                 retry_num++;
                 logging_warn("Send msg to xalarmd failed: (%d) Bad socket conn, start the %dth retry in %d seconds.\n",
                              ret, retry_num, RETRY_PERIOD);
@@ -547,7 +720,7 @@ static void* sender_thread(void* arg)
                 break;
             }
         }
-        if (ret == -ENOTCONN || ret == -ECOMM) {
+        if (ret == -ENOTCONN || ret == -ECOMM || ret == -ENODEV) {
             logging_warn("Send msg to xalarmd failed after %d retries: Bad socket conn, skip it.\n", retry_num);
         }
     }

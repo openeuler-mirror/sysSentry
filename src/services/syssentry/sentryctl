@@ -44,8 +44,21 @@ def status_output_format(res_data):
     print(f"status: {res_data}")
 
 def result_output_format(res_data):
+    # ensure_ascii=False so non-ASCII fields are printed as real UTF-8 
+    # instead of \uXXXX escapes. The alarm payload already round-trips
+    # through json.loads on the way here; only this final display dumps()
+    # was re-escaping non-ASCII text.
     try:
-        print(json.dumps(res_data, indent=4))
+        print(json.dumps(res_data, indent=4, ensure_ascii=False))
+    except UnicodeEncodeError:
+        # stdout cannot encode UTF-8 (e.g. LC_ALL=C, or a minimal container
+        # without a UTF-8 locale). Re-dump with ensure_ascii=True so non-ASCII
+        # text becomes \uXXXX escapes any locale can print, keeping the
+        # command usable instead of crashing with a traceback on the
+        # get_alarm -d path this was meant to improve.
+        logging.warning("result_output_format: stdout cannot encode UTF-8, "
+                        "falling back to ASCII-escaped output")
+        print(json.dumps(res_data, indent=4, ensure_ascii=True))
     except json.decoder.JSONDecodeError:
         logging.warning("result_output_format: result is \n%s\n, but json.dumps failed!")
         print(res_data)

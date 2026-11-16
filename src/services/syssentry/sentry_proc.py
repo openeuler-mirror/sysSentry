@@ -36,6 +36,7 @@ ALLOWED_PROC_NAMES = [
     "oom",
     "oom_rate_limit",
     "link_event",
+    "local_ras",
     # sentry_remote_reporter module proc
     "cna",
     "eid",
