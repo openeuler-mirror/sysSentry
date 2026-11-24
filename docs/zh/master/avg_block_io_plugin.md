@@ -12,7 +12,7 @@
 2. 平均阈值慢盘检测插件运行时占用系统性能（cpu利用率、内存使用率、io吞吐等）不超过整个运行环境的5%。
 3. 平均阈值慢盘检测插件的检出率为80%+，准确率为80%+。
 4. 仅支持openEuler-20.03-LTS-SP4版本，并使用4.19.90内核。
-5. 仅支持对nvme-ssd、sata-ssd、sata-hdd盘进行慢盘检测，区分盘的方法请参考[常见问题与解决方法 - Q2](./question_and_answer.md#问题2：如何区分系统上的盘是什么类型？)。
+5. 仅支持对nvme-ssd、sata-ssd、sata-hdd盘进行慢盘检测，区分盘的方法请参考[常见问题与解决方法 - Q2](./question_and_answer.md#问题2如何区分系统上的盘是什么类型)。
 6. 启动平均阈值巡检前，请确认sysSentry、xalarmd、sentryCollector服务均处于运行状态。
 
 ## 安装插件
@@ -58,6 +58,7 @@ avg_block_io插件配置文件路径为/etc/sysSentry/plugins/avg_block_io.ini�
 | [\<stage>_\<DISK_TYPE>] | read_tot_lim     | 指定stage阶段的读时延绝对上限，单位us，读时延超过此数据即为异常数据，数值越大，算法漏报率越高，未配置时使用默认配置，配置异常时报错退出 | -          | N      |
 
 >![](figures/icon-note.gif)**说明：** 
+>
 >1. latency_\<DISK_TYPE>、iodump、\<stage>_\<DISK_TYPE>配置段的所有参数调整均会影响算法的准确性，且优劣并存：若数值越大，算法漏报率越高，则数值越小，算法误报率越高。需要根据经验进行取舍。
 >2. \<DISK_TYPE>为磁盘类型，目前仅支持三类：sata_ssd、nvme_ssd、sata_hdd。
 >3. \<stage>\_\<DISK_TYPE>中的stage可以为common.stage参数支持的任意阶段，该部分为可选配置，如果配置后，在进行到对应阶段的故障检测时将使用该部分的参数，而不是latency_\<DISK_TYPE>或iodump中的参数。
@@ -85,6 +86,7 @@ avg_block_io插件配置文件路径为/etc/sysSentry/plugins/avg_block_io.ini�
    ```
 
    示例：
+
    ```shell
     [
         {
@@ -107,7 +109,8 @@ avg_block_io插件配置文件路径为/etc/sysSentry/plugins/avg_block_io.ini�
         }
     ]
     ```
-   输出结果中各字段介绍： 
+
+   输出结果中各字段介绍：
 
    | 字段 | 描述 |
    | --- | --- |
@@ -118,6 +121,7 @@ avg_block_io插件配置文件路径为/etc/sysSentry/plugins/avg_block_io.ini�
    | alarm_info | 告警内容详细信息，由平均阈值慢盘检测插件的自定义内容，不同的巡检插件上报的内容不一致 |
 
    alarm_info中各字段解释如下：
+
    | alarm_info中字段 | 描述 |
    | --- | --- |
    | alarm_source | 告警插件名称，平均阈值慢盘检测插件的固定值为avg_block_io |
@@ -151,6 +155,7 @@ avg_block_io插件配置文件路径为/etc/sysSentry/plugins/avg_block_io.ini�
        "details":{}  # 平均阈值算法中detail信息为空
    }
    ```
+
    其中"result"和"error_msg"对应关系如下：
 
    | result | 对应error_msg信息 | 含义 |
