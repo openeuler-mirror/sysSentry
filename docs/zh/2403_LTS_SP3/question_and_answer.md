@@ -30,8 +30,8 @@ step2. 配置&构建
 step3. 使用新内核重启
 
 ```shell
-[root@openEuler ~]# grubby --info ALL 				# 查看新编的内核对应的index
-[root@openEuler ~]# grubby --set-default-index N 	# N对应新编内核的index
+[root@openEuler ~]# grubby --info ALL # 查看新编的内核对应的index
+[root@openEuler ~]# grubby --set-default-index N # N对应新编内核的index
 [root@openEuler ~]# reboot
 ```
 
@@ -54,18 +54,22 @@ step4. 重新启动sysSentry相关服务
 ## **问题2：如何区分系统上的盘是什么类型？**
 
 在环境中通过`lsblk -d`命令可以查看到当前环境上的所有磁盘类型及其rotate情况：
+
 1. nvme_ssd盘：磁盘名以nvme开头且rotate为0
 2. sata_ssd盘：磁盘名以sd开头且rotate为1
 3. sata_hdd盘：磁盘名以sd开头且rotate为0
 
 ## **问题3：平均阈值插件/AI阈值插件运行时会对系统上的哪些数据进行分析？**
+
 平均阈值插件/AI阈值插件会通过sentryCollector服务获取系统上指定磁盘各阶段的latency和iodump数据并进行数据分析：
+
 - latency：io时延数据，统计周期内io完成的时间信息；
 - iodump：io超时未完成数量，如果某个io超过1秒未完成，即为iodump数量加一。
   
 sentryCollector采集共有ebpf采集和内核无锁采集两种方式，默认会使用ebpf采集，两种采集的区别及内核无锁采集的使用方法请参考《[二次开发指南](./developer_guide.md)》文档
 
 ## **问题4：已经执行了`sentryctl start avg_block_io/ai_block_io`命令，为什么查看状态依然是EXITED？**
+
 可能存在以下原因：
 
 1. sentryCollector服务未启动，可通过`systemctl status sentryCollector`查看服务是否为运行状态；
