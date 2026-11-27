@@ -104,9 +104,9 @@ sysSentry提供python与c两种语言的对外接口。
     | ALARM_KERNEL_REBOOT_EVENT | 1009 | 内核重启事件告警ID |
     | ALARM_KERNEL_REBOOT_ACK_EVENT | 1010 | 内核重启ack事件告警ID |
     | ALARM_UBUS_MEM_EVENT | 1013 | UBUS内存故障事件告警ID |
+    | ALARM_RAS_SENTRY_EVENT | 1015 | BMC RAS告警事件告警ID |
     | ALARM_LINK_EVENT | 1016 | 链路（link）事件告警ID |
     | ALARM_LOCAL_RAS_EVENT | 1017 | TX信用证耗尽事件（NL SSU link credit overtime error）告警ID |
-    | ALARM_RAS_SENTRY_EVENT | 1015 | BMC RAS告警事件告警ID |
     | SYSSENTRY_DOWN_ALARM_ID | 1128 | sysSentry服务停止告警告警ID |
 
     上面告警ID已被插件占用，用户新增插件不可复用，并且1011,1012和1014也不可使用（预留）。
@@ -874,7 +874,7 @@ sentryCollector支持按周期采集指定磁盘的数据，并提供两种采�
 
 #### 内核无锁采集和ebpf采集的差异
 
-内存无锁采集和ebpf采集在以下几个方面存在区别：
+内核无锁采集和ebpf采集在以下几个方面存在区别：
 
 1. 支持采集的阶段不同
 
