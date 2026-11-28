@@ -82,18 +82,18 @@ def res_output_handle(res_struct, req_type):
     elif req_type == 'get_status':
         status_output_format(res_struct['data'])
     elif req_type == 'get_result':
-         result_output_format(res_struct['data'])
+        result_output_format(res_struct['data'])
     elif req_type == 'get_alarm':
-         result_output_format(res_struct['data'])
-    elif res_struct['ret'] == "failed":
-        print(res_struct['data'])
-        if req_type == 'set':
-            sys.exit(-1)
+        result_output_format(res_struct['data'])
 
 
 def res_msg_serial(res_msg):
     """serial res_msg"""
-    res_struct = json.loads(res_msg)
+    try:
+        res_struct = json.loads(res_msg)
+    except json.JSONDecodeError:
+        print("sentryctl: response message decode failed")
+        sys.exit(-1)
     return res_struct
 
 
@@ -229,6 +229,7 @@ if __name__ == '__main__':
     elif client_args.cmd_type == 'get_alarm':
         if not isinstance(client_args.time_range, int) or client_args.time_range <= 0:
             print(f"time_range is not a positive integer: {client_args.time_range}")
+            sys.exit(-1)
         req_msg_struct = {
             "type": "get_alarm", 
             "data": {
@@ -268,4 +269,6 @@ if __name__ == '__main__':
 
     if result_struct['ret'] != "success":
         print(result_struct['ret'])
+        print(result_struct['data'])
+        sys.exit(-1)
     res_output_handle(result_struct, req_msg_struct['type'])
